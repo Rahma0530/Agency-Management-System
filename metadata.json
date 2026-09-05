@@ -1,0 +1,6 @@
+{
+  "name": "Kesra Management System",
+  "description": "Internal agency operational platform for client management, multi-service workflows, capacity, and campaigns",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
