@@ -210,7 +210,7 @@ export default function App() {
       }
 
       // Direct module hash format e.g. #onboarding or #capacity
-      const validModules: AppModuleId[] = ['onboarding', 'capacity', 'tasks', 'daily_operations', 'campaigns'];
+      const validModules: AppModuleId[] = ['onboarding', 'service_briefs', 'capacity', 'tasks', 'daily_operations', 'campaigns'];
       if (validModules.includes(parts[0] as AppModuleId)) {
         const mod = parts[0] as AppModuleId;
         if (!isModuleAllowed(authenticatedUser.role, mod)) {
