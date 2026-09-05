@@ -1,0 +1,762 @@
+import React, { useState } from 'react';
+import {
+  FileText,
+  UserCheck,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Shield,
+  Send,
+  Globe,
+  Share2,
+  Target,
+  Search,
+  Layers,
+  ArrowRight,
+  ExternalLink,
+  ChevronRight,
+  Sparkles,
+  Info,
+  Eye,
+} from 'lucide-react';
+import {
+  ClientRecord,
+  PackageRecord,
+  UserRecord,
+  BriefRecord,
+  AssignmentRecord,
+  CampaignRecord,
+  TaskRecord,
+  DailyLogRecord,
+  ExtraNoteRecord,
+  ServiceType,
+  UserRole,
+} from '../types/database';
+import { ClientDashboard } from './ClientDashboard';
+
+interface ServiceBriefsRoutingViewProps {
+  currentUser: UserRecord;
+  clients: ClientRecord[];
+  packages: PackageRecord[];
+  briefs: BriefRecord[];
+  assignments: AssignmentRecord[];
+  users: UserRecord[];
+  campaigns?: CampaignRecord[];
+  tasks?: TaskRecord[];
+  dailyLogs?: DailyLogRecord[];
+  extraNotes?: ExtraNoteRecord[];
+  onAssignServiceAgent: (
+    clientId: string,
+    serviceType: ServiceType,
+    agentId: string,
+    reasonNotes?: string
+  ) => Promise<void>;
+  onNavigateToModule?: (module: string) => void;
+}
+
+export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> = ({
+  currentUser,
+  clients,
+  packages,
+  briefs,
+  assignments,
+  users,
+  campaigns = [],
+  tasks = [],
+  dailyLogs = [],
+  extraNotes = [],
+  onAssignServiceAgent,
+  onNavigateToModule,
+}) => {
+  // Determine service and role context
+  const getServiceContext = (role: UserRole) => {
+    if (role === 'seo_team_lead' || role === 'seo_agent') {
+      return {
+        serviceType: 'seo' as ServiceType,
+        isTeamLead: role === 'seo_team_lead',
+        agentRole: 'seo_agent' as UserRole,
+        serviceNameEn: 'Search Engine Optimization (SEO)',
+        departmentName: 'SEO & Organic Growth Department',
+        leadRoleTitle: 'SEO Team Leader',
+        agentRoleTitle: 'SEO Specialist',
+        accentColor: '#10b981',
+        badgeBg: 'rgba(16, 185, 129, 0.15)',
+        badgeText: '#34d399',
+        icon: <Globe className="w-5 h-5 text-emerald-400" />,
+      };
+    }
+    if (role === 'media_buying_team_lead' || role === 'media_buying_agent') {
+      return {
+        serviceType: 'media_buying' as ServiceType,
+        isTeamLead: role === 'media_buying_team_lead',
+        agentRole: 'media_buying_agent' as UserRole,
+        serviceNameEn: 'Paid Advertising (Media Buying)',
+        departmentName: 'Digital Media Buying Department',
+        leadRoleTitle: 'Media Buying Team Leader',
+        agentRoleTitle: 'Media Buying Specialist',
+        accentColor: '#0ea5e9',
+        badgeBg: 'rgba(14, 165, 233, 0.15)',
+        badgeText: '#38bdf8',
+        icon: <Target className="w-5 h-5 text-sky-400" />,
+      };
+    }
+    if (role === 'social_media_team_lead' || role === 'social_media_agent') {
+      return {
+        serviceType: 'social_media' as ServiceType,
+        isTeamLead: role === 'social_media_team_lead',
+        agentRole: 'social_media_agent' as UserRole,
+        serviceNameEn: 'Social Media Management',
+        departmentName: 'Social Media & Community Department',
+        leadRoleTitle: 'Social Media Team Leader',
+        agentRoleTitle: 'Social Media Specialist',
+        accentColor: '#ec4899',
+        badgeBg: 'rgba(236, 72, 153, 0.15)',
+        badgeText: '#f472b6',
+        icon: <Share2 className="w-5 h-5 text-pink-400" />,
+      };
+    }
+    return null;
+  };
+
+  const context = getServiceContext(currentUser.role);
+
+  if (!context) {
+    return (
+      <div className="p-8 rounded-2xl bg-red-950/30 border border-red-800/40 text-center space-y-3">
+        <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
+        <h3 className="text-base font-bold text-white">Access Restricted</h3>
+        <p className="text-xs text-stone-300">
+          This portal is reserved for operational service teams (SEO, Social Media, Media Buying).
+        </p>
+      </div>
+    );
+  }
+
+  const {
+    serviceType,
+    isTeamLead,
+    agentRole,
+    serviceNameEn,
+    departmentName,
+    leadRoleTitle,
+    agentRoleTitle,
+    icon,
+  } = context;
+
+  // Filter clients based on role and assignment rules:
+  // - Team Leader: All clients whose package includes this service
+  // - Service Agent: ONLY clients where assignment.agent_id === currentUser.id AND service_type === serviceType
+  const authorizedClients = clients.filter((c) => {
+    const pkg = packages.find((p) => p.id === c.package_id);
+    const hasService = pkg?.services.includes(serviceType);
+    if (!hasService) return false;
+
+    if (isTeamLead) {
+      return true;
+    } else {
+      const myAssignment = assignments.find(
+        (a) => a.client_id === c.id && a.service_type === serviceType && a.agent_id === currentUser.id
+      );
+      return !!myAssignment;
+    }
+  });
+
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(
+    authorizedClients[0]?.id || null
+  );
+  const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending_assignment' | 'assigned'>('all');
+
+  // Assignment state for Team Leader
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  const [assignmentNotes, setAssignmentNotes] = useState<string>('');
+  const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const eligibleAgents = users.filter((u) => u.role === agentRole);
+
+  const selectedClient =
+    authorizedClients.find((c) => c.id === selectedClientId) || authorizedClients[0] || null;
+  const selectedClientPackage = packages.find((p) => p.id === selectedClient?.package_id);
+
+  const serviceBrief = briefs.find(
+    (b) => b.client_id === selectedClient?.id && b.service_type === serviceType
+  );
+
+  const currentAssignment = assignments.find(
+    (a) => a.client_id === selectedClient?.id && a.service_type === serviceType
+  );
+  const assignedAgent = users.find((u) => u.id === currentAssignment?.agent_id);
+
+  const getLifecycleStatus = (client: ClientRecord) => {
+    const brf = briefs.find((b) => b.client_id === client.id && b.service_type === serviceType);
+    const asg = assignments.find((a) => a.client_id === client.id && a.service_type === serviceType);
+
+    if (!brf || brf.version === 0) {
+      return {
+        key: 'brief_in_progress',
+        label: 'Brief in Progress',
+        color: 'var(--roas-mid)',
+        bg: 'rgba(245, 226, 154, 0.15)',
+        border: 'rgba(245, 226, 154, 0.3)',
+      };
+    }
+    if (!asg || !asg.agent_id) {
+      return {
+        key: 'awaiting_service_team_review',
+        label: 'Awaiting Specialist Assignment',
+        color: '#38bdf8',
+        bg: 'rgba(14, 165, 233, 0.15)',
+        border: 'rgba(14, 165, 233, 0.3)',
+      };
+    }
+    return {
+      key: 'ready_for_execution',
+      label: `Assigned: ${users.find((u) => u.id === asg.agent_id)?.name || 'Specialist'}`,
+      color: 'var(--roas-good)',
+      bg: 'rgba(169, 245, 193, 0.15)',
+      border: 'rgba(169, 245, 193, 0.3)',
+    };
+  };
+
+  const displayedClients = authorizedClients.filter((c) => {
+    const matchesSearch =
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.industry || '').toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (statusFilter === 'all') return true;
+    const asg = assignments.find((a) => a.client_id === c.id && a.service_type === serviceType);
+    if (statusFilter === 'pending_assignment') return !asg || !asg.agent_id;
+    if (statusFilter === 'assigned') return !!asg && !!asg.agent_id;
+    return true;
+  });
+
+  const handleAssignAgent = async () => {
+    if (!selectedClient || !selectedAgentId) return;
+    setIsSubmittingAssignment(true);
+    setSuccessMsg(null);
+    try {
+      await onAssignServiceAgent(selectedClient.id, serviceType, selectedAgentId, assignmentNotes);
+      const agentObj = eligibleAgents.find((u) => u.id === selectedAgentId);
+      setSuccessMsg(`Successfully assigned to ${agentObj?.name || 'Specialist'}`);
+      setAssignmentNotes('');
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      console.error('Assignment error:', err);
+    } finally {
+      setIsSubmittingAssignment(false);
+    }
+  };
+
+  const renderBriefContent = (brief: BriefRecord | undefined) => {
+    if (!brief || !brief.fields || Object.keys(brief.fields).length === 0) {
+      return (
+        <div className="p-6 rounded-xl bg-amber-950/20 border border-amber-900/30 text-center space-y-2">
+          <Clock className="w-8 h-8 text-amber-400 mx-auto" />
+          <h4 className="text-sm font-bold text-amber-300">Brief Pending Submission</h4>
+          <p className="text-xs text-stone-300 max-w-md mx-auto">
+            The Account Management team is currently collecting requirements with the client. Full brief details will render once submitted.
+          </p>
+        </div>
+      );
+    }
+
+    const f = brief.fields;
+
+    if (serviceType === 'seo') {
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
+              <span className="text-[11px] text-stone-400 block mb-1">Target Website URL</span>
+              <a
+                href={f.website_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-bold text-emerald-300 hover:underline flex items-center gap-1 break-all"
+              >
+                <span>{f.website_url || 'Not specified'}</span>
+                <ExternalLink className="w-3 h-3 shrink-0" />
+              </a>
+            </div>
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
+              <span className="text-[11px] text-stone-400 block mb-1">CMS Platform</span>
+              <p className="text-xs font-bold text-white">{f.cms_platform || 'Not specified'}</p>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
+            <span className="text-[11px] text-stone-400 block">Target Keywords</span>
+            <p className="text-xs text-stone-200 leading-relaxed font-mono whitespace-pre-line">
+              {f.target_keywords || 'Not specified'}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
+              <span className="text-[11px] text-stone-400 block mb-1">Geographic Target</span>
+              <p className="text-xs text-white">{f.target_locations || 'Not specified'}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
+              <span className="text-[11px] text-stone-400 block mb-1">Current Organic Traffic</span>
+              <p className="text-xs font-bold text-purple-300">{f.current_organic_traffic || 'N/A'}</p>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
+            <span className="text-[11px] text-stone-400 block">Primary Campaign Goals</span>
+            <p className="text-xs text-stone-200 leading-relaxed">{f.primary_goals || 'Not specified'}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (serviceType === 'media_buying') {
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
+              <span className="text-[11px] text-stone-400 block mb-1">Monthly Ad Spend Budget</span>
+              <p className="text-sm font-bold text-sky-400 font-mono">
+                {f.monthly_ad_budget || 'Custom'}
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
+              <span className="text-[11px] text-stone-400 block mb-1">Target ROAS</span>
+              <p className="text-sm font-bold text-emerald-400 font-mono">
+                {f.target_roas || 'N/A'}
+              </p>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
+            <span className="text-[11px] text-stone-400 block">Target Platforms</span>
+            <div className="flex flex-wrap gap-1.5">
+              {Array.isArray(f.ad_platforms) ? (
+                f.ad_platforms.map((plt: string, idx: number) => (
+                  <span
+                    key={idx}
+                    className="px-2.5 py-0.5 rounded text-xs font-semibold bg-sky-950/60 text-sky-300 border border-sky-800/40 uppercase"
+                  >
+                    {plt}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-white">{f.ad_platforms || 'Not specified'}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
+            <span className="text-[11px] text-stone-400 block">Primary Conversion Goal</span>
+            <p className="text-xs text-stone-200 font-bold">{f.primary_conversion_goal || 'Not specified'}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (serviceType === 'social_media') {
+      return (
+        <div className="space-y-3">
+          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
+            <span className="text-[11px] text-stone-400 block">Channels</span>
+            <div className="flex flex-wrap gap-1.5">
+              {Array.isArray(f.social_channels) ? (
+                f.social_channels.map((chn: string, idx: number) => (
+                  <span
+                    key={idx}
+                    className="px-2 py-0.5 rounded text-xs font-semibold bg-pink-950/60 text-pink-300 border border-pink-800/40 uppercase"
+                  >
+                    {chn}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-white">{f.social_channels || 'Not specified'}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
+              <span className="text-[11px] text-stone-400 block mb-1">Brand Voice & Tone</span>
+              <p className="text-xs font-bold text-white">{f.brand_tone || 'Not specified'}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
+              <span className="text-[11px] text-stone-400 block mb-1">Posting Frequency</span>
+              <p className="text-xs font-bold text-purple-300">{f.posting_frequency || 'Weekly'}</p>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
+            <span className="text-[11px] text-stone-400 block">Content Pillars</span>
+            <p className="text-xs text-stone-200 leading-relaxed">{f.content_pillars || 'Not specified'}</p>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const activeDashboardClient = clients.find((c) => c.id === dashboardClientId) || null;
+
+  return (
+    <div className="space-y-6">
+      {/* Top Banner */}
+      <div
+        className="p-5 rounded-2xl border relative overflow-hidden backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4"
+        style={{
+          background: 'var(--gradient-card)',
+          borderColor: 'var(--border-medium)',
+        }}
+      >
+        <div className="flex items-center gap-3.5">
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-lg"
+            style={{
+              background: context.badgeBg,
+              border: `1px solid ${context.accentColor}40`,
+            }}
+          >
+            {icon}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-white">{departmentName}</h2>
+              <span
+                className="text-[10px] px-2.5 py-0.5 rounded-full font-bold border"
+                style={{
+                  background: context.badgeBg,
+                  color: context.badgeText,
+                  borderColor: `${context.accentColor}40`,
+                }}
+              >
+                {isTeamLead ? leadRoleTitle : agentRoleTitle}
+              </span>
+            </div>
+            <p className="text-xs text-stone-400 mt-0.5">
+              {isTeamLead
+                ? 'Review onboarding briefs, manage service assignments, and oversee delivery.'
+                : 'Directly access briefs and deliverables assigned to your specialist queue.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-800/40 text-xs text-purple-200 self-start md:self-center">
+          <Info className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+          <span>Multi-Service Workflow: {serviceNameEn}</span>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div
+          className="p-4 rounded-xl border"
+          style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-soft)' }}
+        >
+          <div className="text-[11px] text-stone-400 font-semibold">
+            {isTeamLead ? 'Total Service Clients' : 'My Assigned Clients'}
+          </div>
+          <div className="text-2xl font-bold text-white mt-1 font-mono">
+            {authorizedClients.length}
+          </div>
+          <div className="text-[10px] text-stone-400 mt-0.5">Contracted for {serviceType.toUpperCase()}</div>
+        </div>
+
+        <div
+          className="p-4 rounded-xl border"
+          style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-soft)' }}
+        >
+          <div className="text-[11px] text-stone-400 font-semibold">Awaiting Specialist Assignment</div>
+          <div className="text-2xl font-bold text-amber-300 mt-1 font-mono">
+            {
+              authorizedClients.filter(
+                (c) =>
+                  !assignments.some(
+                    (a) => a.client_id === c.id && a.service_type === serviceType && a.agent_id
+                  )
+              ).length
+            }
+          </div>
+          <div className="text-[10px] text-stone-400 mt-0.5">Pending team lead delegation</div>
+        </div>
+
+        <div
+          className="p-4 rounded-xl border"
+          style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-soft)' }}
+        >
+          <div className="text-[11px] text-stone-400 font-semibold">Active & Brief Documented</div>
+          <div className="text-2xl font-bold text-emerald-400 mt-1 font-mono">
+            {
+              authorizedClients.filter((c) => {
+                const asg = assignments.find((a) => a.client_id === c.id && a.service_type === serviceType);
+                const brf = briefs.find((b) => b.client_id === c.id && b.service_type === serviceType);
+                return asg?.agent_id && brf && brf.version > 0;
+              }).length
+            }
+          </div>
+          <div className="text-[10px] text-stone-400 mt-0.5">Ready for live execution</div>
+        </div>
+      </div>
+
+      {/* Main Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* RIGHT/LEFT: Client Work Queue */}
+        <div className="lg:col-span-5 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <FileText className="w-4 h-4 text-purple-400" />
+              <span>{isTeamLead ? 'Incoming Service Clients' : 'My Service Queue'}</span>
+            </h3>
+
+            {isTeamLead && (
+              <div className="flex items-center gap-1 bg-stone-900/60 p-1 rounded-xl border border-stone-800 text-[11px]">
+                <button
+                  onClick={() => setStatusFilter('all')}
+                  className={`px-2.5 py-0.5 rounded font-medium transition-all ${
+                    statusFilter === 'all' ? 'bg-purple-600 text-white shadow' : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  All ({authorizedClients.length})
+                </button>
+                <button
+                  onClick={() => setStatusFilter('pending_assignment')}
+                  className={`px-2.5 py-0.5 rounded font-medium transition-all ${
+                    statusFilter === 'pending_assignment'
+                      ? 'bg-amber-600 text-white shadow'
+                      : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  Pending
+                </button>
+                <button
+                  onClick={() => setStatusFilter('assigned')}
+                  className={`px-2.5 py-0.5 rounded font-medium transition-all ${
+                    statusFilter === 'assigned'
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  Assigned
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search clients or industry..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-stone-900/80 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-400"
+            />
+          </div>
+
+          <div className="space-y-2.5">
+            {displayedClients.length === 0 ? (
+              <div className="p-8 text-center rounded-xl bg-stone-900/40 border border-stone-800 space-y-1">
+                <p className="text-xs text-stone-400">No matching clients found for this service.</p>
+              </div>
+            ) : (
+              displayedClients.map((client) => {
+                const isSelected = client.id === selectedClient?.id;
+                const status = getLifecycleStatus(client);
+                const asg = assignments.find((a) => a.client_id === client.id && a.service_type === serviceType);
+                const assignedPerson = users.find((u) => u.id === asg?.agent_id);
+
+                return (
+                  <div
+                    key={client.id}
+                    onClick={() => setSelectedClientId(client.id)}
+                    className={`p-3.5 rounded-xl cursor-pointer transition-all border ${
+                      isSelected
+                        ? 'ring-2 ring-purple-500 shadow-xl bg-purple-950/30'
+                        : 'bg-[#15131a]/80 hover:border-purple-500/40'
+                    }`}
+                    style={{
+                      borderColor: isSelected ? 'var(--purple)' : 'var(--border-soft)',
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5">
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 font-bold text-xs"
+                          style={{
+                            background: asg?.agent_id ? 'rgba(169, 245, 193, 0.15)' : 'rgba(245, 226, 154, 0.15)',
+                            color: asg?.agent_id ? 'var(--roas-good)' : 'var(--roas-mid)',
+                          }}
+                        >
+                          {client.name.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-xs text-white">{client.name}</h4>
+                          <span className="text-[11px] text-stone-400">
+                            {client.industry || 'General'} • {client.contract_value?.toLocaleString()} SAR
+                          </span>
+                        </div>
+                      </div>
+
+                      <span
+                        className="text-[9px] px-2 py-0.5 rounded-full font-semibold"
+                        style={{
+                          background: status.bg,
+                          color: status.color,
+                          border: `1px solid ${status.border}`,
+                        }}
+                      >
+                        {status.label}
+                      </span>
+                    </div>
+
+                    <div className="mt-2.5 pt-2 flex items-center justify-between border-t border-stone-800/60 text-[11px]">
+                      <span className="text-stone-400">
+                        Specialist: <strong className={assignedPerson ? 'text-emerald-300' : 'text-amber-300'}>{assignedPerson?.name || 'Unassigned'}</strong>
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDashboardClientId(client.id);
+                        }}
+                        className="text-purple-300 hover:text-white font-medium flex items-center gap-1"
+                      >
+                        <span>Dashboard</span>
+                        <Eye className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Selected Client Details & Brief */}
+        <div className="lg:col-span-7 space-y-4">
+          {selectedClient ? (
+            <div className="space-y-4">
+              <div
+                className="p-4 rounded-xl border shadow-xl bg-[#161224]/80 border-purple-900/30"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-stone-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-white">{selectedClient.name}</h3>
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                        style={{
+                          background: getLifecycleStatus(selectedClient).bg,
+                          color: getLifecycleStatus(selectedClient).color,
+                        }}
+                      >
+                        {getLifecycleStatus(selectedClient).label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-400 mt-0.5">
+                      {selectedClient.industry || 'General'} • Package: <strong className="text-purple-300">{selectedClientPackage?.name}</strong>
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setDashboardClientId(selectedClient.id)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-purple-200 bg-purple-900/40 hover:bg-purple-800/60 hover:text-white border border-purple-700/40 transition-all inline-flex items-center gap-1.5"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>View Client Dashboard</span>
+                  </button>
+                </div>
+
+                {/* Assignment Control */}
+                {isTeamLead && (
+                  <div className="mt-3 pt-3 border-t border-stone-800 space-y-2.5">
+                    <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Assign {serviceNameEn} Specialist</span>
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selectedAgentId || currentAssignment?.agent_id || ''}
+                        onChange={(e) => setSelectedAgentId(e.target.value)}
+                        className="flex-1 px-3 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
+                      >
+                        <option value="" disabled>Select {serviceNameEn} Specialist...</option>
+                        {eligibleAgents.map((ag) => (
+                          <option key={ag.id} value={ag.id}>
+                            {ag.name} ({ag.email})
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        onClick={handleAssignAgent}
+                        disabled={
+                          isSubmittingAssignment ||
+                          !selectedAgentId ||
+                          selectedAgentId === currentAssignment?.agent_id
+                        }
+                        className="py-1.5 px-3 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-40"
+                      >
+                        {isSubmittingAssignment ? 'Assigning...' : 'Assign'}
+                      </button>
+                    </div>
+
+                    {successMsg && (
+                      <p className="text-xs text-emerald-400 flex items-center gap-1 font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{successMsg}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Service Brief Presentation */}
+              <div className="p-4 rounded-xl border shadow-xl bg-[#161224]/80 border-purple-900/30 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-stone-800">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    {icon}
+                    <span>{serviceNameEn} Brief Details</span>
+                  </h4>
+                  <span className="text-xs text-stone-400">
+                    Version: v{serviceBrief?.version || 1}
+                  </span>
+                </div>
+                {renderBriefContent(serviceBrief)}
+              </div>
+            </div>
+          ) : (
+            <div className="p-12 text-center rounded-xl bg-stone-900/40 border border-stone-800 space-y-2">
+              <FileText className="w-10 h-10 text-stone-500 mx-auto" />
+              <h4 className="text-sm font-bold text-white">Select a client from the queue</h4>
+              <p className="text-xs text-stone-400">Select a client to view and delegate this service brief.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* DEDICATED CLIENT DASHBOARD MODAL */}
+      {activeDashboardClient && (
+        <ClientDashboard
+          client={activeDashboardClient}
+          packageRecord={packages.find((p) => p.id === activeDashboardClient.package_id)}
+          allPackages={packages}
+          users={users}
+          currentUser={currentUser}
+          briefs={briefs}
+          campaigns={campaigns}
+          tasks={tasks}
+          dailyLogs={dailyLogs}
+          extraNotes={extraNotes}
+          assignments={assignments}
+          onClose={() => setDashboardClientId(null)}
+        />
+      )}
+    </div>
+  );
+};

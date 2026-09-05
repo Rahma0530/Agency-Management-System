@@ -1,0 +1,2054 @@
+import React, { useState, useMemo } from 'react';
+import {
+  Calendar,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  AlertCircle,
+  PlayCircle,
+  CheckSquare,
+  Building2,
+  Layers,
+  User,
+  Users,
+  Timer,
+  ChevronRight,
+  ChevronLeft,
+  X,
+  FileText,
+  Filter,
+  Search,
+  PlusCircle,
+  ExternalLink,
+  ShieldAlert,
+  ArrowRight,
+  TrendingUp,
+  Tag,
+  Briefcase,
+  Send,
+  HelpCircle,
+  MessageSquare,
+  ArrowUpRight,
+  Check,
+} from 'lucide-react';
+import {
+  TaskRecord,
+  UserRecord,
+  ClientRecord,
+  BriefRecord,
+  DailyLogRecord,
+  ExtraNoteRecord,
+  TaskStatus,
+  TaskPriority,
+  UserRole,
+} from '../types/database';
+
+interface DailyOperationsModuleProps {
+  tasks: TaskRecord[];
+  users: UserRecord[];
+  clients: ClientRecord[];
+  briefs: BriefRecord[];
+  dailyLogs: DailyLogRecord[];
+  extraNotes?: ExtraNoteRecord[];
+  currentUser: UserRecord;
+  onUpdateTaskStatus: (taskId: string, newStatus: TaskStatus) => Promise<void>;
+  onUpdateTask: (taskId: string, updates: Partial<TaskRecord>) => Promise<void>;
+  onCreateDailyLog: (logData: {
+    user_id: string;
+    date: string;
+    summary_text: string;
+    linked_task_ids: string[];
+  }) => Promise<void>;
+  onCreateExtraNote?: (noteData: {
+    user_id: string;
+    date: string;
+    note_text: string;
+    category: string;
+  }) => Promise<void>;
+}
+
+export type OperationSubTab = 'daily_view' | 'my_tasks' | 'blockers' | 'daily_activity' | 'manager_view';
+
+export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
+  tasks,
+  users,
+  clients,
+  briefs,
+  dailyLogs,
+  extraNotes = [],
+  currentUser,
+  onUpdateTaskStatus,
+  onUpdateTask,
+  onCreateDailyLog,
+  onCreateExtraNote,
+}) => {
+  // Navigation between sub views
+  const [activeSubTab, setActiveSubTab] = useState<OperationSubTab>('daily_view');
+
+  // Selected Employee filter (defaults to currentUser, can be changed by managers/team leads)
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(currentUser.id);
+
+  // Filters for My Tasks
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals state
+  const [selectedTaskDetails, setSelectedTaskDetails] = useState<TaskRecord | null>(null);
+  const [blockerModalTask, setBlockerModalTask] = useState<TaskRecord | null>(null);
+  const [blockerReason, setBlockerReason] = useState('');
+  const [isLoggingDailyActivity, setIsLoggingDailyActivity] = useState(false);
+
+  // Daily Log Form State
+  const [dailySummary, setDailySummary] = useState('');
+  const [selectedLinkedTasks, setSelectedLinkedTasks] = useState<string[]>([]);
+  const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isSubmittingLog, setIsSubmittingLog] = useState(false);
+
+  // Quick Time Logging Modal / Popover State
+  const [timeLoggingTaskId, setTimeLoggingTaskId] = useState<string | null>(null);
+  const [additionalHours, setAdditionalHours] = useState<number>(1);
+
+  // Notification toast
+  const [notification, setNotification] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  const showNotification = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setNotification({ text, type });
+    setTimeout(() => setNotification(null), 3800);
+  };
+
+  // Determine permissions: Is current user a Team Lead or Manager?
+  const isManagerOrLead = useMemo(() => {
+    const managerRoles: UserRole[] = [
+      'executive',
+      'head_of_technical',
+      'am_team_lead',
+      'media_buying_team_lead',
+      'seo_team_lead',
+      'social_media_team_lead',
+    ];
+    return managerRoles.includes(currentUser.role);
+  }, [currentUser.role]);
+
+  // If currentUser changes, ensure selectedEmployeeId stays aligned if not in manager mode
+  const effectiveEmployee = useMemo(() => {
+    return users.find((u) => u.id === selectedEmployeeId) || currentUser;
+  }, [users, selectedEmployeeId, currentUser]);
+
+  // Today's date string (YYYY-MM-DD)
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // Helper date functions
+  const isOverdue = (task: TaskRecord) => {
+    if (!task.due_date) return false;
+    if (task.status === 'completed') return false;
+    return task.due_date < todayStr;
+  };
+
+  const isDueToday = (task: TaskRecord) => {
+    if (!task.due_date) return false;
+    if (task.status === 'completed') return false;
+    return task.due_date === todayStr;
+  };
+
+  // 1. All tasks assigned to the effective employee
+  const employeeTasks = useMemo(() => {
+    return tasks.filter((t) => t.assigned_to === effectiveEmployee.id);
+  }, [tasks, effectiveEmployee.id]);
+
+  // Priority weight for sorting (Urgent > High > Medium > Low)
+  const getPriorityWeight = (priority: TaskPriority): number => {
+    switch (priority) {
+      case 'urgent': return 4;
+      case 'high': return 3;
+      case 'medium': return 2;
+      case 'low': return 1;
+      default: return 0;
+    }
+  };
+
+  // Sorted employee tasks: Priority (Urgent first), then Due Date (closest first)
+  const sortedEmployeeTasks = useMemo(() => {
+    return [...employeeTasks].sort((a, b) => {
+      const weightDiff = getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
+      if (weightDiff !== 0) return weightDiff;
+      if (a.due_date && b.due_date) {
+        return a.due_date.localeCompare(b.due_date);
+      }
+      return 0;
+    });
+  }, [employeeTasks]);
+
+  // Filtered employee tasks based on search & filters
+  const filteredEmployeeTasks = useMemo(() => {
+    return sortedEmployeeTasks.filter((task) => {
+      if (statusFilter !== 'all' && task.status !== statusFilter) return false;
+      if (priorityFilter !== 'all' && task.priority !== priorityFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const client = clients.find((c) => c.id === task.client_id);
+        const matchTitle = task.title.toLowerCase().includes(q);
+        const matchDesc = task.description?.toLowerCase().includes(q) || false;
+        const matchClient = client?.name.toLowerCase().includes(q) || false;
+        if (!matchTitle && !matchDesc && !matchClient) return false;
+      }
+      return true;
+    });
+  }, [sortedEmployeeTasks, statusFilter, priorityFilter, searchQuery, clients]);
+
+  // 2. DAILY WORK VIEW CALCULATIONS (Today's Agenda, Overdue, Priority Focus)
+  const overdueTasks = useMemo(() => {
+    return sortedEmployeeTasks.filter(isOverdue);
+  }, [sortedEmployeeTasks, todayStr]);
+
+  const dueTodayTasks = useMemo(() => {
+    return sortedEmployeeTasks.filter(isDueToday);
+  }, [sortedEmployeeTasks, todayStr]);
+
+  const priorityFirstTasks = useMemo(() => {
+    return sortedEmployeeTasks.filter(
+      (t) => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'completed'
+    );
+  }, [sortedEmployeeTasks]);
+
+  const inProgressTasks = useMemo(() => {
+    return sortedEmployeeTasks.filter((t) => t.status === 'in_progress');
+  }, [sortedEmployeeTasks]);
+
+  const blockedEmployeeTasks = useMemo(() => {
+    return sortedEmployeeTasks.filter((t) => t.status === 'blocked');
+  }, [sortedEmployeeTasks]);
+
+  // Total daily estimated hours & active workload
+  const totalActiveEstimatedHours = useMemo(() => {
+    const activeTasks = sortedEmployeeTasks.filter((t) => t.status !== 'completed');
+    return activeTasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
+  }, [sortedEmployeeTasks]);
+
+  const totalActualHoursLogged = useMemo(() => {
+    return sortedEmployeeTasks.reduce((sum, t) => sum + (t.actual_hours || 0), 0);
+  }, [sortedEmployeeTasks]);
+
+  const todayWorkloadHours = useMemo(() => {
+    // Tasks due today or currently in progress
+    const relevantTasks = sortedEmployeeTasks.filter(
+      (t) => t.status === 'in_progress' || isDueToday(t) || isOverdue(t)
+    );
+    return relevantTasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
+  }, [sortedEmployeeTasks, todayStr]);
+
+  // 3. TEAM / MANAGER VIEW CALCULATIONS
+  // Team members accessible under current user's RLS scope
+  const teamMembers = useMemo(() => {
+    if (currentUser.role === 'executive' || currentUser.role === 'head_of_technical') {
+      return users.filter((u) => u.role !== 'client');
+    }
+    if (currentUser.role === 'am_team_lead') {
+      return users.filter(
+        (u) =>
+          u.team === 'Account Management' ||
+          u.manager_id === currentUser.id ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          u.id === currentUser.id
+      );
+    }
+    if (
+      currentUser.role === 'seo_team_lead' ||
+      currentUser.role === 'media_buying_team_lead' ||
+      currentUser.role === 'social_media_team_lead'
+    ) {
+      return users.filter(
+        (u) =>
+          (currentUser.team && u.team === currentUser.team) ||
+          u.manager_id === currentUser.id ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          u.id === currentUser.id
+      );
+    }
+    // Shared creative peers for Graphic Designer & Video Editor
+    if (currentUser.role === 'graphic_designer' || currentUser.role === 'video_editor') {
+      return users.filter((u) => u.role === 'graphic_designer' || u.role === 'video_editor' || u.id === currentUser.id);
+    }
+    return [currentUser];
+  }, [users, currentUser]);
+
+  // All blockers across visible tasks for Blockers Hub
+  const allVisibleBlockers = useMemo(() => {
+    const visibleMemberIds = new Set(teamMembers.map((m) => m.id));
+    return tasks.filter((t) => t.status === 'blocked' && (t.assigned_to ? visibleMemberIds.has(t.assigned_to) : true));
+  }, [tasks, teamMembers]);
+
+  // Employee workload metrics for manager
+  const teamWorkloadSummary = useMemo(() => {
+    return teamMembers.map((member) => {
+      const memberTasks = tasks.filter((t) => t.assigned_to === member.id);
+      const active = memberTasks.filter((t) => t.status !== 'completed');
+      const completed = memberTasks.filter((t) => t.status === 'completed');
+      const overdue = memberTasks.filter(isOverdue);
+      const blocked = memberTasks.filter((t) => t.status === 'blocked');
+      const totalEstimated = active.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
+      const totalActual = memberTasks.reduce((sum, t) => sum + (t.actual_hours || 0), 0);
+      const limit = member.capacity_limit || 8;
+      const rate = Math.round((active.length / limit) * 100);
+
+      return {
+        member,
+        memberTasks,
+        activeCount: active.length,
+        completedCount: completed.length,
+        overdueCount: overdue.length,
+        blockedCount: blocked.length,
+        totalEstimated,
+        totalActual,
+        limit,
+        rate,
+      };
+    });
+  }, [teamMembers, tasks, todayStr]);
+
+  // Daily Logs filtered for current employee or team
+  const relevantDailyLogs = useMemo(() => {
+    return dailyLogs.filter((log) => {
+      if (selectedEmployeeId === 'all') return true;
+      return log.user_id === effectiveEmployee.id;
+    });
+  }, [dailyLogs, effectiveEmployee.id, selectedEmployeeId]);
+
+  // Handlers for task status
+  const handleAdvanceStatus = async (taskId: string, currentStatus: TaskStatus) => {
+    const statusOrder: TaskStatus[] = ['todo', 'in_progress', 'in_review', 'completed'];
+    const currentIndex = statusOrder.indexOf(currentStatus);
+    if (currentIndex >= 0 && currentIndex < statusOrder.length - 1) {
+      const nextStatus = statusOrder[currentIndex + 1];
+      try {
+        await onUpdateTaskStatus(taskId, nextStatus);
+        showNotification(`تم تحديث حالة المهمة إلى «${getStatusLabel(nextStatus)}» بنجاح.`);
+      } catch (err) {
+        showNotification('حدث خطأ أثناء تحديث حالة المهمة.', 'error');
+      }
+    }
+  };
+
+  const handleQuickStatusChange = async (taskId: string, targetStatus: TaskStatus) => {
+    try {
+      await onUpdateTaskStatus(taskId, targetStatus);
+      showNotification(`تم تغيير حالة المهمة إلى «${getStatusLabel(targetStatus)}».`);
+    } catch (err) {
+      showNotification('تعذر تحديث حالة المهمة.', 'error');
+    }
+  };
+
+  // Handler to mark task as Blocked with reason
+  const handleConfirmBlocker = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockerModalTask) return;
+
+    try {
+      const newDesc = blockerReason.trim()
+        ? `[تعثر/Blocker: ${blockerReason.trim()}] ${blockerModalTask.description || ''}`
+        : blockerModalTask.description;
+
+      await onUpdateTask(blockerModalTask.id, {
+        status: 'blocked',
+        description: newDesc,
+      });
+
+      // Optionally record in extra_notes table if available
+      if (onCreateExtraNote && blockerReason.trim()) {
+        await onCreateExtraNote({
+          user_id: currentUser.id,
+          date: todayStr,
+          note_text: `تعثر المهمة «${blockerModalTask.title}»: ${blockerReason.trim()}`,
+          category: 'blocker',
+        });
+      }
+
+      setBlockerModalTask(null);
+      setBlockerReason('');
+      showNotification('تم توثيق التعثر وتحويل حالة المهمة إلى متعثرة (Blocked).', 'info');
+    } catch (err) {
+      showNotification('فشل توثيق التعثر.', 'error');
+    }
+  };
+
+  // Handler to unblock / resolve blocker
+  const handleResolveBlocker = async (task: TaskRecord) => {
+    try {
+      await onUpdateTask(task.id, {
+        status: 'in_progress',
+      });
+      showNotification(`تم حل التعثر واستئناف العمل على المهمة «${task.title}».`, 'success');
+    } catch (err) {
+      showNotification('تعذر فك التعثر.', 'error');
+    }
+  };
+
+  // Quick time logging handler
+  const handleLogActualHours = async (task: TaskRecord) => {
+    if (additionalHours <= 0) return;
+    try {
+      const updatedHours = (task.actual_hours || 0) + Number(additionalHours);
+      await onUpdateTask(task.id, {
+        actual_hours: updatedHours,
+      });
+      setTimeLoggingTaskId(null);
+      setAdditionalHours(1);
+      showNotification(`تم تسجيل ${additionalHours} ساعة إضافية للمهمة بنجاح.`);
+    } catch (err) {
+      showNotification('حدث خطأ في تسجيل الساعات.', 'error');
+    }
+  };
+
+  // Daily Activity Submission Handler
+  const handleSubmitDailyLog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dailySummary.trim()) return;
+
+    setIsSubmittingLog(true);
+    try {
+      await onCreateDailyLog({
+        user_id: effectiveEmployee.id,
+        date: logDate,
+        summary_text: dailySummary.trim(),
+        linked_task_ids: selectedLinkedTasks,
+      });
+
+      setDailySummary('');
+      setSelectedLinkedTasks([]);
+      setIsLoggingDailyActivity(false);
+      showNotification('تم توثيق تقرير النشاط اليومي (Daily Log) في قاعدة البيانات بنجاح.');
+    } catch (err) {
+      showNotification('تعذر حفظ النشاط اليومي.', 'error');
+    } finally {
+      setIsSubmittingLog(false);
+    }
+  };
+
+  // Helper Labels & Colors
+  const getStatusLabel = (status: TaskStatus) => {
+    switch (status) {
+      case 'todo': return 'قيد الانتظار';
+      case 'in_progress': return 'قيد التنفيذ';
+      case 'in_review': return 'قيد المراجعة';
+      case 'completed': return 'مكتملة';
+      case 'blocked': return 'متعثرة (Blocked)';
+      default: return status;
+    }
+  };
+
+  const getStatusBadge = (status: TaskStatus) => {
+    switch (status) {
+      case 'completed':
+        return { bg: 'rgba(169, 245, 193, 0.15)', text: 'var(--roas-good)', border: 'rgba(169, 245, 193, 0.3)' };
+      case 'in_progress':
+        return { bg: 'rgba(123, 47, 247, 0.25)', text: 'var(--purple-light)', border: 'rgba(123, 47, 247, 0.4)' };
+      case 'in_review':
+        return { bg: 'rgba(245, 226, 154, 0.2)', text: 'var(--roas-mid)', border: 'rgba(245, 226, 154, 0.35)' };
+      case 'blocked':
+        return { bg: 'rgba(245, 163, 163, 0.25)', text: 'var(--roas-bad)', border: 'rgba(245, 163, 163, 0.4)' };
+      case 'todo':
+      default:
+        return { bg: 'rgba(168, 155, 184, 0.15)', text: 'var(--grey)', border: 'rgba(168, 155, 184, 0.3)' };
+    }
+  };
+
+  const getPriorityBadge = (priority: TaskPriority) => {
+    switch (priority) {
+      case 'urgent':
+        return { label: 'عاجل جداً', bg: 'rgba(245, 163, 163, 0.2)', text: 'var(--roas-bad)', border: 'rgba(245, 163, 163, 0.4)' };
+      case 'high':
+        return { label: 'مرتفع', bg: 'rgba(235, 94, 40, 0.2)', text: '#fb923c', border: 'rgba(235, 94, 40, 0.3)' };
+      case 'medium':
+        return { label: 'متوسط', bg: 'rgba(245, 226, 154, 0.15)', text: 'var(--roas-mid)', border: 'rgba(245, 226, 154, 0.3)' };
+      case 'low':
+        return { label: 'عادي', bg: 'rgba(168, 155, 184, 0.15)', text: 'var(--grey)', border: 'rgba(168, 155, 184, 0.25)' };
+    }
+  };
+
+  const getTeamColor = (teamName?: string | null) => {
+    switch (teamName) {
+      case 'SEO':
+        return { text: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' };
+      case 'Social Media':
+        return { text: '#c084fc', bg: 'rgba(192, 132, 252, 0.15)' };
+      case 'Media Buying':
+        return { text: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' };
+      case 'Creative & Design':
+        return { text: '#f472b6', bg: 'rgba(244, 114, 182, 0.15)' };
+      case 'Video Production':
+        return { text: '#f87171', bg: 'rgba(248, 113, 113, 0.15)' };
+      case 'Account Management':
+        return { text: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)' };
+      default:
+        return { text: 'var(--grey)', bg: 'rgba(255, 255, 255, 0.05)' };
+    }
+  };
+
+  return (
+    <div className="space-y-6" id="daily-operations-module">
+      {/* Toast Notification */}
+      {notification && (
+        <div
+          className={`p-3.5 rounded-xl text-xs flex items-center justify-between gap-3 shadow-lg transition-all ${
+            notification.type === 'success'
+              ? 'bg-[rgba(169,245,193,0.15)] border border-[var(--roas-good)] text-[var(--roas-good)]'
+              : notification.type === 'error'
+              ? 'bg-[rgba(245,163,163,0.15)] border border-[var(--roas-bad)] text-[var(--roas-bad)]'
+              : 'bg-[rgba(123,47,247,0.2)] border border-[var(--purple-light)] text-[var(--lilac)]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {notification.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : notification.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            ) : (
+              <PlayCircle className="w-4 h-4 shrink-0" />
+            )}
+            <span className="font-semibold">{notification.text}</span>
+          </div>
+          <button onClick={() => setNotification(null)} className="text-xs opacity-70 hover:opacity-100">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* TOP HEADER & OPERATIONAL EMPLOYEE SELECTOR */}
+      <div
+        className="p-4 rounded-[18px] flex flex-col md:flex-row md:items-center justify-between gap-4"
+        style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center font-bold text-white shadow-md shrink-0"
+            style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+          >
+            <Clock className="w-5 h-5 text-purple-200" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-white">العمليات اليومية وتنفيذ المهام (Daily Operations)</h2>
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                style={{
+                  background: 'rgba(169, 245, 193, 0.2)',
+                  color: 'var(--roas-good)',
+                  border: '1px solid rgba(169, 245, 193, 0.3)',
+                }}
+              >
+                تاريخ اليوم: {todayStr}
+              </span>
+            </div>
+            <p className="text-xs text-stone-400 mt-0.5">
+              تنظيم أولويات اليوم • متابعة الساعات المنجزة • توثيق السجلات اليومية والمعوقات
+            </p>
+          </div>
+        </div>
+
+        {/* Employee Selector for Manager or Self */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-900/80 border border-stone-800 text-xs">
+            <User className="w-3.5 h-3.5 text-purple-400" />
+            <span className="text-stone-400 text-[11px]">الموظف النشط:</span>
+            {isManagerOrLead ? (
+              <select
+                value={selectedEmployeeId}
+                onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
+              >
+                {teamMembers.map((member) => (
+                  <option key={member.id} value={member.id} className="bg-stone-900 text-white">
+                    {member.name} ({member.team || member.role})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-bold text-white">{currentUser.name}</span>
+            )}
+          </div>
+
+          <button
+            onClick={() => setIsLoggingDailyActivity(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white transition-all shadow-md hover:opacity-90 active:scale-98"
+            style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+          >
+            <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
+            <span>توثيق نشاط اليوم</span>
+          </button>
+        </div>
+      </div>
+
+      {/* SUB-NAVIGATION TABS */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-stone-800">
+        <button
+          onClick={() => setActiveSubTab('daily_view')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 ${
+            activeSubTab === 'daily_view'
+              ? 'bg-purple-600/30 text-white border border-purple-500/50 shadow-md'
+              : 'text-stone-400 hover:text-white border border-transparent'
+          }`}
+        >
+          <Calendar className="w-3.5 h-3.5" />
+          <span>عرض يوم العمل (Daily Work View)</span>
+          {overdueTasks.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-950/80 text-red-400 border border-red-500/40 font-mono">
+              {overdueTasks.length} متأخرة
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('my_tasks')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 ${
+            activeSubTab === 'my_tasks'
+              ? 'bg-purple-600/30 text-white border border-purple-500/50 shadow-md'
+              : 'text-stone-400 hover:text-white border border-transparent'
+          }`}
+        >
+          <CheckSquare className="w-3.5 h-3.5" />
+          <span>مهامي (My Tasks)</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-stone-800 text-stone-300 font-mono">
+            {employeeTasks.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('blockers')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 ${
+            activeSubTab === 'blockers'
+              ? 'bg-red-950/60 text-red-300 border border-red-500/50 shadow-md'
+              : 'text-stone-400 hover:text-red-400 border border-transparent'
+          }`}
+        >
+          <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+          <span>المعوقات والتعثر (Blockers Hub)</span>
+          {allVisibleBlockers.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-900 text-red-200 font-bold font-mono">
+              {allVisibleBlockers.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('daily_activity')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 ${
+            activeSubTab === 'daily_activity'
+              ? 'bg-purple-600/30 text-white border border-purple-500/50 shadow-md'
+              : 'text-stone-400 hover:text-white border border-transparent'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>سجل النشاط اليومي (Daily Logs)</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-stone-800 text-stone-300 font-mono">
+            {relevantDailyLogs.length}
+          </span>
+        </button>
+
+        {/* Manager View Tab (Always accessible to managers, or when in preview to inspect supervisor controls) */}
+        <button
+          onClick={() => setActiveSubTab('manager_view')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 ${
+            activeSubTab === 'manager_view'
+              ? 'bg-purple-600/30 text-white border border-purple-500/50 shadow-md'
+              : 'text-stone-400 hover:text-white border border-transparent'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5 text-purple-400" />
+          <span>إشراف رئيس الفريق (Manager View)</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-950 text-purple-300 border border-purple-800 font-mono">
+            {teamMembers.length} أعضاء
+          </span>
+        </button>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 1. DAILY WORK VIEW: What to do today, Overdue, Priority First, Workload */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'daily_view' && (
+        <div className="space-y-6">
+          {/* Daily Workload KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+            {/* Total Today's Estimated Workload */}
+            <div
+              className="p-3.5 rounded-[16px] flex flex-col justify-between"
+              style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+            >
+              <div className="flex items-center justify-between text-stone-400">
+                <span className="text-[11px] font-semibold">إجمالي ساعات العمل اليوم</span>
+                <Timer className="w-3.5 h-3.5 text-purple-400" />
+              </div>
+              <div className="mt-2">
+                <p className="text-2xl font-bold text-white">{todayWorkloadHours} <span className="text-xs font-normal text-stone-400">ساعة</span></p>
+                <p className="text-[10px] text-stone-400 mt-0.5">مقابل سعة استيعابية: {effectiveEmployee.capacity_limit || 8} مهام</p>
+              </div>
+            </div>
+
+            {/* In Progress */}
+            <div
+              className="p-3.5 rounded-[16px] flex flex-col justify-between"
+              style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+            >
+              <div className="flex items-center justify-between text-stone-400">
+                <span className="text-[11px] font-semibold">قيد التنفيذ حالياً</span>
+                <PlayCircle className="w-3.5 h-3.5 text-purple-400" />
+              </div>
+              <div className="mt-2">
+                <p className="text-2xl font-bold text-purple-300">{inProgressTasks.length}</p>
+                <p className="text-[10px] text-stone-400 mt-0.5">مهام جارية على مكتبك</p>
+              </div>
+            </div>
+
+            {/* Overdue Alert */}
+            <div
+              className={`p-3.5 rounded-[16px] flex flex-col justify-between ${
+                overdueTasks.length > 0 ? 'ring-1 ring-red-500/50 bg-red-950/20' : ''
+              }`}
+              style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+            >
+              <div className="flex items-center justify-between text-stone-400">
+                <span className="text-[11px] font-semibold">المتأخر (Overdue)</span>
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+              </div>
+              <div className="mt-2">
+                <p className="text-2xl font-bold text-red-400">{overdueTasks.length}</p>
+                <p className="text-[10px] text-red-400/80 mt-0.5">تحتاج تدخلاً وإنجازاً فورياً</p>
+              </div>
+            </div>
+
+            {/* Priority Focus */}
+            <div
+              className="p-3.5 rounded-[16px] flex flex-col justify-between"
+              style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+            >
+              <div className="flex items-center justify-between text-stone-400">
+                <span className="text-[11px] font-semibold">أولويات قصوى وعاجلة</span>
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+              </div>
+              <div className="mt-2">
+                <p className="text-2xl font-bold text-amber-400">{priorityFirstTasks.length}</p>
+                <p className="text-[10px] text-stone-400 mt-0.5">Urgent & High Priority</p>
+              </div>
+            </div>
+
+            {/* Blocked Tasks */}
+            <div
+              className="p-3.5 rounded-[16px] flex flex-col justify-between"
+              style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+            >
+              <div className="flex items-center justify-between text-stone-400">
+                <span className="text-[11px] font-semibold">المتعثرة (Blocked)</span>
+                <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+              </div>
+              <div className="mt-2">
+                <p className="text-2xl font-bold text-rose-300">{blockedEmployeeTasks.length}</p>
+                <p className="text-[10px] text-stone-400 mt-0.5">بانتظار العميل أو الإدارة</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 1: OVERDUE TASKS (Must be addressed first) */}
+          {overdueTasks.length > 0 && (
+            <div
+              className="p-4 rounded-[18px] border border-red-500/40 space-y-3"
+              style={{ background: 'rgba(245, 163, 163, 0.08)' }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
+                  <AlertTriangle className="w-4 h-4 animate-pulse" />
+                  <span>مهام متأخرة عن موعد استحقاقها (يجب معالجتها فوراً)</span>
+                </div>
+                <span className="text-[11px] text-red-400/90 font-mono">
+                  {overdueTasks.length} مهام متأخرة
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {overdueTasks.map((task) => {
+                  const client = clients.find((c) => c.id === task.client_id);
+                  const priority = getPriorityBadge(task.priority);
+
+                  return (
+                    <div
+                      key={task.id}
+                      className="p-3.5 rounded-xl border border-red-500/30 bg-stone-900/80 flex flex-col justify-between gap-3 shadow-md"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span
+                            className="px-2 py-0.5 rounded text-[10px] font-bold inline-block mb-1.5"
+                            style={{ background: priority.bg, color: priority.text }}
+                          >
+                            {priority.label}
+                          </span>
+                          <h4
+                            onClick={() => setSelectedTaskDetails(task)}
+                            className="text-xs font-bold text-white hover:text-purple-300 cursor-pointer transition-colors"
+                          >
+                            {task.title}
+                          </h4>
+                          <p className="text-[11px] text-stone-400 flex items-center gap-1.5 mt-1">
+                            <Building2 className="w-3 h-3 text-purple-400" />
+                            <span>{client ? client.name : 'عميل غير محدد'}</span>
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold text-red-400 bg-red-950/60 px-2 py-1 rounded border border-red-500/40 shrink-0">
+                          استحقاق: {task.due_date}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-stone-800 text-[11px]">
+                        <span className="text-stone-400">المقدر: {task.estimated_hours || 0} س • الفعلي: {task.actual_hours || 0} س</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleAdvanceStatus(task.id, task.status)}
+                            className="px-2.5 py-1 rounded bg-purple-600/30 text-purple-200 hover:bg-purple-600/50 font-semibold text-[11px] transition-colors"
+                          >
+                            متابعة الحالة
+                          </button>
+                          <button
+                            onClick={() => setBlockerModalTask(task)}
+                            className="px-2.5 py-1 rounded bg-red-950/80 text-red-400 hover:bg-red-900/80 font-semibold text-[11px] transition-colors"
+                          >
+                            تسجيل تعثر
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Section 2: WHAT TO DO TODAY & PRIORITY FIRST QUEUE */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Column 1 & 2: Active Daily Queue */}
+            <div
+              className="lg:col-span-2 p-4 rounded-[18px] space-y-4"
+              style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-stone-800">
+                <div className="flex items-center gap-2">
+                  <PlayCircle className="w-4 h-4 text-purple-400" />
+                  <h3 className="text-xs font-bold text-white">ما الذي يجب إنجازه اليوم وترتيب الأولويات</h3>
+                </div>
+                <span className="text-[11px] text-stone-400">مرتبة تنازلياً حسب الأولوية وتاريخ الاستحقاق</span>
+              </div>
+
+              {sortedEmployeeTasks.filter((t) => t.status !== 'completed').length === 0 ? (
+                <div className="p-8 text-center text-stone-400 text-xs border border-dashed border-stone-800 rounded-xl">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-80" />
+                  <p className="font-bold text-white text-sm">ممتاز! لا توجد مهام نشطة معلقة لك اليوم.</p>
+                  <p className="text-stone-400 mt-1">جميع مهامك مسجلة كمكتملة أو في قائمة الانتظار العامة.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {sortedEmployeeTasks
+                    .filter((t) => t.status !== 'completed')
+                    .map((task) => {
+                      const client = clients.find((c) => c.id === task.client_id);
+                      const priority = getPriorityBadge(task.priority);
+                      const statusBadge = getStatusBadge(task.status);
+                      const teamColor = getTeamColor(task.team);
+                      const overdue = isOverdue(task);
+
+                      return (
+                        <div
+                          key={task.id}
+                          className="p-3.5 rounded-xl border border-stone-800 hover:border-purple-500/40 bg-stone-900/60 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md"
+                        >
+                          <div className="space-y-1.5 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span
+                                className="px-2 py-0.5 rounded text-[10px] font-bold"
+                                style={{ background: priority.bg, color: priority.text }}
+                              >
+                                {priority.label}
+                              </span>
+                              <span
+                                className="px-2 py-0.5 rounded text-[10px] font-bold"
+                                style={{ background: teamColor.bg, color: teamColor.text }}
+                              >
+                                {task.team || 'فريق تنفيذي'}
+                              </span>
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                style={{ background: statusBadge.bg, color: statusBadge.text }}
+                              >
+                                {getStatusLabel(task.status)}
+                              </span>
+                              {overdue && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400">
+                                  متأخرة
+                                </span>
+                              )}
+                            </div>
+
+                            <h4
+                              onClick={() => setSelectedTaskDetails(task)}
+                              className="text-xs font-bold text-white hover:text-purple-300 cursor-pointer transition-colors"
+                            >
+                              {task.title}
+                            </h4>
+
+                            <div className="flex flex-wrap items-center gap-3 text-[11px] text-stone-400">
+                              <span className="flex items-center gap-1">
+                                <Building2 className="w-3 h-3 text-purple-400" />
+                                <span>{client ? client.name : 'عميل غير محدد'}</span>
+                              </span>
+                              <span className="flex items-center gap-1 font-mono">
+                                <Calendar className="w-3 h-3 text-stone-400" />
+                                <span>الاستحقاق: {task.due_date || 'غير محدد'}</span>
+                              </span>
+                              <span className="flex items-center gap-1 font-mono">
+                                <Timer className="w-3 h-3 text-purple-300" />
+                                <span>المقدر: {task.estimated_hours || 0} س • الفعلي: {task.actual_hours || 0} س</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Quick Workflow Action Buttons */}
+                          <div className="flex items-center gap-1.5 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-stone-800">
+                            {/* Fast Time Log Button */}
+                            <button
+                              onClick={() => setTimeLoggingTaskId(task.id)}
+                              className="p-1.5 rounded-lg bg-stone-800 text-stone-300 hover:text-white hover:bg-stone-700 transition-colors"
+                              title="تسجيل ساعات عمل فعلية"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Status Advancement Button */}
+                            {task.status !== 'completed' && task.status !== 'blocked' && (
+                              <button
+                                onClick={() => handleAdvanceStatus(task.id, task.status)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600/30 text-purple-200 hover:bg-purple-600/50 transition-colors flex items-center gap-1"
+                              >
+                                <span>نقل الحالة</span>
+                                <ChevronLeft className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {/* If blocked, allow Unblock */}
+                            {task.status === 'blocked' ? (
+                              <button
+                                onClick={() => handleResolveBlocker(task)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900 border border-emerald-500/40 transition-colors"
+                              >
+                                حل التعثر
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setBlockerModalTask(task)}
+                                className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-red-400 hover:bg-red-950/60 transition-colors"
+                                title="الإبلاغ عن عائق"
+                              >
+                                <ShieldAlert className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => setSelectedTaskDetails(task)}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-800 text-stone-300 hover:text-white transition-colors"
+                            >
+                              التفاصيل
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Column 3: Daily Summary & Quick Stats */}
+            <div className="space-y-4">
+              {/* Daily Focus Guidance Box */}
+              <div
+                className="p-4 rounded-[18px] space-y-3"
+                style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+              >
+                <div className="flex items-center gap-2 text-xs font-bold text-white">
+                  <CheckSquare className="w-4 h-4 text-purple-400" />
+                  <span>توجيهات العمل اليومي</span>
+                </div>
+                <div className="space-y-2 text-xs text-stone-300 leading-relaxed">
+                  <p className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
+                    <span>ابدأ بإنجاز المهام المتأخرة والمهام المصنفة <strong>عاجل جداً</strong> لتفادي تعطيل باقي الفرق.</span>
+                  </p>
+                  <p className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
+                    <span>سجل الساعات الفعلية عند الانتهاء من العمل لتحديث مؤشرات الإنتاجية الفردية.</span>
+                  </p>
+                  <p className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
+                    <span>في حال واجهت أي مانع يمنع إكمال المهمة (مثل عدم رد العميل أو نقص الصلاحيات)، سجلها كـ <strong>Blocked</strong> فوراً.</span>
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-stone-800">
+                  <button
+                    onClick={() => setIsLoggingDailyActivity(true)}
+                    className="w-full py-2 rounded-xl text-xs font-bold text-center text-white transition-all shadow-md hover:opacity-90"
+                    style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+                  >
+                    تسجيل ملخص نشاطك اليومي
+                  </button>
+                </div>
+              </div>
+
+              {/* Time Tracking / Hours Summary Widget */}
+              <div
+                className="p-4 rounded-[18px] space-y-3"
+                style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+              >
+                <div className="flex items-center justify-between text-xs font-bold text-white">
+                  <div className="flex items-center gap-2">
+                    <Timer className="w-4 h-4 text-purple-400" />
+                    <span>الساعات الموثقة</span>
+                  </div>
+                  <span className="text-[11px] text-stone-400 font-mono">
+                    {totalActualHoursLogged} / {totalActiveEstimatedHours} س
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-stone-400">
+                    <span>نسبة إنجاز الساعات المقدرة:</span>
+                    <span className="font-bold text-white">
+                      {totalActiveEstimatedHours > 0
+                        ? Math.round((totalActualHoursLogged / totalActiveEstimatedHours) * 100)
+                        : 0}%
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-stone-900 overflow-hidden border border-stone-800">
+                    <div
+                      className="h-full transition-all rounded-full"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          totalActiveEstimatedHours > 0
+                            ? Math.round((totalActualHoursLogged / totalActiveEstimatedHours) * 100)
+                            : 0
+                        )}%`,
+                        background: 'var(--gradient-badge)',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. MY TASKS VIEW: Comprehensive List Sorted by Priority & Due Date       */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'my_tasks' && (
+        <div className="space-y-4">
+          {/* Filters Bar */}
+          <div
+            className="p-4 rounded-[18px] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3"
+            style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+          >
+            {/* Search */}
+            <div>
+              <label className="text-[11px] font-semibold text-stone-400 block mb-1">بحث في مهامك:</label>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute right-3 top-2.5 text-stone-500" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="ابحث بالعنوان أو العميل..."
+                  className="w-full pr-8 pl-3 py-1.5 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label className="text-[11px] font-semibold text-stone-400 block mb-1">الحالة التشغيلية:</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
+              >
+                <option value="all" className="bg-stone-900 text-white">جميع الحالات ({sortedEmployeeTasks.length})</option>
+                <option value="todo" className="bg-stone-900 text-white">قيد الانتظار (To Do)</option>
+                <option value="in_progress" className="bg-stone-900 text-white">قيد التنفيذ (In Progress)</option>
+                <option value="in_review" className="bg-stone-900 text-white">قيد المراجعة (In Review)</option>
+                <option value="completed" className="bg-stone-900 text-white">مكتملة (Completed)</option>
+                <option value="blocked" className="bg-stone-900 text-white">متعثرة (Blocked)</option>
+              </select>
+            </div>
+
+            {/* Priority Filter */}
+            <div>
+              <label className="text-[11px] font-semibold text-stone-400 block mb-1">مستوى الأولوية:</label>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="w-full px-3 py-1.5 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
+              >
+                <option value="all" className="bg-stone-900 text-white">جميع الأولويات</option>
+                <option value="urgent" className="bg-stone-900 text-white">عاجل جداً (Urgent)</option>
+                <option value="high" className="bg-stone-900 text-white">مرتفع (High)</option>
+                <option value="medium" className="bg-stone-900 text-white">متوسط (Medium)</option>
+                <option value="low" className="bg-stone-900 text-white">عادي (Low)</option>
+              </select>
+            </div>
+
+            {/* Quick Filter Reset */}
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setStatusFilter('all');
+                  setPriorityFilter('all');
+                  setSearchQuery('');
+                }}
+                className="w-full py-1.5 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-300 transition-colors"
+              >
+                إعادة ضبط التصفية
+              </button>
+            </div>
+          </div>
+
+          {/* Tasks Table / Cards */}
+          <div
+            className="rounded-[18px] overflow-hidden border border-stone-800"
+            style={{ background: 'var(--gradient-card)' }}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-stone-900/90 text-stone-300 border-b border-stone-800">
+                  <tr>
+                    <th className="p-3.5">المهمة (Task)</th>
+                    <th className="p-3.5">العميل (Client)</th>
+                    <th className="p-3.5">الفريق والخدمة</th>
+                    <th className="p-3.5 text-center">الأولوية</th>
+                    <th className="p-3.5 text-center">تاريخ الاستحقاق</th>
+                    <th className="p-3.5 text-center">الساعات المقدرة</th>
+                    <th className="p-3.5 text-center">الساعات الفعلية</th>
+                    <th className="p-3.5 text-center">الحالة</th>
+                    <th className="p-3.5 text-center">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-800/60">
+                  {filteredEmployeeTasks.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-stone-400">
+                        لا توجد مهام مطابقة لمعايير البحث للموظف المختار.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredEmployeeTasks.map((task) => {
+                      const client = clients.find((c) => c.id === task.client_id);
+                      const priority = getPriorityBadge(task.priority);
+                      const statusBadge = getStatusBadge(task.status);
+                      const teamColor = getTeamColor(task.team);
+                      const overdue = isOverdue(task);
+
+                      return (
+                        <tr
+                          key={task.id}
+                          className="hover:bg-stone-900/40 transition-colors cursor-pointer"
+                          onClick={() => setSelectedTaskDetails(task)}
+                        >
+                          <td className="p-3.5">
+                            <p className="font-bold text-white hover:text-purple-300 transition-colors">
+                              {task.title}
+                            </p>
+                            {task.description && (
+                              <p className="text-[11px] text-stone-400 line-clamp-1 max-w-xs">
+                                {task.description}
+                              </p>
+                            )}
+                          </td>
+
+                          <td className="p-3.5 font-medium text-stone-300">
+                            {client ? client.name : '—'}
+                          </td>
+
+                          <td className="p-3.5">
+                            <span
+                              className="px-2 py-0.5 rounded text-[10px] font-bold"
+                              style={{ background: teamColor.bg, color: teamColor.text }}
+                            >
+                              {task.team || 'فريق عام'}
+                            </span>
+                          </td>
+
+                          <td className="p-3.5 text-center">
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] font-semibold inline-block"
+                              style={{ background: priority.bg, color: priority.text }}
+                            >
+                              {priority.label}
+                            </span>
+                          </td>
+
+                          <td className="p-3.5 text-center font-mono">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                overdue
+                                  ? 'bg-red-950/80 text-red-400 border border-red-500/40 font-bold'
+                                  : 'text-stone-300'
+                              }`}
+                            >
+                              {task.due_date || '—'}
+                            </span>
+                          </td>
+
+                          <td className="p-3.5 text-center font-mono text-stone-300">
+                            {task.estimated_hours || 0} س
+                          </td>
+
+                          <td className="p-3.5 text-center font-mono text-stone-300">
+                            {task.actual_hours || 0} س
+                          </td>
+
+                          <td className="p-3.5 text-center">
+                            <span
+                              className="px-2.5 py-1 rounded-full text-[10px] font-bold inline-block"
+                              style={{
+                                background: statusBadge.bg,
+                                color: statusBadge.text,
+                                border: `1px solid ${statusBadge.border}`,
+                              }}
+                            >
+                              {getStatusLabel(task.status)}
+                            </span>
+                          </td>
+
+                          <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1.5">
+                              {/* Quick status dropdown */}
+                              <select
+                                value={task.status}
+                                onChange={(e) => handleQuickStatusChange(task.id, e.target.value as TaskStatus)}
+                                className="px-2 py-1 rounded bg-stone-900 border border-stone-800 text-[11px] text-white focus:outline-none"
+                              >
+                                <option value="todo" className="bg-stone-900 text-white">قيد الانتظار</option>
+                                <option value="in_progress" className="bg-stone-900 text-white">قيد التنفيذ</option>
+                                <option value="in_review" className="bg-stone-900 text-white">قيد المراجعة</option>
+                                <option value="completed" className="bg-stone-900 text-white">مكتملة</option>
+                                <option value="blocked" className="bg-stone-900 text-white">متعثرة (Blocked)</option>
+                              </select>
+
+                              {/* Quick Time Log Button */}
+                              <button
+                                onClick={() => setTimeLoggingTaskId(task.id)}
+                                className="p-1 rounded bg-stone-800 text-stone-300 hover:text-white"
+                                title="تسجيل ساعات"
+                              >
+                                <Clock className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. BLOCKERS HUB: Record, Display & Resolve Blockers                      */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'blockers' && (
+        <div className="space-y-4">
+          <div
+            className="p-4 rounded-[18px] flex items-center justify-between"
+            style={{ background: 'rgba(245, 163, 163, 0.08)', border: '1px solid rgba(245, 163, 163, 0.3)' }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-950/80 border border-red-500/40 flex items-center justify-center text-red-400">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">مركز إدارة المعوقات التشغيلية (Blockers Hub)</h3>
+                <p className="text-xs text-stone-400 mt-0.5">
+                  رصد المهام المتوقفة عن التنفيذ بسبب عوائق خارجية أو تقنية، والعمل مع الإدارة على حلها
+                </p>
+              </div>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-950 text-red-400 border border-red-500/40 font-mono">
+              {allVisibleBlockers.length} مهام متعثرة
+            </span>
+          </div>
+
+          {allVisibleBlockers.length === 0 ? (
+            <div
+              className="p-10 text-center rounded-[18px] border border-stone-800"
+              style={{ background: 'var(--gradient-card)' }}
+            >
+              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2 opacity-90" />
+              <h4 className="text-sm font-bold text-white">لا توجد أي مهام متعثرة حالياً!</h4>
+              <p className="text-xs text-stone-400 mt-1">
+                جميع العمليات تسير بشكل انسيابي دون أي معوقات معلقة.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {allVisibleBlockers.map((task) => {
+                const client = clients.find((c) => c.id === task.client_id);
+                const assignee = users.find((u) => u.id === task.assigned_to);
+                const priority = getPriorityBadge(task.priority);
+
+                return (
+                  <div
+                    key={task.id}
+                    className="p-4 rounded-[16px] border border-red-500/40 bg-stone-900/90 flex flex-col justify-between gap-3 shadow-lg relative overflow-hidden"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className="px-2 py-0.5 rounded text-[10px] font-bold"
+                          style={{ background: priority.bg, color: priority.text }}
+                        >
+                          {priority.label}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-500/40">
+                          متعثرة (Blocked)
+                        </span>
+                      </div>
+
+                      <h4
+                        onClick={() => setSelectedTaskDetails(task)}
+                        className="text-xs font-bold text-white hover:text-purple-300 cursor-pointer transition-colors leading-snug"
+                      >
+                        {task.title}
+                      </h4>
+
+                      <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-500/30 text-[11px] text-red-300 leading-relaxed">
+                        <p className="font-semibold text-red-200 mb-0.5">سبب التعثر المسجل:</p>
+                        <p className="line-clamp-3">{task.description || 'لم يتم كتابة تفاصيل التعثر.'}</p>
+                      </div>
+
+                      <div className="space-y-1 text-[11px] text-stone-400 pt-1">
+                        <p className="flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                          <span className="truncate">{client ? client.name : '—'}</span>
+                        </p>
+                        <p className="flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                          <span>المسؤول: {assignee ? assignee.name : 'غير مسند'}</span>
+                        </p>
+                        <p className="flex items-center gap-1.5 font-mono">
+                          <Calendar className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+                          <span>تاريخ الاستحقاق: {task.due_date || 'غير محدد'}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-stone-800 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setSelectedTaskDetails(task)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-800 hover:bg-stone-700 text-stone-300 transition-colors"
+                      >
+                        عرض التفاصيل
+                      </button>
+
+                      <button
+                        onClick={() => handleResolveBlocker(task)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/50 border border-emerald-500/40 transition-colors flex items-center gap-1.5"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>حل التعثر واستئناف</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. DAILY ACTIVITY & LOGS VIEW (Connected to daily_logs database table)    */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'daily_activity' && (
+        <div className="space-y-4">
+          <div
+            className="p-4 rounded-[18px] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+            style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+          >
+            <div>
+              <h3 className="text-xs font-bold text-white flex items-center gap-2">
+                <FileText className="w-4 h-4 text-purple-400" />
+                <span>سجل النشاط واليوميات التشغيلية (Daily Logs & Standup)</span>
+              </h3>
+              <p className="text-xs text-stone-400 mt-0.5">
+                توثيق إنجازات العمل اليومية، المهام المنجزة، وملاحظات التنسيق بين الموظف ورؤساء الفرق
+              </p>
+            </div>
+
+            <button
+              onClick={() => setIsLoggingDailyActivity(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white transition-all shadow-md hover:opacity-90 shrink-0"
+              style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
+              <span>إضافة تقرير يومي جديد</span>
+            </button>
+          </div>
+
+          {/* Logs Feed */}
+          {relevantDailyLogs.length === 0 ? (
+            <div
+              className="p-10 text-center rounded-[18px] border border-stone-800"
+              style={{ background: 'var(--gradient-card)' }}
+            >
+              <FileText className="w-8 h-8 text-stone-600 mx-auto mb-2" />
+              <h4 className="text-xs font-bold text-white">لا توجد تقارير نشاط يومي سابقة مسجلة للموظف المختار.</h4>
+              <p className="text-xs text-stone-400 mt-1">انقر على الزر أعلاه لتدوين ملخص إنجازات اليوم.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {relevantDailyLogs.map((log) => {
+                const logUser = users.find((u) => u.id === log.user_id);
+                const linkedTasksList = tasks.filter((t) => log.linked_task_ids?.includes(t.id));
+
+                return (
+                  <div
+                    key={log.id}
+                    className="p-4 rounded-[16px] border border-stone-800 hover:border-purple-500/40 bg-stone-900/60 transition-all space-y-3 shadow-md"
+                  >
+                    <div className="flex items-center justify-between pb-2 border-b border-stone-800 text-xs">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px]"
+                          style={{ background: 'var(--gradient-badge)', color: 'white' }}
+                        >
+                          {logUser?.name.charAt(0) || 'U'}
+                        </div>
+                        <span className="font-bold text-white">{logUser?.name || 'موظف'}</span>
+                        <span className="text-stone-400 text-[11px]">({logUser?.team || logUser?.role})</span>
+                      </div>
+
+                      <span className="text-[11px] font-mono text-purple-300 bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-800">
+                        التاريخ: {log.date}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-stone-200 leading-relaxed whitespace-pre-wrap">
+                      {log.summary_text}
+                    </p>
+
+                    {linkedTasksList.length > 0 && (
+                      <div className="pt-2 border-t border-stone-800/80">
+                        <p className="text-[11px] text-stone-400 font-semibold mb-1.5 flex items-center gap-1.5">
+                          <CheckSquare className="w-3.5 h-3.5 text-purple-400" />
+                          <span>المهام المرتبطة بهذا التقرير:</span>
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {linkedTasksList.map((lt) => (
+                            <button
+                              key={lt.id}
+                              onClick={() => setSelectedTaskDetails(lt)}
+                              className="px-2.5 py-1 rounded-lg text-[11px] bg-stone-800 hover:bg-purple-900/50 text-stone-200 transition-colors flex items-center gap-1 border border-stone-700"
+                            >
+                              <span>{lt.title}</span>
+                              <ExternalLink className="w-2.5 h-2.5 text-purple-300" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. MANAGER / TEAM LEAD VIEW                                               */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'manager_view' && (
+        <div className="space-y-5">
+          <div
+            className="p-4 rounded-[18px] flex items-center justify-between"
+            style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+          >
+            <div>
+              <h3 className="text-xs font-bold text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-purple-400" />
+                <span>لوحة إشراف رئيس الفريق (Team Lead / Manager Overview)</span>
+              </h3>
+              <p className="text-xs text-stone-400 mt-0.5">
+                مراقبة أداء الموظفين، توزيع أعباء العمل (Workload)، حصر المهام المتأخرة، وإزالة المعوقات التشغيلية
+              </p>
+            </div>
+            <span className="text-xs text-stone-400 bg-stone-900 px-3 py-1 rounded-xl border border-stone-800">
+              الدور الفعلي: <strong className="text-purple-300">{currentUser.role}</strong>
+            </span>
+          </div>
+
+          {/* Team Workload Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {teamWorkloadSummary.map((item) => {
+              const isOver = item.rate >= 100;
+              const isNear = item.rate >= 75 && item.rate < 100;
+
+              return (
+                <div
+                  key={item.member.id}
+                  className="p-4 rounded-[18px] border border-stone-800 hover:border-purple-500/50 transition-all bg-stone-900/70 flex flex-col justify-between gap-3.5 shadow-md"
+                >
+                  <div className="space-y-3">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs"
+                          style={{ background: 'var(--gradient-badge)', color: 'white' }}
+                        >
+                          {item.member.name.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-white">{item.member.name}</h4>
+                          <p className="text-[11px] text-stone-400">{item.member.team || item.member.role}</p>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                          isOver
+                            ? 'bg-red-950 text-red-400 border border-red-500/40'
+                            : isNear
+                            ? 'bg-amber-950 text-amber-400 border border-amber-500/40'
+                            : 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                        }`}
+                      >
+                        {item.rate}% إشغال
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-stone-400">
+                        <span>المهام النشطة: {item.activeCount} / {item.limit}</span>
+                        <span>الساعات الموزعة: {item.totalEstimated} س</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-stone-950 overflow-hidden border border-stone-800">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(100, item.rate)}%`,
+                            background: isOver
+                              ? 'var(--roas-bad)'
+                              : isNear
+                              ? 'var(--roas-mid)'
+                              : 'var(--roas-good)',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Metric Badges Grid */}
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
+                      <div className="p-2 rounded-xl bg-stone-900 border border-stone-800">
+                        <p className="text-[10px] text-stone-400">مكتملة</p>
+                        <p className="text-sm font-bold text-emerald-400 mt-0.5">{item.completedCount}</p>
+                      </div>
+
+                      <div className={`p-2 rounded-xl border ${item.overdueCount > 0 ? 'bg-red-950/40 border-red-500/40' : 'bg-stone-900 border-stone-800'}`}>
+                        <p className="text-[10px] text-stone-400">متأخرة</p>
+                        <p className={`text-sm font-bold mt-0.5 ${item.overdueCount > 0 ? 'text-red-400' : 'text-stone-300'}`}>
+                          {item.overdueCount}
+                        </p>
+                      </div>
+
+                      <div className={`p-2 rounded-xl border ${item.blockedCount > 0 ? 'bg-amber-950/40 border-amber-500/40' : 'bg-stone-900 border-stone-800'}`}>
+                        <p className="text-[10px] text-stone-400">معوقات</p>
+                        <p className={`text-sm font-bold mt-0.5 ${item.blockedCount > 0 ? 'text-amber-400' : 'text-stone-300'}`}>
+                          {item.blockedCount}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Manager Actions */}
+                  <div className="pt-2 border-t border-stone-800 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedEmployeeId(item.member.id);
+                        setActiveSubTab('my_tasks');
+                      }}
+                      className="w-full py-1.5 rounded-lg text-xs font-semibold bg-stone-800 hover:bg-stone-700 text-purple-300 transition-colors flex items-center justify-center gap-1"
+                    >
+                      <span>استعراض مهام الموظف</span>
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 1: TASK DETAILS (Client, Service, Linked Brief, Notes, Dates)       */}
+      {/* ========================================================================= */}
+      {selectedTaskDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <div
+            className="w-full max-w-2xl rounded-[20px] p-6 space-y-5 border shadow-2xl my-8 relative"
+            style={{
+              background: 'var(--surface-dark)',
+              borderColor: 'var(--border-strong)',
+            }}
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-stone-800">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="px-2 py-0.5 rounded text-[10px] font-bold"
+                    style={{
+                      background: getPriorityBadge(selectedTaskDetails.priority).bg,
+                      color: getPriorityBadge(selectedTaskDetails.priority).text,
+                    }}
+                  >
+                    {getPriorityBadge(selectedTaskDetails.priority).label}
+                  </span>
+                  <span
+                    className="px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+                    style={{
+                      background: getStatusBadge(selectedTaskDetails.status).bg,
+                      color: getStatusBadge(selectedTaskDetails.status).text,
+                    }}
+                  >
+                    {getStatusLabel(selectedTaskDetails.status)}
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white mt-1">{selectedTaskDetails.title}</h3>
+              </div>
+
+              <button
+                onClick={() => setSelectedTaskDetails(null)}
+                className="p-1 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              {/* Task Description */}
+              {selectedTaskDetails.description && (
+                <div className="p-3.5 rounded-xl bg-stone-900/80 border border-stone-800 text-xs text-stone-300 leading-relaxed">
+                  <span className="font-bold text-stone-400 block mb-1">وصف المهمة والمخرجات المطلوبة:</span>
+                  <p className="whitespace-pre-wrap">{selectedTaskDetails.description}</p>
+                </div>
+              )}
+
+              {/* Client & Service Info */}
+              {(() => {
+                const client = clients.find((c) => c.id === selectedTaskDetails.client_id);
+                const assignee = users.find((u) => u.id === selectedTaskDetails.assigned_to);
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-xl bg-stone-900/60 border border-stone-800 text-xs space-y-1">
+                      <span className="text-stone-400 text-[11px] block">العميل المرتبط:</span>
+                      <p className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-purple-400" />
+                        <span>{client ? client.name : 'غير محدد'}</span>
+                      </p>
+                      <p className="text-[11px] text-stone-400">مجال العمل: {client?.industry || '—'}</p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-stone-900/60 border border-stone-800 text-xs space-y-1">
+                      <span className="text-stone-400 text-[11px] block">الموظف المسند إليه:</span>
+                      <p className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-purple-400" />
+                        <span>{assignee ? assignee.name : 'غير مسند'}</span>
+                      </p>
+                      <p className="text-[11px] text-stone-400">الفريق: {selectedTaskDetails.team || '—'}</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Dates & Hours Tracker */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                <div className="p-2.5 rounded-xl bg-stone-900/60 border border-stone-800">
+                  <span className="text-[10px] text-stone-400 block">تاريخ الاستحقاق</span>
+                  <span className="font-bold text-white font-mono">{selectedTaskDetails.due_date || '—'}</span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-stone-900/60 border border-stone-800">
+                  <span className="text-[10px] text-stone-400 block">الساعات المقدرة</span>
+                  <span className="font-bold text-purple-300 font-mono">{selectedTaskDetails.estimated_hours || 0} س</span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-stone-900/60 border border-stone-800">
+                  <span className="text-[10px] text-stone-400 block">الساعات الفعلية</span>
+                  <span className="font-bold text-emerald-400 font-mono">{selectedTaskDetails.actual_hours || 0} س</span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-stone-900/60 border border-stone-800">
+                  <span className="text-[10px] text-stone-400 block">تاريخ الإنشاء</span>
+                  <span className="font-bold text-stone-300 font-mono text-[10px]">
+                    {selectedTaskDetails.created_at ? selectedTaskDetails.created_at.split('T')[0] : '—'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Linked Brief Information (From database briefs table) */}
+              {(() => {
+                const linkedBrief = briefs.find((b) => b.client_id === selectedTaskDetails.client_id);
+
+                return (
+                  <div className="p-3.5 rounded-xl bg-stone-900/80 border border-stone-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-purple-400" />
+                        <span>بيانات البريف المرتبط بالعميل (Linked Brief)</span>
+                      </span>
+                      {linkedBrief && (
+                        <span className="text-[10px] text-stone-400 font-mono">
+                          الإصدار {linkedBrief.version} • {linkedBrief.service_type}
+                        </span>
+                      )}
+                    </div>
+
+                    {linkedBrief ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                        {Object.entries(linkedBrief.fields).map(([key, val]) => (
+                          <div key={key} className="p-2 rounded bg-stone-950/60 border border-stone-800/80">
+                            <span className="text-stone-400 block font-mono text-[10px]">{key}:</span>
+                            <span className="text-stone-200 font-medium whitespace-pre-wrap line-clamp-3">
+                              {Array.isArray(val) ? val.join(', ') : String(val)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-stone-500 py-1">
+                        لا يوجد بريف تفصيلي مسجل لهذا العميل بعد.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Status Update & Blocker Actions */}
+              <div className="p-3.5 rounded-xl bg-stone-900/80 border border-stone-800 space-y-2">
+                <span className="text-xs font-bold text-white block">تعديل مرحلة المهمة:</span>
+                <div className="flex flex-wrap gap-2">
+                  {(['todo', 'in_progress', 'in_review', 'completed'] as TaskStatus[]).map((st) => (
+                    <button
+                      key={st}
+                      onClick={async () => {
+                        await onUpdateTaskStatus(selectedTaskDetails.id, st);
+                        setSelectedTaskDetails({ ...selectedTaskDetails, status: st });
+                        showNotification(`تم تغيير الحالة إلى «${getStatusLabel(st)}».`);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        selectedTaskDetails.status === st
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'bg-stone-800 text-stone-400 hover:text-white'
+                      }`}
+                    >
+                      {getStatusLabel(st)}
+                    </button>
+                  ))}
+
+                  <button
+                    onClick={() => {
+                      setBlockerModalTask(selectedTaskDetails);
+                      setSelectedTaskDetails(null);
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-950/80 text-red-400 hover:bg-red-900 transition-colors border border-red-500/40 mr-auto"
+                  >
+                    تسجيل المهمة كـ Blocked
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-3 border-t border-stone-800 flex justify-end">
+              <button
+                onClick={() => setSelectedTaskDetails(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-800 hover:bg-stone-700 text-white transition-colors"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2: REPORT / RECORD A BLOCKER                                        */}
+      {/* ========================================================================= */}
+      {blockerModalTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div
+            className="w-full max-w-lg rounded-[20px] p-6 space-y-4 border shadow-2xl relative"
+            style={{ background: 'var(--surface-dark)', borderColor: 'rgba(245, 163, 163, 0.4)' }}
+          >
+            <div className="flex items-start justify-between pb-3 border-b border-stone-800">
+              <div className="flex items-center gap-2 text-red-400">
+                <ShieldAlert className="w-5 h-5" />
+                <h3 className="text-sm font-bold text-white">تسجيل تعثر للمهمة (Report Blocker)</h3>
+              </div>
+              <button
+                onClick={() => setBlockerModalTask(null)}
+                className="p-1 rounded-lg text-stone-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmBlocker} className="space-y-4">
+              <div className="p-3 rounded-xl bg-stone-900 border border-stone-800 text-xs">
+                <p className="text-stone-400 text-[11px]">المهمة المراد توثيق تعثرها:</p>
+                <p className="font-bold text-white text-sm mt-0.5">{blockerModalTask.title}</p>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-stone-300 block mb-1.5">
+                  سبب التعثر بالتفصيل (ما الذي يمنع الاستمرار؟):
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={blockerReason}
+                  onChange={(e) => setBlockerReason(e.target.value)}
+                  placeholder="مثال: بانتظار العميل لتسليم صلاحيات الوصول إلى الحساب الإعلاني / نقص المحتوى..."
+                  className="w-full p-3 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-red-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setBlockerModalTask(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-stone-400 hover:text-white"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all"
+                >
+                  تأكيد توثيق التعثر (Mark as Blocked)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: LOG DAILY ACTIVITY (Saved to daily_logs table)                    */}
+      {/* ========================================================================= */}
+      {isLoggingDailyActivity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div
+            className="w-full max-w-xl rounded-[20px] p-6 space-y-4 border shadow-2xl relative"
+            style={{ background: 'var(--surface-dark)', borderColor: 'var(--border-strong)' }}
+          >
+            <div className="flex items-start justify-between pb-3 border-b border-stone-800">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-purple-400" />
+                <h3 className="text-sm font-bold text-white">توثيق النشاط اليومي (Daily Activity Log)</h3>
+              </div>
+              <button
+                onClick={() => setIsLoggingDailyActivity(false)}
+                className="p-1 rounded-lg text-stone-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitDailyLog} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-stone-400 block mb-1">الموظف:</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={effectiveEmployee.name}
+                    className="w-full p-2.5 rounded-xl text-xs bg-stone-900 border border-stone-800 text-stone-300"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-stone-400 block mb-1">تاريخ التقرير:</label>
+                  <input
+                    type="date"
+                    required
+                    value={logDate}
+                    onChange={(e) => setLogDate(e.target.value)}
+                    className="w-full p-2.5 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-stone-300 block mb-1.5">
+                  ملخص ما تم إنجازه اليوم والخطوات التالية:
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={dailySummary}
+                  onChange={(e) => setDailySummary(e.target.value)}
+                  placeholder="اكتب ملخصاً للمهام التي عملت عليها اليوم، المخرجات، والتحديات..."
+                  className="w-full p-3 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {/* Linked Tasks Checkboxes */}
+              <div>
+                <label className="text-xs font-semibold text-stone-300 block mb-1.5">
+                  ربط المهام التي تم العمل عليها (Linked Tasks):
+                </label>
+                <div className="max-h-36 overflow-y-auto p-2.5 rounded-xl bg-stone-900/90 border border-stone-800 space-y-1.5">
+                  {sortedEmployeeTasks.length === 0 ? (
+                    <p className="text-xs text-stone-500">لا توجد مهام مسندة للموظف.</p>
+                  ) : (
+                    sortedEmployeeTasks.map((t) => {
+                      const isChecked = selectedLinkedTasks.includes(t.id);
+
+                      return (
+                        <label
+                          key={t.id}
+                          className="flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 cursor-pointer text-xs text-stone-300"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedLinkedTasks([...selectedLinkedTasks, t.id]);
+                              } else {
+                                setSelectedLinkedTasks(selectedLinkedTasks.filter((id) => id !== t.id));
+                              }
+                            }}
+                            className="rounded border-stone-700 text-purple-600 focus:ring-0"
+                          />
+                          <span className="font-semibold text-white">{t.title}</span>
+                          <span className="text-[10px] text-stone-500 mr-auto">({getStatusLabel(t.status)})</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setIsLoggingDailyActivity(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-stone-400 hover:text-white"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingLog}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-lg hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+                >
+                  {isSubmittingLog ? 'جارٍ الحفظ...' : 'حفظ التقرير اليومي'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: QUICK TIME LOGGING                                               */}
+      {/* ========================================================================= */}
+      {timeLoggingTaskId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div
+            className="w-full max-w-sm rounded-[20px] p-5 space-y-4 border shadow-2xl relative"
+            style={{ background: 'var(--surface-dark)', borderColor: 'var(--border-strong)' }}
+          >
+            {(() => {
+              const targetTask = tasks.find((t) => t.id === timeLoggingTaskId);
+              if (!targetTask) return null;
+
+              return (
+                <>
+                  <div className="flex items-start justify-between pb-2 border-b border-stone-800">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-purple-400" />
+                      <h4 className="text-xs font-bold text-white">تسجيل ساعات عمل فعلية</h4>
+                    </div>
+                    <button
+                      onClick={() => setTimeLoggingTaskId(null)}
+                      className="p-1 rounded text-stone-400 hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-white line-clamp-1">{targetTask.title}</p>
+                    <p className="text-[11px] text-stone-400">
+                      الساعات الحالية المسجلة: <strong className="text-purple-300 font-mono">{targetTask.actual_hours || 0} س</strong>
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-stone-300 block mb-1">
+                      عدد الساعات الإضافية المنجزة:
+                    </label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      max="24"
+                      value={additionalHours}
+                      onChange={(e) => setAdditionalHours(parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-800">
+                    <button
+                      type="button"
+                      onClick={() => setTimeLoggingTaskId(null)}
+                      className="px-3 py-1.5 rounded-lg text-xs text-stone-400 hover:text-white"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleLogActualHours(targetTask)}
+                      className="px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-md hover:opacity-90"
+                      style={{ background: 'var(--gradient-badge)' }}
+                    >
+                      إضافة الساعات
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

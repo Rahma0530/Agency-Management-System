@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  /* ---- الألوان الأساسية - Kesra Brand Tokens ---- */
+  --black: #0a0a0d;
+  --black-2: #151318;
+  --purple-deep: #3b1560;
+  --purple: #7b2ff7;
+  --purple-light: #b98cf0;
+  --lilac: #e9d9fb;
+  --white: #ffffff;
+  --grey: #a89bb8;
+
+  /* ---- درجات إضافية للرسوم البيانية ---- */
+  --chart-1: #4d1a80;
+  --chart-2: #7b2ff7;
+  --chart-3: #9b59f0;
+  --chart-4: #b98cf0;
+  --chart-5: #5c2a99;
+  --chart-6: #e9d9fb;
+
+  /* ---- ألوان دلالية لمؤشر ROAS ---- */
+  --roas-good: #a9f5c1;
+  --roas-mid: #f5e29a;
+  --roas-bad: #f5a3a3;
+
+  /* ---- التدرجات (Gradients) ---- */
+  --gradient-page: linear-gradient(180deg, var(--black) 0%, #150f1f 40%, var(--black) 100%);
+  --gradient-hero: radial-gradient(circle at 50% -10%, rgba(123,47,247,0.45), transparent 60%),
+                    linear-gradient(135deg, var(--black) 0%, var(--purple-deep) 100%);
+  --gradient-title-text: linear-gradient(90deg, var(--white), var(--purple-light));
+  --gradient-card: linear-gradient(160deg, var(--black-2), #1c1224);
+  --gradient-badge: linear-gradient(135deg, var(--purple), var(--purple-deep));
+  --gradient-section: linear-gradient(160deg, rgba(21,19,24,0.9), rgba(59,21,96,0.25));
+
+  /* ---- الحدود الشفافة ---- */
+  --border-soft: rgba(123,47,247,0.25);
+  --border-medium: rgba(123,47,247,0.35);
+  --border-strong: rgba(123,47,247,0.4);
+  --border-lilac: rgba(185,140,240,0.2);
+
+  /* ---- زوايا الاستدارة ---- */
+  --radius-lg: 20px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+  --radius-pill: 30px;
+}
+
+body {
+  background: var(--gradient-page);
+  color: var(--lilac);
+  min-height: 100vh;
+}

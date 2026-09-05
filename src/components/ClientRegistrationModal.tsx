@@ -1,0 +1,326 @@
+import React, { useState } from 'react';
+import { X, UserCheck, Sparkles, Building2, Briefcase, DollarSign, Calendar, Users } from 'lucide-react';
+import { PackageRecord, UserRecord } from '../types/database';
+
+interface ClientRegistrationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  packages: PackageRecord[];
+  amTeamLeaders?: UserRecord[];
+  onSubmit: (clientData: {
+    name: string;
+    industry: string;
+    package_id: string;
+    contract_value: number;
+    start_date: string;
+    am_team_lead_id?: string;
+  }) => Promise<void>;
+}
+
+export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = ({
+  isOpen,
+  onClose,
+  packages,
+  amTeamLeaders = [],
+  onSubmit,
+}) => {
+  const [name, setName] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [packageId, setPackageId] = useState(packages[0]?.id || '');
+  const [contractValue, setContractValue] = useState<number | ''>('');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [amTeamLeadId, setAmTeamLeadId] = useState(amTeamLeaders[0]?.id || 'usr-am-lead');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setErrorMsg('Please enter the client / company name.');
+      return;
+    }
+    if (!packageId) {
+      setErrorMsg('Please select a service package.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMsg('');
+    try {
+      await onSubmit({
+        name: name.trim(),
+        industry: industry.trim() || 'General',
+        package_id: packageId,
+        contract_value: contractValue ? Number(contractValue) : 0,
+        start_date: startDate,
+        am_team_lead_id: amTeamLeadId,
+      });
+      // reset
+      setName('');
+      setIndustry('');
+      setContractValue('');
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error registering client');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const selectedPkg = packages.find((p) => p.id === packageId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" dir="ltr">
+      <div
+        className="w-full max-w-xl rounded-[20px] p-6 shadow-2xl relative overflow-hidden font-sans"
+        style={{
+          background: 'var(--gradient-card)',
+          border: '1px solid var(--border-medium)',
+        }}
+      >
+        {/* Top glow */}
+        <div
+          className="absolute -top-20 -right-20 w-48 h-48 rounded-full pointer-events-none opacity-40 blur-2xl"
+          style={{ background: 'radial-gradient(circle, var(--purple) 0%, transparent 70%)' }}
+        />
+
+        <div className="flex items-center justify-between pb-4 mb-5 border-b" style={{ borderColor: 'var(--border-soft)' }}>
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-[12px] flex items-center justify-center text-white"
+              style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+            >
+              <UserCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold" style={{ color: 'var(--white)' }}>
+                Register New Client
+              </h3>
+              <p className="text-xs" style={{ color: 'var(--grey)' }}>
+                Client will automatically route to Account Management onboarding queue
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-stone-400 hover:text-white transition-colors"
+            style={{ background: 'rgba(255, 255, 255, 0.05)' }}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {errorMsg && (
+          <div
+            className="p-3 mb-4 rounded-lg text-xs"
+            style={{ background: 'rgba(245, 163, 163, 0.15)', border: '1px solid var(--roas-bad)', color: 'var(--roas-bad)' }}
+          >
+            {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
+              Company / Client Name <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <Building2 className="w-4 h-4 absolute left-3 top-3 text-stone-400 pointer-events-none" />
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Apex Global Trading"
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400"
+                style={{
+                  background: 'rgba(10, 10, 13, 0.8)',
+                  border: '1px solid var(--border-soft)',
+                  color: 'var(--white)',
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
+                Industry / Sector
+              </label>
+              <div className="relative">
+                <Briefcase className="w-4 h-4 absolute left-3 top-3 text-stone-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={industry}
+                  onChange={(e) => setIndustry(e.target.value)}
+                  placeholder="e.g. E-Commerce, Real Estate"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  style={{
+                    background: 'rgba(10, 10, 13, 0.8)',
+                    border: '1px solid var(--border-soft)',
+                    color: 'var(--white)',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
+                Monthly Retainer (USD/SAR)
+              </label>
+              <div className="relative">
+                <DollarSign className="w-4 h-4 absolute left-3 top-3 text-stone-400 pointer-events-none" />
+                <input
+                  type="number"
+                  value={contractValue}
+                  onChange={(e) => setContractValue(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="e.g. 5000"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  style={{
+                    background: 'rgba(10, 10, 13, 0.8)',
+                    border: '1px solid var(--border-soft)',
+                    color: 'var(--white)',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
+                Service Package <span className="text-red-400">*</span>
+              </label>
+              <select
+                value={packageId}
+                onChange={(e) => setPackageId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer"
+                style={{
+                  background: 'rgba(10, 10, 13, 0.9)',
+                  border: '1px solid var(--border-soft)',
+                  color: 'var(--white)',
+                }}
+              >
+                {packages.map((pkg) => (
+                  <option key={pkg.id} value={pkg.id} className="bg-stone-900 text-white">
+                    {pkg.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
+                Contract Start Date
+              </label>
+              <div className="relative">
+                <Calendar className="w-4 h-4 absolute left-3 top-3 text-stone-400 pointer-events-none" />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  style={{
+                    background: 'rgba(10, 10, 13, 0.8)',
+                    border: '1px solid var(--border-soft)',
+                    color: 'var(--white)',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {selectedPkg && (
+            <div
+              className="p-3 rounded-xl text-xs flex items-center justify-between"
+              style={{ background: 'rgba(59, 21, 96, 0.3)', border: '1px solid var(--border-soft)' }}
+            >
+              <span style={{ color: 'var(--lilac)' }}>Included Services:</span>
+              <div className="flex gap-1.5">
+                {selectedPkg.services.map((srv) => (
+                  <span
+                    key={srv}
+                    className="px-2 py-0.5 rounded-full text-[11px] font-medium uppercase"
+                    style={{
+                      background: 'rgba(123, 47, 247, 0.3)',
+                      color: 'var(--purple-light)',
+                      border: '1px solid var(--border-soft)',
+                    }}
+                  >
+                    {srv.replace('_', ' ')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Assign / Transfer to AM Team Leader */}
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
+              Route to Account Management Lead <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <Users className="w-4 h-4 absolute left-3 top-3 text-purple-400 pointer-events-none" />
+              <select
+                value={amTeamLeadId}
+                onChange={(e) => setAmTeamLeadId(e.target.value)}
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer"
+                style={{
+                  background: 'rgba(10, 10, 13, 0.9)',
+                  border: '1px solid var(--border-soft)',
+                  color: 'var(--white)',
+                }}
+              >
+                {amTeamLeaders.length > 0 ? (
+                  amTeamLeaders.map((leader) => (
+                    <option key={leader.id} value={leader.id} className="bg-stone-900 text-white">
+                      {leader.name} — ({leader.team || 'Account Management Lead'})
+                    </option>
+                  ))
+                ) : (
+                  <option value="usr-am-lead" className="bg-stone-900 text-white">
+                    Maha Al-Shami — AM Team Lead
+                  </option>
+                )}
+              </select>
+            </div>
+            <p className="text-[11px] text-stone-400 mt-1">
+              Client record will be routed to AM lead for account assignment and service kickoff.
+            </p>
+          </div>
+
+          <div className="pt-2 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-xs font-medium transition-colors"
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                color: 'var(--grey)',
+                border: '1px solid var(--border-soft)',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg flex items-center gap-2"
+              style={{
+                background: 'var(--gradient-badge)',
+                color: 'var(--white)',
+                border: '1px solid var(--border-strong)',
+                opacity: isSubmitting ? 0.7 : 1,
+              }}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {isSubmitting ? 'Registering...' : 'Register Client'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
