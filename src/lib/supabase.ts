@@ -399,6 +399,37 @@ export function isTaskAccessibleUnderRLS(
 
 let rawClientInstance: SupabaseClient | null = null;
 
+/**
+ * New-format Supabase API keys (sb_publishable_..., sb_secret_...) are not JWTs.
+ * When there is no active Supabase Auth session, @supabase/supabase-js (as of the
+ * installed 2.115.0) falls back to sending the raw key itself as the
+ * `Authorization: Bearer <key>` header on REST/database requests — the same fallback
+ * was already fixed for realtime (2.88.0) and Edge Functions (2.110.4, via an internal
+ * `omitApiKeyAsBearer` flag scoped only to that client), but not yet for the main
+ * `.from()` REST client. PostgREST then tries to parse that non-JWT string as a JWT
+ * and rejects the request with 401 — this is what breaks every unauthenticated (or
+ * demo-login, which never creates a real Supabase Auth session) request against a
+ * table that isn't wrapped by the RLS-emulation proxy below (packages, briefs,
+ * assignments, daily_logs, extra_notes, etc.).
+ *
+ * Fix: wrap fetch and strip the Authorization header in exactly that one case — when
+ * it's carrying the anon/publishable key back as its own bearer token — so the
+ * request falls back to being authenticated by the `apikey` header alone, which is
+ * the correct behavior for an anonymous/no-session request. A real signed-in
+ * session's JWT is never equal to the raw key, so this never touches genuine
+ * authenticated requests.
+ */
+function createSanitizedFetch(apiKey: string): typeof fetch {
+  const selfBearer = `Bearer ${apiKey}`;
+  return (input, init) => {
+    const headers = new Headers(init?.headers);
+    if (headers.get('Authorization') === selfBearer) {
+      headers.delete('Authorization');
+    }
+    return fetch(input, { ...init, headers });
+  };
+}
+
 function getRawSupabase(): SupabaseClient {
   if (!rawClientInstance) {
     const rawUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -413,6 +444,9 @@ function getRawSupabase(): SupabaseClient {
           persistSession: true,
           autoRefreshToken: true,
         },
+        global: {
+          fetch: createSanitizedFetch(targetKey),
+        },
       });
     } catch (err) {
       console.warn('Supabase initialization fallback:', err);
@@ -420,6 +454,9 @@ function getRawSupabase(): SupabaseClient {
         auth: {
           persistSession: false,
           autoRefreshToken: false,
+        },
+        global: {
+          fetch: createSanitizedFetch(DEFAULT_KEY),
         },
       });
     }
@@ -432,7 +469,14 @@ function getRawSupabase(): SupabaseClient {
  * Direct queries from browser console, URL param manipulation, or UI state
  * cannot bypass this query layer.
  */
-function createUsersRLSQueryBuilder(rawBuilder?: any) {
+function createUsersRLSQueryBuilder(initialRawBuilder?: any) {
+  // postgrest-js's PostgrestQueryBuilder.select()/insert()/update()/upsert()/delete()
+  // each construct and return a NEW PostgrestFilterBuilder instance rather than
+  // mutating themselves — the .eq()/.in()/etc. filter methods only exist on that
+  // returned object, not on the original query builder. rawBuilder must be
+  // reassigned on every call below, or every subsequent filter call throws
+  // "rawBuilder.<method> is not a function".
+  let rawBuilder: any = initialRawBuilder;
   let isSingle = false;
   let isMaybeSingle = false;
   let eqFilters: { column: string; value: any }[] = [];
@@ -442,57 +486,57 @@ function createUsersRLSQueryBuilder(rawBuilder?: any) {
 
   const builder: any = {
     select: (_columns?: string) => {
-      if (rawBuilder) rawBuilder.select(_columns || '*');
+      if (rawBuilder) rawBuilder = rawBuilder.select(_columns || '*');
       return builder;
     },
     eq: (column: string, value: any) => {
       eqFilters.push({ column, value });
-      if (rawBuilder) rawBuilder.eq(column, value);
+      if (rawBuilder) rawBuilder = rawBuilder.eq(column, value);
       return builder;
     },
     neq: (column: string, value: any) => {
-      if (rawBuilder) rawBuilder.neq(column, value);
+      if (rawBuilder) rawBuilder = rawBuilder.neq(column, value);
       return builder;
     },
     in: (column: string, values: any[]) => {
       inFilters.push({ column, values });
-      if (rawBuilder) rawBuilder.in(column, values);
+      if (rawBuilder) rawBuilder = rawBuilder.in(column, values);
       return builder;
     },
     or: (filter: string) => {
       orFilter = filter;
-      if (rawBuilder) rawBuilder.or(filter);
+      if (rawBuilder) rawBuilder = rawBuilder.or(filter);
       return builder;
     },
     order: (column: string, options?: any) => {
-      if (rawBuilder) rawBuilder.order(column, options);
+      if (rawBuilder) rawBuilder = rawBuilder.order(column, options);
       return builder;
     },
     limit: (count: number) => {
-      if (rawBuilder) rawBuilder.limit(count);
+      if (rawBuilder) rawBuilder = rawBuilder.limit(count);
       return builder;
     },
     single: () => {
       isSingle = true;
-      if (rawBuilder) rawBuilder.single();
+      if (rawBuilder) rawBuilder = rawBuilder.single();
       return builder;
     },
     maybeSingle: () => {
       isMaybeSingle = true;
-      if (rawBuilder) rawBuilder.maybeSingle();
+      if (rawBuilder) rawBuilder = rawBuilder.maybeSingle();
       return builder;
     },
     update: (values: any) => {
       updatePayload = values;
-      if (rawBuilder) rawBuilder.update(values);
+      if (rawBuilder) rawBuilder = rawBuilder.update(values);
       return builder;
     },
     insert: (values: any) => {
-      if (rawBuilder) rawBuilder.insert(values);
+      if (rawBuilder) rawBuilder = rawBuilder.insert(values);
       return builder;
     },
     delete: () => {
-      if (rawBuilder) rawBuilder.delete();
+      if (rawBuilder) rawBuilder = rawBuilder.delete();
       return builder;
     },
 
@@ -615,7 +659,12 @@ function createUsersRLSQueryBuilder(rawBuilder?: any) {
 /**
  * Creates an RLS-enforced Query Builder for the 'clients' table.
  */
-function createClientsRLSQueryBuilder(rawBuilder?: any) {
+function createClientsRLSQueryBuilder(initialRawBuilder?: any) {
+  // See the comment in createUsersRLSQueryBuilder: rawBuilder must be
+  // reassigned on every forwarded call, since postgrest-js returns a new
+  // builder object from select()/insert()/update()/delete() rather than
+  // mutating itself in place.
+  let rawBuilder: any = initialRawBuilder;
   let isSingle = false;
   let isMaybeSingle = false;
   let eqFilters: { column: string; value: any }[] = [];
@@ -624,52 +673,52 @@ function createClientsRLSQueryBuilder(rawBuilder?: any) {
 
   const builder: any = {
     select: (_columns?: string) => {
-      if (rawBuilder) rawBuilder.select(_columns || '*');
+      if (rawBuilder) rawBuilder = rawBuilder.select(_columns || '*');
       return builder;
     },
     eq: (column: string, value: any) => {
       eqFilters.push({ column, value });
-      if (rawBuilder) rawBuilder.eq(column, value);
+      if (rawBuilder) rawBuilder = rawBuilder.eq(column, value);
       return builder;
     },
     neq: (column: string, value: any) => {
-      if (rawBuilder) rawBuilder.neq(column, value);
+      if (rawBuilder) rawBuilder = rawBuilder.neq(column, value);
       return builder;
     },
     in: (column: string, values: any[]) => {
-      if (rawBuilder) rawBuilder.in(column, values);
+      if (rawBuilder) rawBuilder = rawBuilder.in(column, values);
       return builder;
     },
     order: (column: string, options?: any) => {
-      if (rawBuilder) rawBuilder.order(column, options);
+      if (rawBuilder) rawBuilder = rawBuilder.order(column, options);
       return builder;
     },
     limit: (count: number) => {
-      if (rawBuilder) rawBuilder.limit(count);
+      if (rawBuilder) rawBuilder = rawBuilder.limit(count);
       return builder;
     },
     single: () => {
       isSingle = true;
-      if (rawBuilder) rawBuilder.single();
+      if (rawBuilder) rawBuilder = rawBuilder.single();
       return builder;
     },
     maybeSingle: () => {
       isMaybeSingle = true;
-      if (rawBuilder) rawBuilder.maybeSingle();
+      if (rawBuilder) rawBuilder = rawBuilder.maybeSingle();
       return builder;
     },
     update: (values: any) => {
       updatePayload = values;
-      if (rawBuilder) rawBuilder.update(values);
+      if (rawBuilder) rawBuilder = rawBuilder.update(values);
       return builder;
     },
     insert: (values: any) => {
       insertPayload = values;
-      if (rawBuilder) rawBuilder.insert(values);
+      if (rawBuilder) rawBuilder = rawBuilder.insert(values);
       return builder;
     },
     delete: () => {
-      if (rawBuilder) rawBuilder.delete();
+      if (rawBuilder) rawBuilder = rawBuilder.delete();
       return builder;
     },
     then: async (onfulfilled?: (value: any) => any, onrejected?: (reason: any) => any) => {
@@ -723,7 +772,12 @@ function createClientsRLSQueryBuilder(rawBuilder?: any) {
 /**
  * Creates an RLS-enforced Query Builder for the 'campaigns' table.
  */
-function createCampaignsRLSQueryBuilder(rawBuilder?: any) {
+function createCampaignsRLSQueryBuilder(initialRawBuilder?: any) {
+  // See the comment in createUsersRLSQueryBuilder: rawBuilder must be
+  // reassigned on every forwarded call, since postgrest-js returns a new
+  // builder object from select()/insert()/update()/delete() rather than
+  // mutating itself in place.
+  let rawBuilder: any = initialRawBuilder;
   let isSingle = false;
   let isMaybeSingle = false;
   let eqFilters: { column: string; value: any }[] = [];
@@ -732,52 +786,52 @@ function createCampaignsRLSQueryBuilder(rawBuilder?: any) {
 
   const builder: any = {
     select: (_columns?: string) => {
-      if (rawBuilder) rawBuilder.select(_columns || '*');
+      if (rawBuilder) rawBuilder = rawBuilder.select(_columns || '*');
       return builder;
     },
     eq: (column: string, value: any) => {
       eqFilters.push({ column, value });
-      if (rawBuilder) rawBuilder.eq(column, value);
+      if (rawBuilder) rawBuilder = rawBuilder.eq(column, value);
       return builder;
     },
     neq: (column: string, value: any) => {
-      if (rawBuilder) rawBuilder.neq(column, value);
+      if (rawBuilder) rawBuilder = rawBuilder.neq(column, value);
       return builder;
     },
     in: (column: string, values: any[]) => {
-      if (rawBuilder) rawBuilder.in(column, values);
+      if (rawBuilder) rawBuilder = rawBuilder.in(column, values);
       return builder;
     },
     order: (column: string, options?: any) => {
-      if (rawBuilder) rawBuilder.order(column, options);
+      if (rawBuilder) rawBuilder = rawBuilder.order(column, options);
       return builder;
     },
     limit: (count: number) => {
-      if (rawBuilder) rawBuilder.limit(count);
+      if (rawBuilder) rawBuilder = rawBuilder.limit(count);
       return builder;
     },
     single: () => {
       isSingle = true;
-      if (rawBuilder) rawBuilder.single();
+      if (rawBuilder) rawBuilder = rawBuilder.single();
       return builder;
     },
     maybeSingle: () => {
       isMaybeSingle = true;
-      if (rawBuilder) rawBuilder.maybeSingle();
+      if (rawBuilder) rawBuilder = rawBuilder.maybeSingle();
       return builder;
     },
     update: (values: any) => {
       updatePayload = values;
-      if (rawBuilder) rawBuilder.update(values);
+      if (rawBuilder) rawBuilder = rawBuilder.update(values);
       return builder;
     },
     insert: (values: any) => {
       insertPayload = values;
-      if (rawBuilder) rawBuilder.insert(values);
+      if (rawBuilder) rawBuilder = rawBuilder.insert(values);
       return builder;
     },
     delete: () => {
-      if (rawBuilder) rawBuilder.delete();
+      if (rawBuilder) rawBuilder = rawBuilder.delete();
       return builder;
     },
     then: async (onfulfilled?: (value: any) => any, onrejected?: (reason: any) => any) => {
@@ -865,7 +919,12 @@ function createCampaignsRLSQueryBuilder(rawBuilder?: any) {
 /**
  * Creates an RLS-enforced Query Builder for the 'tasks' table.
  */
-function createTasksRLSQueryBuilder(rawBuilder?: any) {
+function createTasksRLSQueryBuilder(initialRawBuilder?: any) {
+  // See the comment in createUsersRLSQueryBuilder: rawBuilder must be
+  // reassigned on every forwarded call, since postgrest-js returns a new
+  // builder object from select()/insert()/update()/delete() rather than
+  // mutating itself in place.
+  let rawBuilder: any = initialRawBuilder;
   let isSingle = false;
   let isMaybeSingle = false;
   let eqFilters: { column: string; value: any }[] = [];
@@ -874,52 +933,52 @@ function createTasksRLSQueryBuilder(rawBuilder?: any) {
 
   const builder: any = {
     select: (_columns?: string) => {
-      if (rawBuilder) rawBuilder.select(_columns || '*');
+      if (rawBuilder) rawBuilder = rawBuilder.select(_columns || '*');
       return builder;
     },
     eq: (column: string, value: any) => {
       eqFilters.push({ column, value });
-      if (rawBuilder) rawBuilder.eq(column, value);
+      if (rawBuilder) rawBuilder = rawBuilder.eq(column, value);
       return builder;
     },
     neq: (column: string, value: any) => {
-      if (rawBuilder) rawBuilder.neq(column, value);
+      if (rawBuilder) rawBuilder = rawBuilder.neq(column, value);
       return builder;
     },
     in: (column: string, values: any[]) => {
-      if (rawBuilder) rawBuilder.in(column, values);
+      if (rawBuilder) rawBuilder = rawBuilder.in(column, values);
       return builder;
     },
     order: (column: string, options?: any) => {
-      if (rawBuilder) rawBuilder.order(column, options);
+      if (rawBuilder) rawBuilder = rawBuilder.order(column, options);
       return builder;
     },
     limit: (count: number) => {
-      if (rawBuilder) rawBuilder.limit(count);
+      if (rawBuilder) rawBuilder = rawBuilder.limit(count);
       return builder;
     },
     single: () => {
       isSingle = true;
-      if (rawBuilder) rawBuilder.single();
+      if (rawBuilder) rawBuilder = rawBuilder.single();
       return builder;
     },
     maybeSingle: () => {
       isMaybeSingle = true;
-      if (rawBuilder) rawBuilder.maybeSingle();
+      if (rawBuilder) rawBuilder = rawBuilder.maybeSingle();
       return builder;
     },
     update: (values: any) => {
       updatePayload = values;
-      if (rawBuilder) rawBuilder.update(values);
+      if (rawBuilder) rawBuilder = rawBuilder.update(values);
       return builder;
     },
     insert: (values: any) => {
       insertPayload = values;
-      if (rawBuilder) rawBuilder.insert(values);
+      if (rawBuilder) rawBuilder = rawBuilder.insert(values);
       return builder;
     },
     delete: () => {
-      if (rawBuilder) rawBuilder.delete();
+      if (rawBuilder) rawBuilder = rawBuilder.delete();
       return builder;
     },
     then: async (onfulfilled?: (value: any) => any, onrejected?: (reason: any) => any) => {
