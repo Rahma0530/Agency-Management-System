@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   FileText,
   UserCheck,
@@ -56,6 +56,236 @@ interface ServiceBriefsRoutingViewProps {
   onNavigateToModule?: (module: string) => void;
 }
 
+// AM roles (am_team_lead, am_agent) don't work a single service — they need visibility into
+// every service brief for the clients they manage, since AM owns the overall client relationship.
+// This is a distinct read-mostly view rather than a mode of the single-service workflow below:
+// it reuses ClientDashboard's existing "briefs" tab (which already lists every service_type brief
+// for a client) instead of duplicating per-service field rendering.
+const AMServiceBriefsPanel: React.FC<{
+  currentUser: UserRecord;
+  clients: ClientRecord[];
+  packages: PackageRecord[];
+  briefs: BriefRecord[];
+  assignments: AssignmentRecord[];
+  users: UserRecord[];
+  campaigns: CampaignRecord[];
+  tasks: TaskRecord[];
+  dailyLogs: DailyLogRecord[];
+  extraNotes: ExtraNoteRecord[];
+}> = ({ currentUser, clients, packages, briefs, assignments, users, campaigns, tasks, dailyLogs, extraNotes }) => {
+  const isTeamLead = currentUser.role === 'am_team_lead';
+
+  // AM visibility: team lead sees every client; agent sees only clients personally assigned to them
+  // (same rule as AMQueue.tsx's visibleClients — kept consistent rather than reinvented here).
+  const authorizedClients = useMemo(
+    () => (isTeamLead ? clients : clients.filter((c) => c.am_agent_id === currentUser.id)),
+    [clients, isTeamLead, currentUser.id]
+  );
+
+  const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const displayedClients = authorizedClients.filter(
+    (c) =>
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.industry || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const clientServices = (client: ClientRecord): ServiceType[] =>
+    packages.find((p) => p.id === client.package_id)?.services || [];
+
+  const clientBriefsDocumented = (client: ClientRecord) => {
+    const services = clientServices(client);
+    const documented = services.filter((s) => briefs.some((b) => b.client_id === client.id && b.service_type === s && b.version > 0));
+    return { documented: documented.length, total: services.length };
+  };
+
+  const totalBriefsDocumented = briefs.filter((b) => authorizedClients.some((c) => c.id === b.client_id) && b.version > 0).length;
+  const clientsMissingBriefs = authorizedClients.filter((c) => {
+    const { documented, total } = clientBriefsDocumented(c);
+    return total > 0 && documented < total;
+  }).length;
+
+  const activeDashboardClient = clients.find((c) => c.id === dashboardClientId) || null;
+
+  return (
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <div
+        className="p-5 rounded-2xl border relative overflow-hidden backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4"
+        style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-medium)' }}
+      >
+        <div className="flex items-center gap-3.5">
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-lg"
+            style={{ background: 'rgba(123, 47, 247, 0.25)', border: '1px solid var(--border-soft)', color: 'var(--purple-light)' }}
+          >
+            <Layers className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-white">Service Briefs — Cross-Team Overview</h2>
+              <span
+                className="text-[10px] px-2.5 py-0.5 rounded-full font-bold border"
+                style={{ background: 'rgba(123, 47, 247, 0.2)', color: 'var(--purple-light)', borderColor: 'var(--border-soft)' }}
+              >
+                {isTeamLead ? 'AM Team Lead' : 'AM Specialist'}
+              </span>
+            </div>
+            <p className="text-xs text-stone-400 mt-0.5">
+              {isTeamLead
+                ? 'Review every service brief across all clients managed by Account Management.'
+                : 'Review every service brief — SEO, Social Media, Media Buying — for your assigned client portfolio.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-800/40 text-xs text-purple-200 self-start md:self-center">
+          <Info className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+          <span>Read-only across all services — assignment stays with each service team lead</span>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-4 rounded-xl border" style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-soft)' }}>
+          <div className="text-[11px] text-stone-400 font-semibold">{isTeamLead ? 'Total Clients' : 'My Assigned Clients'}</div>
+          <div className="text-2xl font-bold text-white mt-1 font-mono">{authorizedClients.length}</div>
+        </div>
+        <div className="p-4 rounded-xl border" style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-soft)' }}>
+          <div className="text-[11px] text-stone-400 font-semibold">Briefs Documented</div>
+          <div className="text-2xl font-bold text-emerald-400 mt-1 font-mono">{totalBriefsDocumented}</div>
+        </div>
+        <div className="p-4 rounded-xl border" style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-soft)' }}>
+          <div className="text-[11px] text-stone-400 font-semibold">Clients Missing a Brief</div>
+          <div className="text-2xl font-bold text-amber-300 mt-1 font-mono">{clientsMissingBriefs}</div>
+        </div>
+      </div>
+
+      {/* Client List */}
+      <div className="rounded-2xl border overflow-hidden" style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-medium)' }}>
+        <div className="p-4 border-b border-purple-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-purple-400" />
+            <h3 className="text-sm font-bold text-white">Client Portfolio</h3>
+          </div>
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search clients or industry..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-stone-900/80 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-400"
+            />
+          </div>
+        </div>
+
+        {displayedClients.length === 0 ? (
+          <div className="p-8 text-center space-y-2">
+            <p className="text-xs text-stone-400">
+              {isTeamLead ? 'No matching clients found.' : 'No clients currently assigned to your account.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-purple-900/30 text-[11px] font-semibold text-stone-400 uppercase tracking-wider bg-black/20">
+                  <th className="py-3 px-4">Client Name</th>
+                  <th className="py-3 px-4">Industry</th>
+                  <th className="py-3 px-4">Subscribed Services</th>
+                  <th className="py-3 px-4">Briefs Documented</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-purple-900/20 text-xs">
+                {displayedClients.map((client) => {
+                  const services = clientServices(client);
+                  const { documented, total } = clientBriefsDocumented(client);
+                  return (
+                    <tr key={client.id} onClick={() => setDashboardClientId(client.id)} className="hover:bg-purple-950/30 transition-colors cursor-pointer group">
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-purple-900/30 border border-purple-700/30 flex items-center justify-center font-bold text-purple-300">
+                            {client.name.charAt(0)}
+                          </div>
+                          <span className="font-bold text-white group-hover:text-purple-300 transition-colors">{client.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 text-stone-300">{client.industry || 'General Business'}</td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-wrap gap-1">
+                          {services.map((s) => (
+                            <span
+                              key={s}
+                              className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider"
+                              style={{
+                                background:
+                                  s === 'media_buying' ? 'rgba(14, 165, 233, 0.2)' : s === 'seo' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(236, 72, 153, 0.2)',
+                                color: s === 'media_buying' ? '#38bdf8' : s === 'seo' ? '#34d399' : '#f472b6',
+                              }}
+                            >
+                              {s.replace('_', ' ')}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold inline-flex items-center gap-1"
+                          style={{
+                            background: documented >= total && total > 0 ? 'rgba(169, 245, 193, 0.15)' : 'rgba(245, 226, 154, 0.15)',
+                            color: documented >= total && total > 0 ? 'var(--roas-good)' : 'var(--roas-mid)',
+                          }}
+                        >
+                          <FileText className="w-3 h-3" />
+                          {documented}/{total}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDashboardClientId(client.id);
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-purple-200 bg-purple-900/40 hover:bg-purple-800/60 hover:text-white border border-purple-700/40 transition-all inline-flex items-center gap-1.5"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View Briefs</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* DEDICATED CLIENT DASHBOARD MODAL, opened straight to the Briefs tab */}
+      {activeDashboardClient && (
+        <ClientDashboard
+          client={activeDashboardClient}
+          packageRecord={packages.find((p) => p.id === activeDashboardClient.package_id)}
+          allPackages={packages}
+          users={users}
+          currentUser={currentUser}
+          briefs={briefs}
+          campaigns={campaigns}
+          tasks={tasks}
+          dailyLogs={dailyLogs}
+          extraNotes={extraNotes}
+          assignments={assignments}
+          initialTab="briefs"
+          onClose={() => setDashboardClientId(null)}
+        />
+      )}
+    </div>
+  );
+};
+
 export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> = ({
   currentUser,
   clients,
@@ -70,6 +300,25 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   onAssignServiceAgent,
   onNavigateToModule,
 }) => {
+  // AM roles get a dedicated cross-service overview instead of the single-service specialist
+  // workflow below (they manage the overall client relationship, not one department's queue).
+  if (currentUser.role === 'am_team_lead' || currentUser.role === 'am_agent') {
+    return (
+      <AMServiceBriefsPanel
+        currentUser={currentUser}
+        clients={clients}
+        packages={packages}
+        briefs={briefs}
+        assignments={assignments}
+        users={users}
+        campaigns={campaigns}
+        tasks={tasks}
+        dailyLogs={dailyLogs}
+        extraNotes={extraNotes}
+      />
+    );
+  }
+
   // Determine service and role context
   const getServiceContext = (role: UserRole) => {
     if (role === 'seo_team_lead' || role === 'seo_agent') {

@@ -50,6 +50,7 @@ interface ClientDashboardProps {
   dailyLogs: DailyLogRecord[];
   extraNotes: ExtraNoteRecord[];
   assignments: AssignmentRecord[];
+  initialTab?: DashboardTab;
   onClose: () => void;
   onSaveBrief?: (briefData: {
     client_id: string;
@@ -77,13 +78,14 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   dailyLogs,
   extraNotes,
   assignments,
+  initialTab,
   onClose,
   onSaveBrief,
   onAssignAMAgent,
   onUpdateTaskStatus,
   onCreateCampaign,
 }) => {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
   const [isAssigningAM, setIsAssigningAM] = useState(false);
   const [selectedAMId, setSelectedAMId] = useState(client.am_agent_id || '');

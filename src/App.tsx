@@ -30,6 +30,7 @@ import {
   DailyLogRecord,
   ExtraNoteRecord,
   CampaignRecord,
+  AssignmentRecord,
   ServiceType,
   UserRole,
   TaskStatus,
@@ -45,6 +46,7 @@ import {
   INITIAL_DAILY_LOGS,
   INITIAL_EXTRA_NOTES,
   INITIAL_CAMPAIGNS,
+  INITIAL_ASSIGNMENTS,
 } from './data/initialData';
 import {
   getRoleInfo,
@@ -59,6 +61,7 @@ import { CapacityManagement } from './components/CapacityManagement';
 import { CrossTeamTaskBoard } from './components/CrossTeamTaskBoard';
 import { DailyOperationsModule } from './components/DailyOperationsModule';
 import { CampaignManagementModule } from './components/CampaignManagementModule';
+import { ServiceBriefsRoutingView } from './components/ServiceBriefsRoutingView';
 import { SalesPortalView } from './components/SalesPortalView';
 import { AccessDenied } from './components/AccessDenied';
 import { RolePortalHeader } from './components/RolePortalHeader';
@@ -83,6 +86,7 @@ export default function App() {
   const [dailyLogs, setDailyLogs] = useState<DailyLogRecord[]>(INITIAL_DAILY_LOGS);
   const [extraNotes, setExtraNotes] = useState<ExtraNoteRecord[]>(INITIAL_EXTRA_NOTES);
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>(INITIAL_CAMPAIGNS);
+  const [assignments, setAssignments] = useState<AssignmentRecord[]>(INITIAL_ASSIGNMENTS);
 
   // Authenticated user state initialized from localStorage
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRecord | null>(() => {
@@ -347,6 +351,12 @@ export default function App() {
         if (!campaignErr && campaignData && campaignData.length > 0) {
           setCampaigns(campaignData as CampaignRecord[]);
         }
+
+        // Fetch assignments (service specialist delegation records)
+        const { data: assignmentData, error: assignmentErr } = await supabase.from('assignments').select('*');
+        if (!assignmentErr && assignmentData && assignmentData.length > 0) {
+          setAssignments(assignmentData as AssignmentRecord[]);
+        }
       } catch (err) {
         console.warn('Supabase query error, relying on local cached state:', err);
       }
@@ -427,6 +437,66 @@ export default function App() {
 
     const agent = users.find((u) => u.id === agentId);
     showNotification(`تم إسناد العميل لمسؤول إدارة الحسابات: ${agent?.name || agentId}`);
+  };
+
+  // إسناد أخصائي خدمة (SEO / سوشيال ميديا / ميديا باينج) لعميل من قِبل قائد الفريق المختص
+  const handleAssignServiceAgent = async (
+    clientId: string,
+    serviceType: ServiceType,
+    agentId: string,
+    reasonNotes?: string
+  ) => {
+    const existing = assignments.find((a) => a.client_id === clientId && a.service_type === serviceType);
+    const teamLeadId = users.find((u) => u.id === agentId)?.manager_id || currentUser.id;
+
+    if (existing) {
+      if (supabaseActive) {
+        try {
+          const { error } = await supabase
+            .from('assignments')
+            .update({ agent_id: agentId, reason_notes: reasonNotes || existing.reason_notes })
+            .eq('id', existing.id);
+          if (error) throw error;
+        } catch (err: any) {
+          console.error('Supabase assignment update error:', err);
+        }
+      }
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a.id === existing.id ? { ...a, agent_id: agentId, reason_notes: reasonNotes || a.reason_notes } : a
+        )
+      );
+    } else {
+      const newAssignment: AssignmentRecord = {
+        id: `asg-${Date.now().toString().slice(-4)}`,
+        client_id: clientId,
+        service_type: serviceType,
+        team_lead_id: teamLeadId,
+        agent_id: agentId,
+        assigned_at: new Date().toISOString(),
+        reason_notes: reasonNotes || null,
+      };
+
+      if (supabaseActive) {
+        try {
+          const { data, error } = await supabase.from('assignments').insert([newAssignment]).select();
+          if (error) throw error;
+          if (data && data[0]) {
+            setAssignments((prev) => [data[0] as AssignmentRecord, ...prev]);
+          } else {
+            setAssignments((prev) => [newAssignment, ...prev]);
+          }
+        } catch (err: any) {
+          console.error('Supabase assignment insert error:', err);
+          setAssignments((prev) => [newAssignment, ...prev]);
+        }
+      } else {
+        setAssignments((prev) => [newAssignment, ...prev]);
+      }
+    }
+
+    const agent = users.find((u) => u.id === agentId);
+    showNotification(`تم إسناد بريف الخدمة إلى الأخصائي: ${agent?.name || agentId}`);
   };
 
   // 3. حفظ نموذج البريف الديناميكي (SEO، سوشيال ميديا، ميديا باينج)
@@ -936,6 +1006,35 @@ export default function App() {
               </button>
             )}
 
+            {/* Tab: Service Briefs Routing (service teams + AM) */}
+            {userRoleInfo.allowedModules.includes('service_briefs') && (
+              <button
+                onClick={() => handleTabChange('service_briefs')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                  activeTab === 'service_briefs'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'service_briefs' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'service_briefs' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'service_briefs' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <Layers className="w-4 h-4" />
+                <span>Service Briefs</span>
+                <span
+                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  style={{
+                    background: activeTab === 'service_briefs' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(123, 47, 247, 0.25)',
+                    color: 'var(--white)',
+                  }}
+                >
+                  {briefs.length}
+                </span>
+              </button>
+            )}
+
             {/* Tab 2: Capacity Management */}
             {userRoleInfo.allowedModules.includes('capacity') && (
               <button
@@ -1141,6 +1240,25 @@ export default function App() {
                     onSaveBrief={handleSaveBrief}
                   />
                 )}
+              </div>
+            )}
+
+            {/* Tab: Service Briefs Routing (service teams review/assign; AM reviews across services) */}
+            {activeTab === 'service_briefs' && (
+              <div className="space-y-6">
+                <ServiceBriefsRoutingView
+                  currentUser={currentUser}
+                  clients={clients}
+                  packages={packages}
+                  briefs={briefs}
+                  assignments={assignments}
+                  users={users}
+                  campaigns={campaigns}
+                  tasks={tasks}
+                  dailyLogs={dailyLogs}
+                  extraNotes={extraNotes}
+                  onAssignServiceAgent={handleAssignServiceAgent}
+                />
               </div>
             )}
 
