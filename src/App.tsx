@@ -908,6 +908,16 @@ export default function App() {
               </span>
             </div>
 
+            {/* Global Refresh (moved here from the old nav bar — refreshes every module's data) */}
+            <button
+              onClick={loadData}
+              className="p-1.5 rounded-lg text-stone-300 hover:text-white transition-colors shrink-0"
+              style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-soft)' }}
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+
             {/* Authenticated Employee Badge & Portal Indicator */}
             <div
               className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border backdrop-blur-md shadow-sm"
@@ -967,21 +977,23 @@ export default function App() {
         </div>
       </header>
 
-      {/* Primary Navigation Tabs - Filtered strictly by Employee's Role Permissions */}
-      <div
-        className="border-b px-6 sticky top-[65px] z-30 backdrop-blur-md"
-        style={{
-          background: 'rgba(15, 12, 22, 0.95)',
-          borderColor: 'var(--border-soft)',
-        }}
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 overflow-x-auto py-2">
-          <nav className="flex items-center gap-2">
+      {/* Sidebar + Content shell. dir="ltr" pins the sidebar to the true visual left
+          regardless of the page's own RTL/LTR direction. */}
+      <div className="flex" dir="ltr">
+        {/* Left Sidebar Navigation - Filtered strictly by Employee's Role Permissions */}
+        <aside
+          className="w-60 shrink-0 border-r sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto backdrop-blur-md"
+          style={{
+            background: 'rgba(15, 12, 22, 0.95)',
+            borderColor: 'var(--border-soft)',
+          }}
+        >
+          <nav className="flex flex-col gap-1.5 p-4">
             {/* Tab 1: Onboarding & Briefs */}
             {userRoleInfo.allowedModules.includes('onboarding') && (
               <button
                 onClick={() => handleTabChange('onboarding')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'onboarding'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -992,10 +1004,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'onboarding' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <FileText className="w-4 h-4" />
-                <span>Client Onboarding</span>
+                <FileText className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Client Onboarding</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'onboarding' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(123, 47, 247, 0.25)',
                     color: 'var(--white)',
@@ -1010,7 +1022,7 @@ export default function App() {
             {userRoleInfo.allowedModules.includes('service_briefs') && (
               <button
                 onClick={() => handleTabChange('service_briefs')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'service_briefs'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -1021,10 +1033,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'service_briefs' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Layers className="w-4 h-4" />
-                <span>Service Briefs</span>
+                <Layers className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Service Briefs</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'service_briefs' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(123, 47, 247, 0.25)',
                     color: 'var(--white)',
@@ -1039,7 +1051,7 @@ export default function App() {
             {userRoleInfo.allowedModules.includes('capacity') && (
               <button
                 onClick={() => handleTabChange('capacity')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'capacity'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -1050,10 +1062,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'capacity' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Gauge className="w-4 h-4" />
-                <span>Capacity Management</span>
+                <Gauge className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Capacity Management</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'capacity' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(169, 245, 193, 0.2)',
                     color: activeTab === 'capacity' ? 'var(--white)' : 'var(--roas-good)',
@@ -1068,7 +1080,7 @@ export default function App() {
             {userRoleInfo.allowedModules.includes('tasks') && (
               <button
                 onClick={() => handleTabChange('tasks')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'tasks'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -1079,10 +1091,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'tasks' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Kanban className="w-4 h-4" />
-                <span>Task Board</span>
+                <Kanban className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Task Board</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'tasks' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(245, 226, 154, 0.2)',
                     color: activeTab === 'tasks' ? 'var(--white)' : 'var(--roas-mid)',
@@ -1097,7 +1109,7 @@ export default function App() {
             {userRoleInfo.allowedModules.includes('daily_operations') && (
               <button
                 onClick={() => handleTabChange('daily_operations')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'daily_operations'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -1108,15 +1120,15 @@ export default function App() {
                   border: `1px solid ${activeTab === 'daily_operations' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Clock className="w-4 h-4" />
-                <span>Daily Operations</span>
+                <Clock className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Daily Operations</span>
                 {blockedTasksCount > 0 ? (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-950 text-red-300 border border-red-500/40 font-mono">
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-950 text-red-300 border border-red-500/40 font-mono shrink-0">
                     {blockedTasksCount} blocked
                   </span>
                 ) : (
                   <span
-                    className="px-1.5 py-0.2 rounded-full text-[10px]"
+                    className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                     style={{
                       background: activeTab === 'daily_operations' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(169, 245, 193, 0.2)',
                       color: activeTab === 'daily_operations' ? 'var(--white)' : 'var(--roas-good)',
@@ -1132,7 +1144,7 @@ export default function App() {
             {userRoleInfo.allowedModules.includes('campaigns') && (
               <button
                 onClick={() => handleTabChange('campaigns')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'campaigns'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -1143,10 +1155,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'campaigns' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Target className="w-4 h-4" />
-                <span>Campaigns</span>
+                <Target className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Campaigns</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'campaigns' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(14, 165, 233, 0.2)',
                     color: activeTab === 'campaigns' ? 'var(--white)' : '#38bdf8',
@@ -1157,20 +1169,10 @@ export default function App() {
               </button>
             )}
           </nav>
+        </aside>
 
-          <button
-            onClick={loadData}
-            className="p-1.5 rounded-lg text-stone-300 hover:text-white transition-colors shrink-0"
-            style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-soft)' }}
-            title="Refresh data"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Main Workspace */}
-      <main className="max-w-7xl mx-auto px-6 pt-6 space-y-6">
+        {/* Main Workspace */}
+        <main className="flex-1 min-w-0 px-6 pt-6 space-y-6">
         {/* Floating Notification */}
         {notification && (
           <div
@@ -1328,7 +1330,8 @@ export default function App() {
             )}
           </>
         )}
-      </main>
+        </main>
+      </div>
 
       {/* Modal: Client Registration by Sales */}
       <ClientRegistrationModal
