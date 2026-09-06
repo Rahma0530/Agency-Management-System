@@ -423,7 +423,17 @@ function createSanitizedFetch(apiKey: string): typeof fetch {
   const selfBearer = `Bearer ${apiKey}`;
   return (input, init) => {
     const headers = new Headers(init?.headers);
-    if (headers.get('Authorization') === selfBearer) {
+    const authBefore = headers.get('Authorization');
+    const willStrip = authBefore === selfBearer;
+    // TEMPORARY DEBUG LOGGING — remove once the 401s are confirmed resolved.
+    const requestUrl =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    console.log('[supabase debug] fetch:', requestUrl, {
+      authBefore,
+      apikeyHeader: headers.get('apikey'),
+      willStrip,
+    });
+    if (willStrip) {
       headers.delete('Authorization');
     }
     return fetch(input, { ...init, headers });
