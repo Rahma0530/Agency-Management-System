@@ -369,7 +369,7 @@ export default function App() {
     loadData();
   }, [authenticatedUser, loadData]);
 
-  // 1. تسجيل عميل جديد من فريق المبيعات (مع تحويل تلقائي إلى Onboarding)
+  // 1. Register a new client from the Sales team (with automatic transfer to Onboarding)
   const handleRegisterClient = async (clientData: {
     name: string;
     industry: string;
@@ -383,9 +383,9 @@ export default function App() {
       name: clientData.name,
       industry: clientData.industry,
       package_id: clientData.package_id,
-      status: 'onboarding', // تحويل تلقائي فوري لقسم إدارة الحسابات
+      status: 'onboarding', // Immediate automatic transfer to Account Management
       sales_owner_id: currentUser.id,
-      am_agent_id: null, // بانتظار تعيين مدير الحساب
+      am_agent_id: null, // Awaiting Account Manager assignment
       am_team_lead_id: clientData.am_team_lead_id || 'usr-am-lead',
       contract_value: clientData.contract_value,
       start_date: clientData.start_date,
@@ -413,11 +413,11 @@ export default function App() {
     }
 
     showNotification(
-      `تم تسجيل العميل «${clientData.name}» وتحويله تلقائياً لقائمة انتظار مسؤول إدارة الحسابات بنجاح!`
+      `Client "${clientData.name}" registered and moved to the Account Management queue successfully!`
     );
   };
 
-  // 2. إسناد العميل لموظف إدارة حسابات (AM Agent)
+  // 2. Assign the client to an Account Manager (AM Agent)
   const handleAssignAMAgent = async (clientId: string, agentId: string) => {
     if (supabaseActive) {
       try {
@@ -436,10 +436,10 @@ export default function App() {
     );
 
     const agent = users.find((u) => u.id === agentId);
-    showNotification(`تم إسناد العميل لمسؤول إدارة الحسابات: ${agent?.name || agentId}`);
+    showNotification(`Client assigned to Account Manager: ${agent?.name || agentId}`);
   };
 
-  // إسناد أخصائي خدمة (SEO / سوشيال ميديا / ميديا باينج) لعميل من قِبل قائد الفريق المختص
+  // Assign a service specialist (SEO / Social Media / Media Buying) to a client, by that team's lead
   const handleAssignServiceAgent = async (
     clientId: string,
     serviceType: ServiceType,
@@ -496,10 +496,10 @@ export default function App() {
     }
 
     const agent = users.find((u) => u.id === agentId);
-    showNotification(`تم إسناد بريف الخدمة إلى الأخصائي: ${agent?.name || agentId}`);
+    showNotification(`Service brief assigned to specialist: ${agent?.name || agentId}`);
   };
 
-  // 3. حفظ نموذج البريف الديناميكي (SEO، سوشيال ميديا، ميديا باينج)
+  // 3. Save the dynamic brief form (SEO, Social Media, Media Buying)
   const handleSaveBrief = async (briefData: {
     client_id: string;
     service_type: ServiceType;
@@ -568,10 +568,10 @@ export default function App() {
     }
 
     setBriefs(updatedBriefs);
-    showNotification('تم توثيق وحفظ البريف كنسخة رسمية في قاعدة البيانات بنجاح.');
+    showNotification('Brief documented and saved as an official version successfully.');
   };
 
-  // 4. تحديث السعة القصوى للموظف (Capacity Limit)
+  // 4. Update the employee's capacity limit
   const handleUpdateUserCapacity = async (userId: string, newLimit: number) => {
     if (supabaseActive) {
       try {
@@ -588,10 +588,10 @@ export default function App() {
       prev.map((u) => (u.id === userId ? { ...u, capacity_limit: newLimit } : u))
     );
 
-    showNotification('تم تحديث السعة الاستيعابية للموظف بنجاح.');
+    showNotification('Employee capacity limit updated successfully.');
   };
 
-  // تسجيل قراءة سعة استيعابية جديدة
+  // Log a new capacity reading
   const handleLogCapacity = async (newLog: CapacityLogRecord) => {
     if (supabaseActive) {
       try {
@@ -601,10 +601,10 @@ export default function App() {
       }
     }
     setCapacityLogs((prev) => [newLog, ...prev]);
-    showNotification('تم توثيق قراءة السعة الاستيعابية بنجاح.');
+    showNotification('Capacity reading logged successfully.');
   };
 
-  // 5. تحديث حالة المهمة في اللوحة المشتركة
+  // 5. Update task status on the shared board
   const handleUpdateTaskStatus = async (taskId: string, newStatus: TaskStatus) => {
     if (supabaseActive) {
       try {
@@ -621,10 +621,10 @@ export default function App() {
       prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
     );
 
-    showNotification('تم نقل حالة المهمة وتحديث اللوحة المشتركة.');
+    showNotification('Task status moved and the shared board updated.');
   };
 
-  // تحديث تفاصيل وساعات المهمة
+  // Update task details and hours
   const handleUpdateTask = async (taskId: string, updates: Partial<TaskRecord>) => {
     if (supabaseActive) {
       try {
@@ -641,10 +641,10 @@ export default function App() {
       prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
     );
 
-    showNotification('تم تحديث بيانات المهمة بنجاح.');
+    showNotification('Task data updated successfully.');
   };
 
-  // 6. إضافة مهمة مشتركة جديدة
+  // 6. Add a new shared task
   const handleCreateTask = async (taskData: {
     client_id: string;
     title: string;
@@ -690,10 +690,10 @@ export default function App() {
       setTasks((prev) => [newTaskPayload, ...prev]);
     }
 
-    showNotification(`تمت إضافة المهمة «${taskData.title}» إلى لوحة المهام المشتركة بنجاح!`);
+    showNotification(`Task "${taskData.title}" added to the shared task board successfully!`);
   };
 
-  // 7. توثيق تقرير النشاط اليومي (Daily Log)
+  // 7. Document a daily activity report (Daily Log)
   const handleCreateDailyLog = async (logData: {
     user_id: string;
     date: string;
@@ -726,10 +726,10 @@ export default function App() {
       setDailyLogs((prev) => [newLogPayload, ...prev]);
     }
 
-    showNotification('تم تسجيل وحفظ تقرير النشاط اليومي في قاعدة البيانات بنجاح.');
+    showNotification('Daily activity report logged and saved successfully.');
   };
 
-  // 8. توثيق ملاحظة إضافية أو تعثر (Extra Notes)
+  // 8. Document an extra note or blocker (Extra Notes)
   const handleCreateExtraNote = async (noteData: {
     user_id: string;
     date: string;
@@ -763,16 +763,16 @@ export default function App() {
     }
   };
 
-  // 9. إنشاء وتحديث الحملات الإعلانية (Campaign Management)
+  // 9. Create and update ad campaigns (Campaign Management)
   const handleCreateCampaign = async (campaignData: Partial<CampaignRecord>) => {
     const newId = `cmp-${Date.now().toString().slice(-4)}`;
     const newRecord: CampaignRecord = {
       id: newId,
       client_id: campaignData.client_id || '',
-      name: campaignData.name || 'حملة إعلانية ممولة',
+      name: campaignData.name || 'Sponsored Ad Campaign',
       platform: campaignData.platform || 'meta',
       campaign_id_external: campaignData.campaign_id_external || null,
-      objective: campaignData.objective || 'التحويلات والمبيعات',
+      objective: campaignData.objective || 'Conversions & Sales',
       status: campaignData.status || 'active',
       budget: campaignData.budget || 0,
       spend: campaignData.spend || 0,
@@ -802,7 +802,7 @@ export default function App() {
       setCampaigns((prev) => [newRecord, ...prev]);
     }
 
-    showNotification(`تم إنشاء وتفعيل الحملة «${newRecord.name}» بنجاح!`);
+    showNotification(`Campaign "${newRecord.name}" created and activated successfully!`);
   };
 
   const handleUpdateCampaign = async (id: string, updates: Partial<CampaignRecord>) => {
@@ -819,7 +819,7 @@ export default function App() {
       prev.map((c) => (c.id === id ? { ...c, ...updates, results: { ...(c.results || {}), ...(updates.results || {}) } } : c))
     );
 
-    showNotification('تم تحديث بيانات الحملة الإعلانية بنجاح.');
+    showNotification('Campaign data updated successfully.');
   };
 
   // Stats for badge counters
@@ -839,7 +839,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen text-[#e9d9fb] pb-16 font-['Tajawal',sans-serif]" dir="rtl" style={{ background: 'var(--gradient-page)' }}>
+    <div className="min-h-screen text-[#e9d9fb] pb-16" dir="ltr" style={{ background: 'var(--gradient-page)' }}>
       {/* Top Navigation Bar adhering to Kesra Brand Identity */}
       <header
         className="sticky top-0 z-40 backdrop-blur-md px-6 py-3.5 border-b"
@@ -880,7 +880,7 @@ export default function App() {
                     border: '1px solid var(--border-soft)',
                   }}
                 >
-                  نظام تشغيلي
+                  Operational System
                 </span>
               </div>
               <p className="text-xs" style={{ color: 'var(--grey)' }}>
@@ -977,9 +977,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Sidebar + Content shell. dir="ltr" pins the sidebar to the true visual left
-          regardless of the page's own RTL/LTR direction. */}
-      <div className="flex" dir="ltr">
+      {/* Sidebar + Content shell */}
+      <div className="flex">
         {/* Left Sidebar Navigation - Filtered strictly by Employee's Role Permissions */}
         <aside
           className="w-60 shrink-0 border-r sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto backdrop-blur-md"
@@ -1191,7 +1190,7 @@ export default function App() {
               onClick={() => setNotification(null)}
               className="text-stone-400 hover:text-white text-xs px-2 py-0.5 rounded"
             >
-              إغلاق
+              Close
             </button>
           </div>
         )}

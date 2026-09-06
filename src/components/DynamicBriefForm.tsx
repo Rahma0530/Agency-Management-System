@@ -53,7 +53,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'حدث خطأ أثناء حفظ البريف');
+      setErrorMsg(err?.message || 'An error occurred while saving the brief');
     } finally {
       setIsSaving(false);
     }
@@ -75,11 +75,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   const getServiceLabel = () => {
     switch (serviceType) {
       case 'seo':
-        return 'تحسين محركات البحث (SEO)';
+        return 'Search Engine Optimization (SEO)';
       case 'social_media':
-        return 'إدارة منصات التواصل (Social Media)';
+        return 'Social Media Management';
       case 'media_buying':
-        return 'الحملات الإعلانية الممولة (Media Buying)';
+        return 'Paid Advertising (Media Buying)';
       default:
         return serviceType;
     }
@@ -105,7 +105,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h4 className="font-bold text-sm" style={{ color: 'var(--white)' }}>
-                نموذج بريف: {getServiceLabel()}
+                Brief Form: {getServiceLabel()}
               </h4>
               <span
                 className="text-[11px] px-2.5 py-0.5 rounded-full font-medium"
@@ -115,11 +115,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
                   border: '1px solid var(--border-lilac)',
                 }}
               >
-                النسخة v{currentVersion}
+                Version v{currentVersion}
               </span>
             </div>
             <p className="text-xs mt-0.5" style={{ color: 'var(--grey)' }}>
-              العميل: {clientName} — يُعبأ بواسطة موظف إدارة الحسابات (AM Agent)
+              Client: {clientName} — filled in by the Account Manager (AM Agent)
             </p>
           </div>
         </div>
@@ -138,7 +138,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
               }`}
             >
               <Edit3 className="w-3.5 h-3.5" />
-              نموذج التحرير
+              Edit Form
             </button>
             <button
               onClick={() => setActiveView('spreadsheet')}
@@ -149,7 +149,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
               }`}
             >
               <Table className="w-3.5 h-3.5" />
-              عرض جدولي (Spreadsheet)
+              Spreadsheet View
             </button>
           </div>
 
@@ -165,7 +165,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
             }}
           >
             <Save className="w-3.5 h-3.5" />
-            {isSaving ? 'جارٍ الحفظ...' : 'حفظ كنسخة جديدة'}
+            {isSaving ? 'Saving...' : 'Save as New Version'}
           </button>
         </div>
       </div>
@@ -186,7 +186,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
           style={{ background: 'rgba(169, 245, 193, 0.15)', border: '1px solid var(--roas-good)', color: 'var(--roas-good)' }}
         >
           <CheckCircle2 className="w-4 h-4 shrink-0" />
-          تم حفظ وتوثيق البريف في قاعدة البيانات بنجاح (النسخة v{existingBrief ? currentVersion + 1 : 1})
+          Brief saved and documented successfully (Version v{existingBrief ? currentVersion + 1 : 1})
         </div>
       )}
 
@@ -197,7 +197,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  رابط الموقع الإلكتروني (Website URL)
+                  Website URL
                 </label>
                 <input
                   type="text"
@@ -215,11 +215,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  المنصة البرمجية / CMS
+                  CMS Platform
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: WordPress, Shopify, Next.js, Custom PHP..."
+                  placeholder="Example: WordPress, Shopify, Next.js, Custom PHP..."
                   value={formData.cms_platform || ''}
                   onChange={(e) => handleFieldChange('cms_platform', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -233,11 +233,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الكلمات المفتاحية المستهدفة مبدئياً (Target Keywords)
+                  Target Keywords
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="اكتب الكلمات مفصولة بفاصلة أو أسطر جديدة..."
+                  placeholder="Enter keywords separated by commas or new lines..."
                   value={formData.target_keywords || ''}
                   onChange={(e) => handleFieldChange('target_keywords', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -251,11 +251,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  النطاق الجغرافي المستهدف (Geo-Targeting)
+                  Geo-Targeting
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: السعودية (الرياض، جدة)، الإمارات..."
+                  placeholder="Example: Saudi Arabia (Riyadh, Jeddah), UAE..."
                   value={formData.target_locations || ''}
                   onChange={(e) => handleFieldChange('target_locations', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -269,11 +269,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الزيارات العضوية الحالية التقديرية (Current Traffic)
+                  Current Organic Traffic (Estimated)
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: 5,000 زائر شهرياً"
+                  placeholder="Example: 5,000 visitors/month"
                   value={formData.current_organic_traffic || ''}
                   onChange={(e) => handleFieldChange('current_organic_traffic', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -287,11 +287,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  روابط المنافسين المباشرين (Competitor URLs)
+                  Competitor URLs
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="أدخل روابط المنافسين..."
+                  placeholder="Enter competitor URLs..."
                   value={formData.competitor_urls || ''}
                   onChange={(e) => handleFieldChange('competitor_urls', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -305,11 +305,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الأهداف الاستراتيجية لخدمة SEO (Primary Goals)
+                  Primary Goals
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="ما هي النتائج المتوقعة التي تم الاتفاق عليها مع العميل؟"
+                  placeholder="What outcomes were agreed upon with the client?"
                   value={formData.primary_goals || ''}
                   onChange={(e) => handleFieldChange('primary_goals', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -327,11 +327,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  المنصات المطلوب إدارتها (Social Channels)
+                  Social Channels
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: Instagram, TikTok, LinkedIn, X"
+                  placeholder="Example: Instagram, TikTok, LinkedIn, X"
                   value={Array.isArray(formData.social_channels) ? formData.social_channels.join(', ') : formData.social_channels || ''}
                   onChange={(e) => handleFieldChange('social_channels', e.target.value.split(',').map((s) => s.trim()))}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -345,11 +345,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  نبرة الصوت والهوية الكلامية (Tone of Voice)
+                  Tone of Voice
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: فخم وراقي، ودي ومرح، رسمي وتثقيفي..."
+                  placeholder="Example: Premium and elegant, friendly and playful, formal and informative..."
                   value={formData.brand_tone || ''}
                   onChange={(e) => handleFieldChange('brand_tone', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -363,11 +363,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  معدل النشر المستهدف أسبوعياً
+                  Target Weekly Posting Frequency
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: 5 بوستات + 1 ريلز + ستوريز يومية"
+                  placeholder="Example: 5 posts + 1 reel + daily stories"
                   value={formData.posting_frequency || ''}
                   onChange={(e) => handleFieldChange('posting_frequency', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -381,7 +381,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  رابط ملفات البراند والمحتوى (Google Drive / Assets)
+                  Brand & Content Assets Link (Google Drive / Assets)
                 </label>
                 <input
                   type="text"
@@ -399,11 +399,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الجمهور المستهدف والفئة العمرية (Target Demographics)
+                  Target Demographics
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="توصيف دقيق للشريحة المستهدفة واهتماماتها..."
+                  placeholder="Precise description of the target segment and their interests..."
                   value={formData.target_demographics || ''}
                   onChange={(e) => handleFieldChange('target_demographics', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -417,11 +417,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الأعمدة والمحاور الرئيسية للمحتوى (Content Pillars)
+                  Content Pillars
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="مثال: تعليمي وتثقيفي (40%)، تجاري وترويجي (30%)، تفاعلي ومسابقات (30%)"
+                  placeholder="Example: Educational (40%), promotional (30%), interactive & contests (30%)"
                   value={formData.content_pillars || ''}
                   onChange={(e) => handleFieldChange('content_pillars', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -439,11 +439,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  المنصات الإعلانية المستهدفة (Ad Platforms)
+                  Ad Platforms
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: Meta Ads, Google Ads, TikTok, Snapchat"
+                  placeholder="Example: Meta Ads, Google Ads, TikTok, Snapchat"
                   value={Array.isArray(formData.ad_platforms) ? formData.ad_platforms.join(', ') : formData.ad_platforms || ''}
                   onChange={(e) => handleFieldChange('ad_platforms', e.target.value.split(',').map((s) => s.trim()))}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -457,11 +457,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الميزانية الإعلانية الشهرية المتوقعة (Ad Spend Budget)
+                  Ad Spend Budget (Monthly)
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: 40,000 ريال شهرياً"
+                  placeholder="Example: SAR 40,000/month"
                   value={formData.monthly_ad_budget || ''}
                   onChange={(e) => handleFieldChange('monthly_ad_budget', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -475,11 +475,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  مؤشر العائد على الإنفاق الإعلاني المستهدف (Target ROAS)
+                  Target ROAS
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: 3.5x أو 4.0x"
+                  placeholder="Example: 3.5x or 4.0x"
                   value={formData.target_roas || ''}
                   onChange={(e) => handleFieldChange('target_roas', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -493,11 +493,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  هدف التحويل الأساسي (Conversion Goal)
+                  Primary Conversion Goal
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: مبيعات متجر، رسائل واتساب، ليدات محتملة..."
+                  placeholder="Example: Store sales, WhatsApp messages, qualified leads..."
                   value={formData.primary_conversion_goal || ''}
                   onChange={(e) => handleFieldChange('primary_conversion_goal', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -511,11 +511,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  حالة صلاحيات الحسابات الإعلانية والبيكسل (Pixel & Ad Accounts Access)
+                  Pixel & Ad Accounts Access
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: تم إرسال الشراكة مع Business Manager، والبيكسل مفعل على المتجر"
+                  placeholder="Example: Business Manager partnership sent, pixel is active on the store"
                   value={formData.ad_accounts_access_status || ''}
                   onChange={(e) => handleFieldChange('ad_accounts_access_status', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -529,11 +529,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  تفاصيل الجماهير والاستهداف الديموغرافي
+                  Audience Details & Demographic Targeting
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="الاهتمامات، الاستبعاد، الجماهير المشابهة (Lookalike) المطلوبة..."
+                  placeholder="Interests, exclusions, Lookalike audiences needed..."
                   value={formData.target_audiences || ''}
                   onChange={(e) => handleFieldChange('target_audiences', e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
@@ -556,10 +556,10 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
             <thead>
               <tr style={{ background: 'rgba(59, 21, 96, 0.4)', borderBottom: '1px solid var(--border-soft)' }}>
                 <th className="p-3 font-bold" style={{ color: 'var(--purple-light)', width: '30%' }}>
-                  الحقل الاستراتيجي (Field)
+                  Field
                 </th>
                 <th className="p-3 font-bold" style={{ color: 'var(--white)' }}>
-                  القيمة المسجلة بالبريف (Value)
+                  Recorded Value
                 </th>
               </tr>
             </thead>
@@ -567,7 +567,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
               {Object.keys(formData).length === 0 ? (
                 <tr>
                   <td colSpan={2} className="p-6 text-center text-stone-400">
-                    لم يتم إدخال بيانات بعد في هذا البريف. قم بالتبديل إلى «نموذج التحرير» لتعبئة الحقول.
+                    No data entered yet for this brief. Switch to "Edit Form" to fill in the fields.
                   </td>
                 </tr>
               ) : (

@@ -324,9 +324,9 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
       const nextStatus = statusOrder[currentIndex + 1];
       try {
         await onUpdateTaskStatus(taskId, nextStatus);
-        showNotification(`تم تحديث حالة المهمة إلى «${getStatusLabel(nextStatus)}» بنجاح.`);
+        showNotification(`Task status updated to "${getStatusLabel(nextStatus)}".`);
       } catch (err) {
-        showNotification('حدث خطأ أثناء تحديث حالة المهمة.', 'error');
+        showNotification('An error occurred while updating the task status.', 'error');
       }
     }
   };
@@ -334,9 +334,9 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
   const handleQuickStatusChange = async (taskId: string, targetStatus: TaskStatus) => {
     try {
       await onUpdateTaskStatus(taskId, targetStatus);
-      showNotification(`تم تغيير حالة المهمة إلى «${getStatusLabel(targetStatus)}».`);
+      showNotification(`Task status changed to "${getStatusLabel(targetStatus)}".`);
     } catch (err) {
-      showNotification('تعذر تحديث حالة المهمة.', 'error');
+      showNotification('Unable to update task status.', 'error');
     }
   };
 
@@ -347,7 +347,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
 
     try {
       const newDesc = blockerReason.trim()
-        ? `[تعثر/Blocker: ${blockerReason.trim()}] ${blockerModalTask.description || ''}`
+        ? `[Blocker: ${blockerReason.trim()}] ${blockerModalTask.description || ''}`
         : blockerModalTask.description;
 
       await onUpdateTask(blockerModalTask.id, {
@@ -360,16 +360,16 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
         await onCreateExtraNote({
           user_id: currentUser.id,
           date: todayStr,
-          note_text: `تعثر المهمة «${blockerModalTask.title}»: ${blockerReason.trim()}`,
+          note_text: `Task blocked: "${blockerModalTask.title}" — ${blockerReason.trim()}`,
           category: 'blocker',
         });
       }
 
       setBlockerModalTask(null);
       setBlockerReason('');
-      showNotification('تم توثيق التعثر وتحويل حالة المهمة إلى متعثرة (Blocked).', 'info');
+      showNotification('Blocker documented and task marked as Blocked.', 'info');
     } catch (err) {
-      showNotification('فشل توثيق التعثر.', 'error');
+      showNotification('Failed to document the blocker.', 'error');
     }
   };
 
@@ -379,9 +379,9 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
       await onUpdateTask(task.id, {
         status: 'in_progress',
       });
-      showNotification(`تم حل التعثر واستئناف العمل على المهمة «${task.title}».`, 'success');
+      showNotification(`Blocker resolved — work resumed on "${task.title}".`, 'success');
     } catch (err) {
-      showNotification('تعذر فك التعثر.', 'error');
+      showNotification('Unable to resolve the blocker.', 'error');
     }
   };
 
@@ -395,9 +395,9 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
       });
       setTimeLoggingTaskId(null);
       setAdditionalHours(1);
-      showNotification(`تم تسجيل ${additionalHours} ساعة إضافية للمهمة بنجاح.`);
+      showNotification(`Logged ${additionalHours} additional hour(s) for the task.`);
     } catch (err) {
-      showNotification('حدث خطأ في تسجيل الساعات.', 'error');
+      showNotification('An error occurred while logging hours.', 'error');
     }
   };
 
@@ -418,9 +418,9 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
       setDailySummary('');
       setSelectedLinkedTasks([]);
       setIsLoggingDailyActivity(false);
-      showNotification('تم توثيق تقرير النشاط اليومي (Daily Log) في قاعدة البيانات بنجاح.');
+      showNotification('Daily activity log saved successfully.');
     } catch (err) {
-      showNotification('تعذر حفظ النشاط اليومي.', 'error');
+      showNotification('Unable to save the daily activity.', 'error');
     } finally {
       setIsSubmittingLog(false);
     }
@@ -429,11 +429,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
   // Helper Labels & Colors
   const getStatusLabel = (status: TaskStatus) => {
     switch (status) {
-      case 'todo': return 'قيد الانتظار';
-      case 'in_progress': return 'قيد التنفيذ';
-      case 'in_review': return 'قيد المراجعة';
-      case 'completed': return 'مكتملة';
-      case 'blocked': return 'متعثرة (Blocked)';
+      case 'todo': return 'To Do';
+      case 'in_progress': return 'In Progress';
+      case 'in_review': return 'In Review';
+      case 'completed': return 'Completed';
+      case 'blocked': return 'Blocked';
       default: return status;
     }
   };
@@ -457,13 +457,13 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
   const getPriorityBadge = (priority: TaskPriority) => {
     switch (priority) {
       case 'urgent':
-        return { label: 'عاجل جداً', bg: 'rgba(245, 163, 163, 0.2)', text: 'var(--roas-bad)', border: 'rgba(245, 163, 163, 0.4)' };
+        return { label: 'Urgent', bg: 'rgba(245, 163, 163, 0.2)', text: 'var(--roas-bad)', border: 'rgba(245, 163, 163, 0.4)' };
       case 'high':
-        return { label: 'مرتفع', bg: 'rgba(235, 94, 40, 0.2)', text: '#fb923c', border: 'rgba(235, 94, 40, 0.3)' };
+        return { label: 'High', bg: 'rgba(235, 94, 40, 0.2)', text: '#fb923c', border: 'rgba(235, 94, 40, 0.3)' };
       case 'medium':
-        return { label: 'متوسط', bg: 'rgba(245, 226, 154, 0.15)', text: 'var(--roas-mid)', border: 'rgba(245, 226, 154, 0.3)' };
+        return { label: 'Medium', bg: 'rgba(245, 226, 154, 0.15)', text: 'var(--roas-mid)', border: 'rgba(245, 226, 154, 0.3)' };
       case 'low':
-        return { label: 'عادي', bg: 'rgba(168, 155, 184, 0.15)', text: 'var(--grey)', border: 'rgba(168, 155, 184, 0.25)' };
+        return { label: 'Low', bg: 'rgba(168, 155, 184, 0.15)', text: 'var(--grey)', border: 'rgba(168, 155, 184, 0.25)' };
     }
   };
 
@@ -529,7 +529,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-white">العمليات اليومية وتنفيذ المهام (Daily Operations)</h2>
+              <h2 className="text-base font-bold text-white">Daily Operations & Task Execution</h2>
               <span
                 className="text-[10px] px-2 py-0.5 rounded-full font-bold"
                 style={{
@@ -538,11 +538,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   border: '1px solid rgba(169, 245, 193, 0.3)',
                 }}
               >
-                تاريخ اليوم: {todayStr}
+                Today: {todayStr}
               </span>
             </div>
             <p className="text-xs text-stone-400 mt-0.5">
-              تنظيم أولويات اليوم • متابعة الساعات المنجزة • توثيق السجلات اليومية والمعوقات
+              Organize today's priorities • Track logged hours • Document daily activity and blockers
             </p>
           </div>
         </div>
@@ -551,7 +551,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-900/80 border border-stone-800 text-xs">
             <User className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-stone-400 text-[11px]">الموظف النشط:</span>
+            <span className="text-stone-400 text-[11px]">Active Employee:</span>
             {isManagerOrLead ? (
               <select
                 value={selectedEmployeeId}
@@ -575,7 +575,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
             style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
           >
             <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
-            <span>توثيق نشاط اليوم</span>
+            <span>Log Today's Activity</span>
           </button>
         </div>
       </div>
@@ -591,10 +591,10 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           }`}
         >
           <Calendar className="w-3.5 h-3.5" />
-          <span>عرض يوم العمل (Daily Work View)</span>
+          <span>Daily Work View</span>
           {overdueTasks.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-950/80 text-red-400 border border-red-500/40 font-mono">
-              {overdueTasks.length} متأخرة
+              {overdueTasks.length} overdue
             </span>
           )}
         </button>
@@ -608,7 +608,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           }`}
         >
           <CheckSquare className="w-3.5 h-3.5" />
-          <span>مهامي (My Tasks)</span>
+          <span>My Tasks</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-stone-800 text-stone-300 font-mono">
             {employeeTasks.length}
           </span>
@@ -623,7 +623,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           }`}
         >
           <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
-          <span>المعوقات والتعثر (Blockers Hub)</span>
+          <span>Blockers Hub</span>
           {allVisibleBlockers.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-900 text-red-200 font-bold font-mono">
               {allVisibleBlockers.length}
@@ -640,7 +640,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           }`}
         >
           <FileText className="w-3.5 h-3.5" />
-          <span>سجل النشاط اليومي (Daily Logs)</span>
+          <span>Daily Logs</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-stone-800 text-stone-300 font-mono">
             {relevantDailyLogs.length}
           </span>
@@ -656,9 +656,9 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           }`}
         >
           <Users className="w-3.5 h-3.5 text-purple-400" />
-          <span>إشراف رئيس الفريق (Manager View)</span>
+          <span>Manager View</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-950 text-purple-300 border border-purple-800 font-mono">
-            {teamMembers.length} أعضاء
+            {teamMembers.length} members
           </span>
         </button>
       </div>
@@ -676,12 +676,12 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
             >
               <div className="flex items-center justify-between text-stone-400">
-                <span className="text-[11px] font-semibold">إجمالي ساعات العمل اليوم</span>
+                <span className="text-[11px] font-semibold">Total Hours Today</span>
                 <Timer className="w-3.5 h-3.5 text-purple-400" />
               </div>
               <div className="mt-2">
-                <p className="text-2xl font-bold text-white">{todayWorkloadHours} <span className="text-xs font-normal text-stone-400">ساعة</span></p>
-                <p className="text-[10px] text-stone-400 mt-0.5">مقابل سعة استيعابية: {effectiveEmployee.capacity_limit || 8} مهام</p>
+                <p className="text-2xl font-bold text-white">{todayWorkloadHours} <span className="text-xs font-normal text-stone-400">hrs</span></p>
+                <p className="text-[10px] text-stone-400 mt-0.5">Against capacity: {effectiveEmployee.capacity_limit || 8} tasks</p>
               </div>
             </div>
 
@@ -691,12 +691,12 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
             >
               <div className="flex items-center justify-between text-stone-400">
-                <span className="text-[11px] font-semibold">قيد التنفيذ حالياً</span>
+                <span className="text-[11px] font-semibold">Currently In Progress</span>
                 <PlayCircle className="w-3.5 h-3.5 text-purple-400" />
               </div>
               <div className="mt-2">
                 <p className="text-2xl font-bold text-purple-300">{inProgressTasks.length}</p>
-                <p className="text-[10px] text-stone-400 mt-0.5">مهام جارية على مكتبك</p>
+                <p className="text-[10px] text-stone-400 mt-0.5">Active tasks on your desk</p>
               </div>
             </div>
 
@@ -708,12 +708,12 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
             >
               <div className="flex items-center justify-between text-stone-400">
-                <span className="text-[11px] font-semibold">المتأخر (Overdue)</span>
+                <span className="text-[11px] font-semibold">Overdue</span>
                 <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
               </div>
               <div className="mt-2">
                 <p className="text-2xl font-bold text-red-400">{overdueTasks.length}</p>
-                <p className="text-[10px] text-red-400/80 mt-0.5">تحتاج تدخلاً وإنجازاً فورياً</p>
+                <p className="text-[10px] text-red-400/80 mt-0.5">Needs immediate attention</p>
               </div>
             </div>
 
@@ -723,7 +723,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
             >
               <div className="flex items-center justify-between text-stone-400">
-                <span className="text-[11px] font-semibold">أولويات قصوى وعاجلة</span>
+                <span className="text-[11px] font-semibold">Urgent & High Priority</span>
                 <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
               </div>
               <div className="mt-2">
@@ -738,12 +738,12 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
             >
               <div className="flex items-center justify-between text-stone-400">
-                <span className="text-[11px] font-semibold">المتعثرة (Blocked)</span>
+                <span className="text-[11px] font-semibold">Blocked</span>
                 <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
               </div>
               <div className="mt-2">
                 <p className="text-2xl font-bold text-rose-300">{blockedEmployeeTasks.length}</p>
-                <p className="text-[10px] text-stone-400 mt-0.5">بانتظار العميل أو الإدارة</p>
+                <p className="text-[10px] text-stone-400 mt-0.5">Awaiting client or management</p>
               </div>
             </div>
           </div>
@@ -757,10 +757,10 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
                   <AlertTriangle className="w-4 h-4 animate-pulse" />
-                  <span>مهام متأخرة عن موعد استحقاقها (يجب معالجتها فوراً)</span>
+                  <span>Tasks past their due date — needs immediate attention</span>
                 </div>
                 <span className="text-[11px] text-red-400/90 font-mono">
-                  {overdueTasks.length} مهام متأخرة
+                  {overdueTasks.length} overdue tasks
                 </span>
               </div>
 
@@ -790,28 +790,28 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                           </h4>
                           <p className="text-[11px] text-stone-400 flex items-center gap-1.5 mt-1">
                             <Building2 className="w-3 h-3 text-purple-400" />
-                            <span>{client ? client.name : 'عميل غير محدد'}</span>
+                            <span>{client ? client.name : 'Unassigned client'}</span>
                           </p>
                         </div>
                         <span className="text-[10px] font-mono font-bold text-red-400 bg-red-950/60 px-2 py-1 rounded border border-red-500/40 shrink-0">
-                          استحقاق: {task.due_date}
+                          Due: {task.due_date}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between pt-2 border-t border-stone-800 text-[11px]">
-                        <span className="text-stone-400">المقدر: {task.estimated_hours || 0} س • الفعلي: {task.actual_hours || 0} س</span>
+                        <span className="text-stone-400">Est: {task.estimated_hours || 0}h • Actual: {task.actual_hours || 0}h</span>
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => handleAdvanceStatus(task.id, task.status)}
                             className="px-2.5 py-1 rounded bg-purple-600/30 text-purple-200 hover:bg-purple-600/50 font-semibold text-[11px] transition-colors"
                           >
-                            متابعة الحالة
+                            Advance Status
                           </button>
                           <button
                             onClick={() => setBlockerModalTask(task)}
                             className="px-2.5 py-1 rounded bg-red-950/80 text-red-400 hover:bg-red-900/80 font-semibold text-[11px] transition-colors"
                           >
-                            تسجيل تعثر
+                            Report Blocker
                           </button>
                         </div>
                       </div>
@@ -832,16 +832,16 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               <div className="flex items-center justify-between pb-2 border-b border-stone-800">
                 <div className="flex items-center gap-2">
                   <PlayCircle className="w-4 h-4 text-purple-400" />
-                  <h3 className="text-xs font-bold text-white">ما الذي يجب إنجازه اليوم وترتيب الأولويات</h3>
+                  <h3 className="text-xs font-bold text-white">What to do today, in priority order</h3>
                 </div>
-                <span className="text-[11px] text-stone-400">مرتبة تنازلياً حسب الأولوية وتاريخ الاستحقاق</span>
+                <span className="text-[11px] text-stone-400">Sorted by priority, then due date</span>
               </div>
 
               {sortedEmployeeTasks.filter((t) => t.status !== 'completed').length === 0 ? (
                 <div className="p-8 text-center text-stone-400 text-xs border border-dashed border-stone-800 rounded-xl">
                   <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2 opacity-80" />
-                  <p className="font-bold text-white text-sm">ممتاز! لا توجد مهام نشطة معلقة لك اليوم.</p>
-                  <p className="text-stone-400 mt-1">جميع مهامك مسجلة كمكتملة أو في قائمة الانتظار العامة.</p>
+                  <p className="font-bold text-white text-sm">All clear! No active tasks pending for you today.</p>
+                  <p className="text-stone-400 mt-1">All your tasks are completed or sitting in the general queue.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -871,7 +871,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                                 className="px-2 py-0.5 rounded text-[10px] font-bold"
                                 style={{ background: teamColor.bg, color: teamColor.text }}
                               >
-                                {task.team || 'فريق تنفيذي'}
+                                {task.team || 'General Team'}
                               </span>
                               <span
                                 className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
@@ -881,7 +881,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                               </span>
                               {overdue && (
                                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400">
-                                  متأخرة
+                                  Overdue
                                 </span>
                               )}
                             </div>
@@ -896,15 +896,15 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                             <div className="flex flex-wrap items-center gap-3 text-[11px] text-stone-400">
                               <span className="flex items-center gap-1">
                                 <Building2 className="w-3 h-3 text-purple-400" />
-                                <span>{client ? client.name : 'عميل غير محدد'}</span>
+                                <span>{client ? client.name : 'Unassigned client'}</span>
                               </span>
                               <span className="flex items-center gap-1 font-mono">
                                 <Calendar className="w-3 h-3 text-stone-400" />
-                                <span>الاستحقاق: {task.due_date || 'غير محدد'}</span>
+                                <span>Due: {task.due_date || 'Not set'}</span>
                               </span>
                               <span className="flex items-center gap-1 font-mono">
                                 <Timer className="w-3 h-3 text-purple-300" />
-                                <span>المقدر: {task.estimated_hours || 0} س • الفعلي: {task.actual_hours || 0} س</span>
+                                <span>Est: {task.estimated_hours || 0}h • Actual: {task.actual_hours || 0}h</span>
                               </span>
                             </div>
                           </div>
@@ -915,7 +915,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                             <button
                               onClick={() => setTimeLoggingTaskId(task.id)}
                               className="p-1.5 rounded-lg bg-stone-800 text-stone-300 hover:text-white hover:bg-stone-700 transition-colors"
-                              title="تسجيل ساعات عمل فعلية"
+                              title="Log actual hours worked"
                             >
                               <Clock className="w-3.5 h-3.5" />
                             </button>
@@ -926,7 +926,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                                 onClick={() => handleAdvanceStatus(task.id, task.status)}
                                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600/30 text-purple-200 hover:bg-purple-600/50 transition-colors flex items-center gap-1"
                               >
-                                <span>نقل الحالة</span>
+                                <span>Advance Status</span>
                                 <ChevronLeft className="w-3.5 h-3.5" />
                               </button>
                             )}
@@ -937,13 +937,13 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                                 onClick={() => handleResolveBlocker(task)}
                                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900 border border-emerald-500/40 transition-colors"
                               >
-                                حل التعثر
+                                Resolve Blocker
                               </button>
                             ) : (
                               <button
                                 onClick={() => setBlockerModalTask(task)}
                                 className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 text-red-400 hover:bg-red-950/60 transition-colors"
-                                title="الإبلاغ عن عائق"
+                                title="Report a blocker"
                               >
                                 <ShieldAlert className="w-3.5 h-3.5" />
                               </button>
@@ -953,7 +953,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                               onClick={() => setSelectedTaskDetails(task)}
                               className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-800 text-stone-300 hover:text-white transition-colors"
                             >
-                              التفاصيل
+                              Details
                             </button>
                           </div>
                         </div>
@@ -972,20 +972,20 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               >
                 <div className="flex items-center gap-2 text-xs font-bold text-white">
                   <CheckSquare className="w-4 h-4 text-purple-400" />
-                  <span>توجيهات العمل اليومي</span>
+                  <span>Daily Work Guidance</span>
                 </div>
                 <div className="space-y-2 text-xs text-stone-300 leading-relaxed">
                   <p className="flex items-start gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
-                    <span>ابدأ بإنجاز المهام المتأخرة والمهام المصنفة <strong>عاجل جداً</strong> لتفادي تعطيل باقي الفرق.</span>
+                    <span>Start with overdue tasks and anything marked <strong>Urgent</strong> to avoid holding up other teams.</span>
                   </p>
                   <p className="flex items-start gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
-                    <span>سجل الساعات الفعلية عند الانتهاء من العمل لتحديث مؤشرات الإنتاجية الفردية.</span>
+                    <span>Log actual hours when you finish work to keep individual productivity metrics up to date.</span>
                   </p>
                   <p className="flex items-start gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
-                    <span>في حال واجهت أي مانع يمنع إكمال المهمة (مثل عدم رد العميل أو نقص الصلاحيات)، سجلها كـ <strong>Blocked</strong> فوراً.</span>
+                    <span>If anything blocks a task (e.g. no client response or missing permissions), mark it <strong>Blocked</strong> immediately.</span>
                   </p>
                 </div>
 
@@ -995,7 +995,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                     className="w-full py-2 rounded-xl text-xs font-bold text-center text-white transition-all shadow-md hover:opacity-90"
                     style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
                   >
-                    تسجيل ملخص نشاطك اليومي
+                    Log Your Daily Summary
                   </button>
                 </div>
               </div>
@@ -1008,16 +1008,16 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                 <div className="flex items-center justify-between text-xs font-bold text-white">
                   <div className="flex items-center gap-2">
                     <Timer className="w-4 h-4 text-purple-400" />
-                    <span>الساعات الموثقة</span>
+                    <span>Logged Hours</span>
                   </div>
                   <span className="text-[11px] text-stone-400 font-mono">
-                    {totalActualHoursLogged} / {totalActiveEstimatedHours} س
+                    {totalActualHoursLogged} / {totalActiveEstimatedHours}h
                   </span>
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[11px] text-stone-400">
-                    <span>نسبة إنجاز الساعات المقدرة:</span>
+                    <span>Estimated hours completed:</span>
                     <span className="font-bold text-white">
                       {totalActiveEstimatedHours > 0
                         ? Math.round((totalActualHoursLogged / totalActiveEstimatedHours) * 100)
@@ -1057,14 +1057,14 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           >
             {/* Search */}
             <div>
-              <label className="text-[11px] font-semibold text-stone-400 block mb-1">بحث في مهامك:</label>
+              <label className="text-[11px] font-semibold text-stone-400 block mb-1">Search your tasks:</label>
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute right-3 top-2.5 text-stone-500" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="ابحث بالعنوان أو العميل..."
+                  placeholder="Search by title or client..."
                   className="w-full pr-8 pl-3 py-1.5 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-500"
                 />
               </div>
@@ -1072,34 +1072,34 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
 
             {/* Status Filter */}
             <div>
-              <label className="text-[11px] font-semibold text-stone-400 block mb-1">الحالة التشغيلية:</label>
+              <label className="text-[11px] font-semibold text-stone-400 block mb-1">Status:</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full px-3 py-1.5 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
               >
-                <option value="all" className="bg-stone-900 text-white">جميع الحالات ({sortedEmployeeTasks.length})</option>
-                <option value="todo" className="bg-stone-900 text-white">قيد الانتظار (To Do)</option>
-                <option value="in_progress" className="bg-stone-900 text-white">قيد التنفيذ (In Progress)</option>
-                <option value="in_review" className="bg-stone-900 text-white">قيد المراجعة (In Review)</option>
-                <option value="completed" className="bg-stone-900 text-white">مكتملة (Completed)</option>
-                <option value="blocked" className="bg-stone-900 text-white">متعثرة (Blocked)</option>
+                <option value="all" className="bg-stone-900 text-white">All Statuses ({sortedEmployeeTasks.length})</option>
+                <option value="todo" className="bg-stone-900 text-white">To Do</option>
+                <option value="in_progress" className="bg-stone-900 text-white">In Progress</option>
+                <option value="in_review" className="bg-stone-900 text-white">In Review</option>
+                <option value="completed" className="bg-stone-900 text-white">Completed</option>
+                <option value="blocked" className="bg-stone-900 text-white">Blocked</option>
               </select>
             </div>
 
             {/* Priority Filter */}
             <div>
-              <label className="text-[11px] font-semibold text-stone-400 block mb-1">مستوى الأولوية:</label>
+              <label className="text-[11px] font-semibold text-stone-400 block mb-1">Priority Level:</label>
               <select
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
                 className="w-full px-3 py-1.5 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
               >
-                <option value="all" className="bg-stone-900 text-white">جميع الأولويات</option>
-                <option value="urgent" className="bg-stone-900 text-white">عاجل جداً (Urgent)</option>
-                <option value="high" className="bg-stone-900 text-white">مرتفع (High)</option>
-                <option value="medium" className="bg-stone-900 text-white">متوسط (Medium)</option>
-                <option value="low" className="bg-stone-900 text-white">عادي (Low)</option>
+                <option value="all" className="bg-stone-900 text-white">All Priorities</option>
+                <option value="urgent" className="bg-stone-900 text-white">Urgent</option>
+                <option value="high" className="bg-stone-900 text-white">High</option>
+                <option value="medium" className="bg-stone-900 text-white">Medium</option>
+                <option value="low" className="bg-stone-900 text-white">Low</option>
               </select>
             </div>
 
@@ -1113,7 +1113,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                 }}
                 className="w-full py-1.5 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-300 transition-colors"
               >
-                إعادة ضبط التصفية
+                Reset Filters
               </button>
             </div>
           </div>
@@ -1127,22 +1127,22 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               <table className="w-full text-right text-xs">
                 <thead className="bg-stone-900/90 text-stone-300 border-b border-stone-800">
                   <tr>
-                    <th className="p-3.5">المهمة (Task)</th>
-                    <th className="p-3.5">العميل (Client)</th>
-                    <th className="p-3.5">الفريق والخدمة</th>
-                    <th className="p-3.5 text-center">الأولوية</th>
-                    <th className="p-3.5 text-center">تاريخ الاستحقاق</th>
-                    <th className="p-3.5 text-center">الساعات المقدرة</th>
-                    <th className="p-3.5 text-center">الساعات الفعلية</th>
-                    <th className="p-3.5 text-center">الحالة</th>
-                    <th className="p-3.5 text-center">الإجراءات</th>
+                    <th className="p-3.5">Task</th>
+                    <th className="p-3.5">Client</th>
+                    <th className="p-3.5">Team & Service</th>
+                    <th className="p-3.5 text-center">Priority</th>
+                    <th className="p-3.5 text-center">Due Date</th>
+                    <th className="p-3.5 text-center">Est. Hours</th>
+                    <th className="p-3.5 text-center">Actual Hours</th>
+                    <th className="p-3.5 text-center">Status</th>
+                    <th className="p-3.5 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-800/60">
                   {filteredEmployeeTasks.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="p-8 text-center text-stone-400">
-                        لا توجد مهام مطابقة لمعايير البحث للموظف المختار.
+                        No tasks match the current search criteria for the selected employee.
                       </td>
                     </tr>
                   ) : (
@@ -1179,7 +1179,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                               className="px-2 py-0.5 rounded text-[10px] font-bold"
                               style={{ background: teamColor.bg, color: teamColor.text }}
                             >
-                              {task.team || 'فريق عام'}
+                              {task.team || 'General Team'}
                             </span>
                           </td>
 
@@ -1205,11 +1205,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                           </td>
 
                           <td className="p-3.5 text-center font-mono text-stone-300">
-                            {task.estimated_hours || 0} س
+                            {task.estimated_hours || 0}h
                           </td>
 
                           <td className="p-3.5 text-center font-mono text-stone-300">
-                            {task.actual_hours || 0} س
+                            {task.actual_hours || 0}h
                           </td>
 
                           <td className="p-3.5 text-center">
@@ -1233,18 +1233,18 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                                 onChange={(e) => handleQuickStatusChange(task.id, e.target.value as TaskStatus)}
                                 className="px-2 py-1 rounded bg-stone-900 border border-stone-800 text-[11px] text-white focus:outline-none"
                               >
-                                <option value="todo" className="bg-stone-900 text-white">قيد الانتظار</option>
-                                <option value="in_progress" className="bg-stone-900 text-white">قيد التنفيذ</option>
-                                <option value="in_review" className="bg-stone-900 text-white">قيد المراجعة</option>
-                                <option value="completed" className="bg-stone-900 text-white">مكتملة</option>
-                                <option value="blocked" className="bg-stone-900 text-white">متعثرة (Blocked)</option>
+                                <option value="todo" className="bg-stone-900 text-white">To Do</option>
+                                <option value="in_progress" className="bg-stone-900 text-white">In Progress</option>
+                                <option value="in_review" className="bg-stone-900 text-white">In Review</option>
+                                <option value="completed" className="bg-stone-900 text-white">Completed</option>
+                                <option value="blocked" className="bg-stone-900 text-white">Blocked</option>
                               </select>
 
                               {/* Quick Time Log Button */}
                               <button
                                 onClick={() => setTimeLoggingTaskId(task.id)}
                                 className="p-1 rounded bg-stone-800 text-stone-300 hover:text-white"
-                                title="تسجيل ساعات"
+                                title="Log hours"
                               >
                                 <Clock className="w-3.5 h-3.5" />
                               </button>
@@ -1275,14 +1275,14 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                 <ShieldAlert className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">مركز إدارة المعوقات التشغيلية (Blockers Hub)</h3>
+                <h3 className="text-sm font-bold text-white">Blockers Hub</h3>
                 <p className="text-xs text-stone-400 mt-0.5">
-                  رصد المهام المتوقفة عن التنفيذ بسبب عوائق خارجية أو تقنية، والعمل مع الإدارة على حلها
+                  Track tasks stalled by external or technical obstacles, and work with management to resolve them
                 </p>
               </div>
             </div>
             <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-950 text-red-400 border border-red-500/40 font-mono">
-              {allVisibleBlockers.length} مهام متعثرة
+              {allVisibleBlockers.length} blocked tasks
             </span>
           </div>
 
@@ -1292,9 +1292,9 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               style={{ background: 'var(--gradient-card)' }}
             >
               <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2 opacity-90" />
-              <h4 className="text-sm font-bold text-white">لا توجد أي مهام متعثرة حالياً!</h4>
+              <h4 className="text-sm font-bold text-white">No blocked tasks right now!</h4>
               <p className="text-xs text-stone-400 mt-1">
-                جميع العمليات تسير بشكل انسيابي دون أي معوقات معلقة.
+                Everything is running smoothly with no pending blockers.
               </p>
             </div>
           ) : (
@@ -1318,7 +1318,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                           {priority.label}
                         </span>
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-950 text-red-400 border border-red-500/40">
-                          متعثرة (Blocked)
+                          Blocked
                         </span>
                       </div>
 
@@ -1330,8 +1330,8 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                       </h4>
 
                       <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-500/30 text-[11px] text-red-300 leading-relaxed">
-                        <p className="font-semibold text-red-200 mb-0.5">سبب التعثر المسجل:</p>
-                        <p className="line-clamp-3">{task.description || 'لم يتم كتابة تفاصيل التعثر.'}</p>
+                        <p className="font-semibold text-red-200 mb-0.5">Recorded blocker reason:</p>
+                        <p className="line-clamp-3">{task.description || 'No blocker details recorded.'}</p>
                       </div>
 
                       <div className="space-y-1 text-[11px] text-stone-400 pt-1">
@@ -1341,11 +1341,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                         </p>
                         <p className="flex items-center gap-1.5">
                           <User className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                          <span>المسؤول: {assignee ? assignee.name : 'غير مسند'}</span>
+                          <span>Assignee: {assignee ? assignee.name : 'Unassigned'}</span>
                         </p>
                         <p className="flex items-center gap-1.5 font-mono">
                           <Calendar className="w-3.5 h-3.5 text-stone-500 shrink-0" />
-                          <span>تاريخ الاستحقاق: {task.due_date || 'غير محدد'}</span>
+                          <span>Due: {task.due_date || 'Not set'}</span>
                         </p>
                       </div>
                     </div>
@@ -1355,7 +1355,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                         onClick={() => setSelectedTaskDetails(task)}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-800 hover:bg-stone-700 text-stone-300 transition-colors"
                       >
-                        عرض التفاصيل
+                        View Details
                       </button>
 
                       <button
@@ -1363,7 +1363,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                         className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/50 border border-emerald-500/40 transition-colors flex items-center gap-1.5"
                       >
                         <Check className="w-3.5 h-3.5" />
-                        <span>حل التعثر واستئناف</span>
+                        <span>Resolve & Resume</span>
                       </button>
                     </div>
                   </div>
@@ -1386,10 +1386,10 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
             <div>
               <h3 className="text-xs font-bold text-white flex items-center gap-2">
                 <FileText className="w-4 h-4 text-purple-400" />
-                <span>سجل النشاط واليوميات التشغيلية (Daily Logs & Standup)</span>
+                <span>Daily Logs & Standup</span>
               </h3>
               <p className="text-xs text-stone-400 mt-0.5">
-                توثيق إنجازات العمل اليومية، المهام المنجزة، وملاحظات التنسيق بين الموظف ورؤساء الفرق
+                Document daily work accomplished, completed tasks, and coordination notes between employees and team leads
               </p>
             </div>
 
@@ -1399,7 +1399,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
             >
               <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
-              <span>إضافة تقرير يومي جديد</span>
+              <span>Add New Daily Report</span>
             </button>
           </div>
 
@@ -1410,8 +1410,8 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               style={{ background: 'var(--gradient-card)' }}
             >
               <FileText className="w-8 h-8 text-stone-600 mx-auto mb-2" />
-              <h4 className="text-xs font-bold text-white">لا توجد تقارير نشاط يومي سابقة مسجلة للموظف المختار.</h4>
-              <p className="text-xs text-stone-400 mt-1">انقر على الزر أعلاه لتدوين ملخص إنجازات اليوم.</p>
+              <h4 className="text-xs font-bold text-white">No previous daily activity reports recorded for the selected employee.</h4>
+              <p className="text-xs text-stone-400 mt-1">Click the button above to log a summary of today's work.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1432,12 +1432,12 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                         >
                           {logUser?.name.charAt(0) || 'U'}
                         </div>
-                        <span className="font-bold text-white">{logUser?.name || 'موظف'}</span>
+                        <span className="font-bold text-white">{logUser?.name || 'Employee'}</span>
                         <span className="text-stone-400 text-[11px]">({logUser?.team || logUser?.role})</span>
                       </div>
 
                       <span className="text-[11px] font-mono text-purple-300 bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-800">
-                        التاريخ: {log.date}
+                        Date: {log.date}
                       </span>
                     </div>
 
@@ -1449,7 +1449,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                       <div className="pt-2 border-t border-stone-800/80">
                         <p className="text-[11px] text-stone-400 font-semibold mb-1.5 flex items-center gap-1.5">
                           <CheckSquare className="w-3.5 h-3.5 text-purple-400" />
-                          <span>المهام المرتبطة بهذا التقرير:</span>
+                          <span>Tasks linked to this report:</span>
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {linkedTasksList.map((lt) => (
@@ -1485,14 +1485,14 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
             <div>
               <h3 className="text-xs font-bold text-white flex items-center gap-2">
                 <Users className="w-4 h-4 text-purple-400" />
-                <span>لوحة إشراف رئيس الفريق (Team Lead / Manager Overview)</span>
+                <span>Team Lead / Manager Overview</span>
               </h3>
               <p className="text-xs text-stone-400 mt-0.5">
-                مراقبة أداء الموظفين، توزيع أعباء العمل (Workload)، حصر المهام المتأخرة، وإزالة المعوقات التشغيلية
+                Monitor employee performance, workload distribution, overdue tasks, and clear operational blockers
               </p>
             </div>
             <span className="text-xs text-stone-400 bg-stone-900 px-3 py-1 rounded-xl border border-stone-800">
-              الدور الفعلي: <strong className="text-purple-300">{currentUser.role}</strong>
+              Current Role: <strong className="text-purple-300">{currentUser.role}</strong>
             </span>
           </div>
 
@@ -1532,15 +1532,15 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                             : 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
                         }`}
                       >
-                        {item.rate}% إشغال
+                        {item.rate}% load
                       </span>
                     </div>
 
                     {/* Progress Bar */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[10px] text-stone-400">
-                        <span>المهام النشطة: {item.activeCount} / {item.limit}</span>
-                        <span>الساعات الموزعة: {item.totalEstimated} س</span>
+                        <span>Active tasks: {item.activeCount} / {item.limit}</span>
+                        <span>Allocated hours: {item.totalEstimated}h</span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-stone-950 overflow-hidden border border-stone-800">
                         <div
@@ -1560,19 +1560,19 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                     {/* Metric Badges Grid */}
                     <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
                       <div className="p-2 rounded-xl bg-stone-900 border border-stone-800">
-                        <p className="text-[10px] text-stone-400">مكتملة</p>
+                        <p className="text-[10px] text-stone-400">Completed</p>
                         <p className="text-sm font-bold text-emerald-400 mt-0.5">{item.completedCount}</p>
                       </div>
 
                       <div className={`p-2 rounded-xl border ${item.overdueCount > 0 ? 'bg-red-950/40 border-red-500/40' : 'bg-stone-900 border-stone-800'}`}>
-                        <p className="text-[10px] text-stone-400">متأخرة</p>
+                        <p className="text-[10px] text-stone-400">Overdue</p>
                         <p className={`text-sm font-bold mt-0.5 ${item.overdueCount > 0 ? 'text-red-400' : 'text-stone-300'}`}>
                           {item.overdueCount}
                         </p>
                       </div>
 
                       <div className={`p-2 rounded-xl border ${item.blockedCount > 0 ? 'bg-amber-950/40 border-amber-500/40' : 'bg-stone-900 border-stone-800'}`}>
-                        <p className="text-[10px] text-stone-400">معوقات</p>
+                        <p className="text-[10px] text-stone-400">Blocked</p>
                         <p className={`text-sm font-bold mt-0.5 ${item.blockedCount > 0 ? 'text-amber-400' : 'text-stone-300'}`}>
                           {item.blockedCount}
                         </p>
@@ -1589,7 +1589,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                       }}
                       className="w-full py-1.5 rounded-lg text-xs font-semibold bg-stone-800 hover:bg-stone-700 text-purple-300 transition-colors flex items-center justify-center gap-1"
                     >
-                      <span>استعراض مهام الموظف</span>
+                      <span>View Employee Tasks</span>
                       <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -1651,7 +1651,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               {/* Task Description */}
               {selectedTaskDetails.description && (
                 <div className="p-3.5 rounded-xl bg-stone-900/80 border border-stone-800 text-xs text-stone-300 leading-relaxed">
-                  <span className="font-bold text-stone-400 block mb-1">وصف المهمة والمخرجات المطلوبة:</span>
+                  <span className="font-bold text-stone-400 block mb-1">Task description and required deliverables:</span>
                   <p className="whitespace-pre-wrap">{selectedTaskDetails.description}</p>
                 </div>
               )}
@@ -1664,21 +1664,21 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                 return (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="p-3 rounded-xl bg-stone-900/60 border border-stone-800 text-xs space-y-1">
-                      <span className="text-stone-400 text-[11px] block">العميل المرتبط:</span>
+                      <span className="text-stone-400 text-[11px] block">Linked Client:</span>
                       <p className="font-bold text-white text-sm flex items-center gap-1.5">
                         <Building2 className="w-3.5 h-3.5 text-purple-400" />
-                        <span>{client ? client.name : 'غير محدد'}</span>
+                        <span>{client ? client.name : 'Not set'}</span>
                       </p>
-                      <p className="text-[11px] text-stone-400">مجال العمل: {client?.industry || '—'}</p>
+                      <p className="text-[11px] text-stone-400">Industry: {client?.industry || '—'}</p>
                     </div>
 
                     <div className="p-3 rounded-xl bg-stone-900/60 border border-stone-800 text-xs space-y-1">
-                      <span className="text-stone-400 text-[11px] block">الموظف المسند إليه:</span>
+                      <span className="text-stone-400 text-[11px] block">Assigned Employee:</span>
                       <p className="font-bold text-white text-sm flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5 text-purple-400" />
-                        <span>{assignee ? assignee.name : 'غير مسند'}</span>
+                        <span>{assignee ? assignee.name : 'Unassigned'}</span>
                       </p>
-                      <p className="text-[11px] text-stone-400">الفريق: {selectedTaskDetails.team || '—'}</p>
+                      <p className="text-[11px] text-stone-400">Team: {selectedTaskDetails.team || '—'}</p>
                     </div>
                   </div>
                 );
@@ -1687,22 +1687,22 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               {/* Dates & Hours Tracker */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                 <div className="p-2.5 rounded-xl bg-stone-900/60 border border-stone-800">
-                  <span className="text-[10px] text-stone-400 block">تاريخ الاستحقاق</span>
+                  <span className="text-[10px] text-stone-400 block">Due Date</span>
                   <span className="font-bold text-white font-mono">{selectedTaskDetails.due_date || '—'}</span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-stone-900/60 border border-stone-800">
-                  <span className="text-[10px] text-stone-400 block">الساعات المقدرة</span>
-                  <span className="font-bold text-purple-300 font-mono">{selectedTaskDetails.estimated_hours || 0} س</span>
+                  <span className="text-[10px] text-stone-400 block">Est. Hours</span>
+                  <span className="font-bold text-purple-300 font-mono">{selectedTaskDetails.estimated_hours || 0}h</span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-stone-900/60 border border-stone-800">
-                  <span className="text-[10px] text-stone-400 block">الساعات الفعلية</span>
-                  <span className="font-bold text-emerald-400 font-mono">{selectedTaskDetails.actual_hours || 0} س</span>
+                  <span className="text-[10px] text-stone-400 block">Actual Hours</span>
+                  <span className="font-bold text-emerald-400 font-mono">{selectedTaskDetails.actual_hours || 0}h</span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-stone-900/60 border border-stone-800">
-                  <span className="text-[10px] text-stone-400 block">تاريخ الإنشاء</span>
+                  <span className="text-[10px] text-stone-400 block">Created On</span>
                   <span className="font-bold text-stone-300 font-mono text-[10px]">
                     {selectedTaskDetails.created_at ? selectedTaskDetails.created_at.split('T')[0] : '—'}
                   </span>
@@ -1718,11 +1718,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-white flex items-center gap-1.5">
                         <FileText className="w-3.5 h-3.5 text-purple-400" />
-                        <span>بيانات البريف المرتبط بالعميل (Linked Brief)</span>
+                        <span>Linked Brief</span>
                       </span>
                       {linkedBrief && (
                         <span className="text-[10px] text-stone-400 font-mono">
-                          الإصدار {linkedBrief.version} • {linkedBrief.service_type}
+                          Version {linkedBrief.version} • {linkedBrief.service_type}
                         </span>
                       )}
                     </div>
@@ -1740,7 +1740,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                       </div>
                     ) : (
                       <p className="text-xs text-stone-500 py-1">
-                        لا يوجد بريف تفصيلي مسجل لهذا العميل بعد.
+                        No detailed brief recorded for this client yet.
                       </p>
                     )}
                   </div>
@@ -1749,7 +1749,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
 
               {/* Status Update & Blocker Actions */}
               <div className="p-3.5 rounded-xl bg-stone-900/80 border border-stone-800 space-y-2">
-                <span className="text-xs font-bold text-white block">تعديل مرحلة المهمة:</span>
+                <span className="text-xs font-bold text-white block">Update task stage:</span>
                 <div className="flex flex-wrap gap-2">
                   {(['todo', 'in_progress', 'in_review', 'completed'] as TaskStatus[]).map((st) => (
                     <button
@@ -1757,7 +1757,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                       onClick={async () => {
                         await onUpdateTaskStatus(selectedTaskDetails.id, st);
                         setSelectedTaskDetails({ ...selectedTaskDetails, status: st });
-                        showNotification(`تم تغيير الحالة إلى «${getStatusLabel(st)}».`);
+                        showNotification(`Status changed to "${getStatusLabel(st)}".`);
                       }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                         selectedTaskDetails.status === st
@@ -1776,7 +1776,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                     }}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-950/80 text-red-400 hover:bg-red-900 transition-colors border border-red-500/40 mr-auto"
                   >
-                    تسجيل المهمة كـ Blocked
+                    Mark Task as Blocked
                   </button>
                 </div>
               </div>
@@ -1788,7 +1788,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                 onClick={() => setSelectedTaskDetails(null)}
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-800 hover:bg-stone-700 text-white transition-colors"
               >
-                إغلاق
+                Close
               </button>
             </div>
           </div>
@@ -1807,7 +1807,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
             <div className="flex items-start justify-between pb-3 border-b border-stone-800">
               <div className="flex items-center gap-2 text-red-400">
                 <ShieldAlert className="w-5 h-5" />
-                <h3 className="text-sm font-bold text-white">تسجيل تعثر للمهمة (Report Blocker)</h3>
+                <h3 className="text-sm font-bold text-white">Report Blocker</h3>
               </div>
               <button
                 onClick={() => setBlockerModalTask(null)}
@@ -1819,20 +1819,20 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
 
             <form onSubmit={handleConfirmBlocker} className="space-y-4">
               <div className="p-3 rounded-xl bg-stone-900 border border-stone-800 text-xs">
-                <p className="text-stone-400 text-[11px]">المهمة المراد توثيق تعثرها:</p>
+                <p className="text-stone-400 text-[11px]">Task to document as blocked:</p>
                 <p className="font-bold text-white text-sm mt-0.5">{blockerModalTask.title}</p>
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-stone-300 block mb-1.5">
-                  سبب التعثر بالتفصيل (ما الذي يمنع الاستمرار؟):
+                  Blocker reason in detail (what's preventing progress?):
                 </label>
                 <textarea
                   rows={4}
                   required
                   value={blockerReason}
                   onChange={(e) => setBlockerReason(e.target.value)}
-                  placeholder="مثال: بانتظار العميل لتسليم صلاحيات الوصول إلى الحساب الإعلاني / نقص المحتوى..."
+                  placeholder="Example: Waiting on client to provide ad account access / missing content..."
                   className="w-full p-3 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-red-500"
                 />
               </div>
@@ -1843,13 +1843,13 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   onClick={() => setBlockerModalTask(null)}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-stone-400 hover:text-white"
                 >
-                  إلغاء
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-5 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all"
                 >
-                  تأكيد توثيق التعثر (Mark as Blocked)
+                  Confirm — Mark as Blocked
                 </button>
               </div>
             </form>
@@ -1869,7 +1869,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
             <div className="flex items-start justify-between pb-3 border-b border-stone-800">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-purple-400" />
-                <h3 className="text-sm font-bold text-white">توثيق النشاط اليومي (Daily Activity Log)</h3>
+                <h3 className="text-sm font-bold text-white">Daily Activity Log</h3>
               </div>
               <button
                 onClick={() => setIsLoggingDailyActivity(false)}
@@ -1882,7 +1882,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
             <form onSubmit={handleSubmitDailyLog} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-stone-400 block mb-1">الموظف:</label>
+                  <label className="text-[11px] font-semibold text-stone-400 block mb-1">Employee:</label>
                   <input
                     type="text"
                     disabled
@@ -1891,7 +1891,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-stone-400 block mb-1">تاريخ التقرير:</label>
+                  <label className="text-[11px] font-semibold text-stone-400 block mb-1">Report Date:</label>
                   <input
                     type="date"
                     required
@@ -1904,14 +1904,14 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
 
               <div>
                 <label className="text-xs font-semibold text-stone-300 block mb-1.5">
-                  ملخص ما تم إنجازه اليوم والخطوات التالية:
+                  Summary of today's work and next steps:
                 </label>
                 <textarea
                   rows={4}
                   required
                   value={dailySummary}
                   onChange={(e) => setDailySummary(e.target.value)}
-                  placeholder="اكتب ملخصاً للمهام التي عملت عليها اليوم، المخرجات، والتحديات..."
+                  placeholder="Write a summary of the tasks you worked on today, deliverables, and challenges..."
                   className="w-full p-3 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-500"
                 />
               </div>
@@ -1919,11 +1919,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               {/* Linked Tasks Checkboxes */}
               <div>
                 <label className="text-xs font-semibold text-stone-300 block mb-1.5">
-                  ربط المهام التي تم العمل عليها (Linked Tasks):
+                  Link tasks you worked on:
                 </label>
                 <div className="max-h-36 overflow-y-auto p-2.5 rounded-xl bg-stone-900/90 border border-stone-800 space-y-1.5">
                   {sortedEmployeeTasks.length === 0 ? (
-                    <p className="text-xs text-stone-500">لا توجد مهام مسندة للموظف.</p>
+                    <p className="text-xs text-stone-500">No tasks assigned to this employee.</p>
                   ) : (
                     sortedEmployeeTasks.map((t) => {
                       const isChecked = selectedLinkedTasks.includes(t.id);
@@ -1960,7 +1960,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   onClick={() => setIsLoggingDailyActivity(false)}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-stone-400 hover:text-white"
                 >
-                  إلغاء
+                  Cancel
                 </button>
                 <button
                   type="submit"
@@ -1968,7 +1968,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   className="px-5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-lg hover:opacity-90 disabled:opacity-50"
                   style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
                 >
-                  {isSubmittingLog ? 'جارٍ الحفظ...' : 'حفظ التقرير اليومي'}
+                  {isSubmittingLog ? 'Saving...' : 'Save Daily Report'}
                 </button>
               </div>
             </form>
@@ -1994,7 +1994,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   <div className="flex items-start justify-between pb-2 border-b border-stone-800">
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-purple-400" />
-                      <h4 className="text-xs font-bold text-white">تسجيل ساعات عمل فعلية</h4>
+                      <h4 className="text-xs font-bold text-white">Log Actual Hours Worked</h4>
                     </div>
                     <button
                       onClick={() => setTimeLoggingTaskId(null)}
@@ -2007,13 +2007,13 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   <div className="space-y-2">
                     <p className="text-xs font-bold text-white line-clamp-1">{targetTask.title}</p>
                     <p className="text-[11px] text-stone-400">
-                      الساعات الحالية المسجلة: <strong className="text-purple-300 font-mono">{targetTask.actual_hours || 0} س</strong>
+                      Currently logged hours: <strong className="text-purple-300 font-mono">{targetTask.actual_hours || 0}h</strong>
                     </p>
                   </div>
 
                   <div>
                     <label className="text-xs font-semibold text-stone-300 block mb-1">
-                      عدد الساعات الإضافية المنجزة:
+                      Additional hours completed:
                     </label>
                     <input
                       type="number"
@@ -2032,7 +2032,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                       onClick={() => setTimeLoggingTaskId(null)}
                       className="px-3 py-1.5 rounded-lg text-xs text-stone-400 hover:text-white"
                     >
-                      إلغاء
+                      Cancel
                     </button>
                     <button
                       type="button"
@@ -2040,7 +2040,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                       className="px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-md hover:opacity-90"
                       style={{ background: 'var(--gradient-badge)' }}
                     >
-                      إضافة الساعات
+                      Add Hours
                     </button>
                   </div>
                 </>

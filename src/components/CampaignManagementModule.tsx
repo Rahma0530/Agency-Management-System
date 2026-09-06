@@ -61,13 +61,13 @@ interface CampaignManagementModuleProps {
 
 // Helpers to extract campaign attributes safely whether stored at top-level or in results JSON
 export const getCampaignName = (c: CampaignRecord): string =>
-  c.name || c.results?.name || c.campaign_id_external || 'حملة إعلانية ممولة';
+  c.name || c.results?.name || c.campaign_id_external || 'Sponsored Ad Campaign';
 
 export const getCampaignStatus = (c: CampaignRecord): CampaignStatus =>
   c.status || c.results?.status || 'active';
 
 export const getCampaignObjective = (c: CampaignRecord): string =>
-  c.objective || c.results?.objective || 'التحويلات والمبيعات (Conversions)';
+  c.objective || c.results?.objective || 'Conversions & Sales';
 
 export const getCampaignBudget = (c: CampaignRecord): number =>
   c.budget !== undefined && c.budget !== null ? c.budget : (c.results?.budget ?? c.spend ?? 0);
@@ -90,7 +90,7 @@ const PLATFORM_CONFIG: Record<
   { label: string; enLabel: string; bg: string; text: string; border: string; iconLabel: string }
 > = {
   meta: {
-    label: 'ميتا (Meta / Facebook & Instagram)',
+    label: 'Meta (Facebook & Instagram)',
     enLabel: 'Meta Ads',
     bg: 'rgba(24, 119, 242, 0.15)',
     text: '#60a5fa',
@@ -98,7 +98,7 @@ const PLATFORM_CONFIG: Record<
     iconLabel: 'Meta',
   },
   google: {
-    label: 'جوجل (Google Ads & Search)',
+    label: 'Google (Ads & Search)',
     enLabel: 'Google Ads',
     bg: 'rgba(234, 67, 53, 0.15)',
     text: '#f87171',
@@ -106,7 +106,7 @@ const PLATFORM_CONFIG: Record<
     iconLabel: 'Google',
   },
   tiktok: {
-    label: 'تيك توك (TikTok Ads)',
+    label: 'TikTok Ads',
     enLabel: 'TikTok Ads',
     bg: 'rgba(0, 242, 234, 0.15)',
     text: '#22d3ee',
@@ -114,7 +114,7 @@ const PLATFORM_CONFIG: Record<
     iconLabel: 'TikTok',
   },
   linkedin: {
-    label: 'لينكد إن (LinkedIn Ads)',
+    label: 'LinkedIn Ads',
     enLabel: 'LinkedIn Ads',
     bg: 'rgba(10, 102, 194, 0.15)',
     text: '#38bdf8',
@@ -122,7 +122,7 @@ const PLATFORM_CONFIG: Record<
     iconLabel: 'LinkedIn',
   },
   snapchat: {
-    label: 'سناب شات (Snapchat Ads)',
+    label: 'Snapchat Ads',
     enLabel: 'Snapchat Ads',
     bg: 'rgba(255, 252, 0, 0.15)',
     text: '#fde047',
@@ -130,7 +130,7 @@ const PLATFORM_CONFIG: Record<
     iconLabel: 'Snapchat',
   },
   x: {
-    label: 'إكس (X / Twitter Ads)',
+    label: 'X / Twitter Ads',
     enLabel: 'X Ads',
     bg: 'rgba(255, 255, 255, 0.1)',
     text: '#e2e8f0',
@@ -144,35 +144,35 @@ const STATUS_CONFIG: Record<
   { label: string; bg: string; text: string; border: string; icon: React.ReactNode }
 > = {
   active: {
-    label: 'نشطة (Active)',
+    label: 'Active',
     bg: 'rgba(169, 245, 193, 0.15)',
     text: 'var(--roas-good)',
     border: 'rgba(169, 245, 193, 0.3)',
     icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />,
   },
   paused: {
-    label: 'متوقفة مؤقتاً (Paused)',
+    label: 'Paused',
     bg: 'rgba(245, 226, 154, 0.15)',
     text: 'var(--roas-mid)',
     border: 'rgba(245, 226, 154, 0.3)',
     icon: <PauseCircle className="w-3.5 h-3.5 text-amber-400" />,
   },
   completed: {
-    label: 'مكتملة (Completed)',
+    label: 'Completed',
     bg: 'rgba(168, 155, 184, 0.15)',
     text: 'var(--lilac)',
     border: 'rgba(168, 155, 184, 0.3)',
     icon: <Clock className="w-3.5 h-3.5 text-purple-300" />,
   },
   draft: {
-    label: 'مسودة (Draft)',
+    label: 'Draft',
     bg: 'rgba(120, 113, 108, 0.15)',
     text: '#d6d3d1',
     border: 'rgba(120, 113, 108, 0.3)',
     icon: <Layers className="w-3.5 h-3.5 text-stone-400" />,
   },
   archived: {
-    label: 'مؤرشفة (Archived)',
+    label: 'Archived',
     bg: 'rgba(100, 116, 139, 0.15)',
     text: '#94a3b8',
     border: 'rgba(100, 116, 139, 0.3)',
@@ -219,7 +219,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
     clientId: '',
     name: '',
     platform: 'meta',
-    objective: 'التحويلات والمبيعات (Conversions / Purchases)',
+    objective: 'Conversions / Purchases',
     status: 'active' as CampaignStatus,
     budget: 5000,
     spend: 0,
@@ -462,7 +462,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       clientId: accessibleClients[0]?.id || '',
       name: '',
       platform: 'meta',
-      objective: 'التحويلات والمبيعات (Conversions / Purchases)',
+      objective: 'Conversions / Purchases',
       status: 'active',
       budget: 5000,
       spend: 0,
@@ -486,7 +486,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   // Handle open edit modal
   const handleOpenEditModal = (campaign: CampaignRecord) => {
     if (!canEdit(campaign)) {
-      setActionError('ليس لديك صلاحية لتعديل هذه الحملة وفق قواعد أمان RLS');
+      setActionError('You do not have permission to edit this campaign under RLS security rules');
       return;
     }
     setActionError(null);
@@ -519,11 +519,11 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   const handleSubmitCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.clientId) {
-      setActionError('يرجى اختيار العميل المرتبط بالحملة');
+      setActionError('Please select the client linked to this campaign');
       return;
     }
     if (!formData.name.trim()) {
-      setActionError('يرجى إدخال اسم الحملة الإعلانية');
+      setActionError('Please enter the campaign name');
       return;
     }
 
@@ -587,7 +587,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       setIsCreateModalOpen(false);
       setCampaignToEdit(null);
     } catch (err: any) {
-      setActionError(err?.message || 'حدث خطأ أثناء حفظ بيانات الحملة');
+      setActionError(err?.message || 'An error occurred while saving the campaign data');
     } finally {
       setIsSubmitting(false);
     }
@@ -642,7 +642,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   const activeDashboardClient = clients.find((c) => c.id === dashboardClientId) || null;
 
   return (
-    <div className="space-y-6 animate-fadeIn" dir="rtl">
+    <div className="space-y-6 animate-fadeIn">
       {/* ------------------------------------------------------------- */}
       {/* MODULE HEADER & RLS SCOPE BANNER */}
       {/* ------------------------------------------------------------- */}
@@ -666,7 +666,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 }}
               >
                 <Target className="w-3.5 h-3.5 text-purple-300" />
-                <span>وحدة إدارة الحملات الإعلانية (Campaign Management)</span>
+                <span>Campaign Management</span>
               </span>
 
               <span
@@ -679,15 +679,15 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 }}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>حماية RLS نشطة • {roleInfo.arabicTitle}</span>
+                <span>RLS Protection Active • {roleInfo.englishTitle}</span>
               </span>
             </div>
 
             <h2 className="text-xl font-bold" style={{ color: 'var(--white)' }}>
-              إدارة ومتابعة الحملات الإعلانية الممولة (Paid Advertising Hub)
+              Paid Advertising Hub
             </h2>
             <p className="text-xs leading-relaxed max-w-3xl" style={{ color: 'var(--lilac)' }}>
-              ربط مباشر بين العميل، والخدمة التسويقية، والموظف المسؤول، مع تحكم دقيق بمؤشرات الأداء، والميزانيات، ونسب الاستهلاك، ومتابعة العائد الإعلاني الفعلي عبر مختلف المنصات (Meta, Google, TikTok, LinkedIn).
+              Direct linkage between client, marketing service, and responsible employee — with precise control over performance metrics, budgets, utilization rates, and real ad ROI across platforms (Meta, Google, TikTok, LinkedIn).
             </p>
           </div>
 
@@ -704,7 +704,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 }}
               >
                 <Plus className="w-4 h-4 text-white" />
-                <span>إنشاء حملة إعلانية جديدة</span>
+                <span>Create New Campaign</span>
               </button>
             ) : (
               <div
@@ -714,10 +714,10 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                   color: 'var(--lilac)',
                   border: '1px solid var(--border-subtle)',
                 }}
-                title="إنشاء الحملات مخصص لفريق الميديا باينج والإدارة الفنية وحسابات العملاء"
+                title="Campaign creation is reserved for Media Buying, Technical leadership, and Account Management"
               >
                 <Info className="w-3.5 h-3.5 text-stone-400" />
-                <span>صلاحية العرض والتحليل (Read-Only)</span>
+                <span>View & Analysis Only (Read-Only)</span>
               </div>
             )}
           </div>
@@ -737,14 +737,14 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           }}
         >
           <div className="flex items-center justify-between text-xs mb-2" style={{ color: 'var(--lilac)' }}>
-            <span>إجمالي الحملات</span>
+            <span>Total Campaigns</span>
             <Target className="w-4 h-4 text-purple-400" />
           </div>
           <div className="text-xl font-bold font-mono" style={{ color: 'var(--white)' }}>
             {dashboardStats.total}
           </div>
           <div className="text-[10px] mt-1 text-stone-400">
-            {dashboardStats.active} نشطة • {dashboardStats.paused} متوقفة
+            {dashboardStats.active} active • {dashboardStats.paused} paused
           </div>
         </div>
 
@@ -757,14 +757,14 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           }}
         >
           <div className="flex items-center justify-between text-xs mb-2" style={{ color: 'var(--lilac)' }}>
-            <span>الإنفاق الفعلي</span>
+            <span>Actual Spend</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-xl font-bold font-mono" style={{ color: 'var(--roas-good)' }}>
             ${dashboardStats.totalSpend.toLocaleString()}
           </div>
           <div className="text-[10px] mt-1 text-stone-400">
-            من إجمالي ${dashboardStats.totalBudget.toLocaleString()}
+            of ${dashboardStats.totalBudget.toLocaleString()} total
           </div>
         </div>
 
@@ -777,7 +777,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           }}
         >
           <div className="flex items-center justify-between text-xs mb-2" style={{ color: 'var(--lilac)' }}>
-            <span>نسبة استهلاك الميزانية</span>
+            <span>Budget Utilization</span>
             <BarChart3 className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-xl font-bold font-mono" style={{ color: 'var(--roas-mid)' }}>
@@ -808,14 +808,14 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           }}
         >
           <div className="flex items-center justify-between text-xs mb-2" style={{ color: 'var(--lilac)' }}>
-            <span>متوسط العائد ROAS</span>
+            <span>Average ROAS</span>
             <TrendingUp className="w-4 h-4 text-purple-300" />
           </div>
           <div className="text-xl font-bold font-mono" style={{ color: 'var(--white)' }}>
             {dashboardStats.avgRoas !== null ? `${dashboardStats.avgRoas.toFixed(2)}x` : '—'}
           </div>
           <div className="text-[10px] mt-1 text-stone-400">
-            {dashboardStats.avgRoas !== null ? 'محسوب من النتائج المسجلة' : 'لا توجد بيانات ROAS'}
+            {dashboardStats.avgRoas !== null ? 'Calculated from recorded results' : 'No ROAS data'}
           </div>
         </div>
 
@@ -828,14 +828,14 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           }}
         >
           <div className="flex items-center justify-between text-xs mb-2" style={{ color: 'var(--lilac)' }}>
-            <span>إجمالي التحويلات</span>
+            <span>Total Conversions</span>
             <Zap className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-xl font-bold font-mono text-cyan-300">
             {dashboardStats.totalConversions !== null ? dashboardStats.totalConversions.toLocaleString() : '—'}
           </div>
           <div className="text-[10px] mt-1 text-stone-400">
-            {dashboardStats.totalConversions !== null ? 'تحويل / صفقة محققة' : 'لا توجد بيانات'}
+            {dashboardStats.totalConversions !== null ? 'Conversions / deals recorded' : 'No data'}
           </div>
         </div>
 
@@ -848,14 +848,14 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           }}
         >
           <div className="flex items-center justify-between text-xs mb-2" style={{ color: 'var(--lilac)' }}>
-            <span>المنصات المستخدمة</span>
+            <span>Platforms Used</span>
             <Layers className="w-4 h-4 text-purple-400" />
           </div>
           <div className="text-xl font-bold font-mono" style={{ color: 'var(--white)' }}>
             {Object.keys(dashboardStats.platformsMap).length}
           </div>
           <div className="text-[10px] mt-1 text-stone-400 truncate">
-            {Object.keys(dashboardStats.platformsMap).join(', ') || 'لا توجد'}
+            {Object.keys(dashboardStats.platformsMap).join(', ') || 'None'}
           </div>
         </div>
       </div>
@@ -873,7 +873,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
         >
           <span className="text-xs font-bold text-stone-300 flex items-center gap-1.5 ml-2">
             <Layers className="w-3.5 h-3.5 text-purple-400" />
-            <span>توزيع المنصات:</span>
+            <span>Platform Breakdown:</span>
           </span>
 
           {Object.entries(dashboardStats.platformsMap).map(([plat, rawData]) => {
@@ -900,7 +900,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               >
                 <span className="font-bold">{cfg.enLabel}</span>
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30 font-mono">
-                  {data.count} حملات • ${data.spend.toLocaleString()}
+                  {data.count} campaigns • ${data.spend.toLocaleString()}
                 </span>
               </button>
             );
@@ -926,7 +926,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="البحث باسم الحملة، معرف المنصة، أو اسم العميل..."
+              placeholder="Search by campaign name, platform ID, or client name..."
               className="w-full pl-4 pr-9 py-2 rounded-xl text-xs outline-none transition-all"
               style={{
                 background: 'rgba(255, 255, 255, 0.05)',
@@ -956,7 +956,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>إعادة تعيين الفلاتر</span>
+              <span>Reset Filters</span>
             </button>
           )}
         </div>
@@ -967,7 +967,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           <div className="space-y-1">
             <label className="text-[10px] text-stone-400 font-bold flex items-center gap-1">
               <Building2 className="w-3 h-3 text-purple-400" />
-              <span>العميل:</span>
+              <span>Client:</span>
             </label>
             <select
               value={selectedClientId}
@@ -980,7 +980,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <option value="all" className="bg-stone-900 text-white">
-                جميع العملاء ({accessibleClients.length})
+                All Clients ({accessibleClients.length})
               </option>
               {accessibleClients.map((c) => (
                 <option key={c.id} value={c.id} className="bg-stone-900 text-white">
@@ -994,7 +994,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           <div className="space-y-1">
             <label className="text-[10px] text-stone-400 font-bold flex items-center gap-1">
               <Layers className="w-3 h-3 text-purple-400" />
-              <span>المنصة:</span>
+              <span>Platform:</span>
             </label>
             <select
               value={selectedPlatform}
@@ -1007,7 +1007,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <option value="all" className="bg-stone-900 text-white">
-                جميع المنصات
+                All Platforms
               </option>
               <option value="meta" className="bg-stone-900 text-white">
                 Meta Ads (FB/Insta)
@@ -1034,7 +1034,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           <div className="space-y-1">
             <label className="text-[10px] text-stone-400 font-bold flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3 text-purple-400" />
-              <span>الحالة:</span>
+              <span>Status:</span>
             </label>
             <select
               value={selectedStatus}
@@ -1047,22 +1047,22 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <option value="all" className="bg-stone-900 text-white">
-                جميع الحالات
+                All Statuses
               </option>
               <option value="active" className="bg-stone-900 text-white">
-                نشطة (Active)
+                Active
               </option>
               <option value="paused" className="bg-stone-900 text-white">
-                متوقفة (Paused)
+                Paused
               </option>
               <option value="completed" className="bg-stone-900 text-white">
-                مكتملة (Completed)
+                Completed
               </option>
               <option value="draft" className="bg-stone-900 text-white">
-                مسودة (Draft)
+                Draft
               </option>
               <option value="archived" className="bg-stone-900 text-white">
-                مؤرشفة (Archived)
+                Archived
               </option>
             </select>
           </div>
@@ -1071,7 +1071,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           <div className="space-y-1">
             <label className="text-[10px] text-stone-400 font-bold flex items-center gap-1">
               <Calendar className="w-3 h-3 text-purple-400" />
-              <span>التاريخ / الفترة:</span>
+              <span>Date / Period:</span>
             </label>
             <select
               value={selectedDateRange}
@@ -1084,16 +1084,16 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <option value="all" className="bg-stone-900 text-white">
-                جميع الفترات
+                All Periods
               </option>
               <option value="today" className="bg-stone-900 text-white">
-                اليوم
+                Today
               </option>
               <option value="7d" className="bg-stone-900 text-white">
-                آخر 7 أيام
+                Last 7 Days
               </option>
               <option value="30d" className="bg-stone-900 text-white">
-                آخر 30 يوماً
+                Last 30 Days
               </option>
             </select>
           </div>
@@ -1102,7 +1102,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           <div className="space-y-1">
             <label className="text-[10px] text-stone-400 font-bold flex items-center gap-1">
               <Users className="w-3 h-3 text-purple-400" />
-              <span>الفريق المسؤول:</span>
+              <span>Responsible Team:</span>
             </label>
             <select
               value={selectedTeam}
@@ -1115,7 +1115,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <option value="all" className="bg-stone-900 text-white">
-                جميع الفرق
+                All Teams
               </option>
               <option value="Media Buying" className="bg-stone-900 text-white">
                 Media Buying
@@ -1133,7 +1133,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           <div className="space-y-1">
             <label className="text-[10px] text-stone-400 font-bold flex items-center gap-1">
               <User className="w-3 h-3 text-purple-400" />
-              <span>الموظف المسؤول:</span>
+              <span>Responsible Employee:</span>
             </label>
             <select
               value={selectedOwnerId}
@@ -1146,7 +1146,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <option value="all" className="bg-stone-900 text-white">
-                جميع المسؤولين
+                All Owners
               </option>
               {users
                 .filter((u) => u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id)
@@ -1166,7 +1166,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       {isLoading ? (
         <div className="p-12 text-center rounded-2xl bg-black/20 border border-white/5 space-y-3">
           <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs text-stone-400">جاري تحميل بيانات الحملات الإعلانية وتطبيق سياسات RLS...</p>
+          <p className="text-xs text-stone-400">Loading campaign data and applying RLS policies...</p>
         </div>
       ) : filteredCampaigns.length === 0 ? (
         <div
@@ -1178,12 +1178,12 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
         >
           <Target className="w-10 h-10 text-stone-500 mx-auto" />
           <h3 className="text-sm font-bold" style={{ color: 'var(--white)' }}>
-            لا توجد حملات إعلانية مطابقة للبحث أو الصلاحيات
+            No campaigns match your search or permissions
           </h3>
           <p className="text-xs text-stone-400 max-w-md mx-auto">
             {isFiltered
-              ? 'لم يتم العثور على أي حملة تطابق الفلاتر المحددة أعلاه. جرب تغيير الفلاتر أو إعادة تعيينها.'
-              : 'لم يتم تسجيل أي حملات إعلانية مرئية لهذا الحساب حتى الآن.'}
+              ? 'No campaign matches the filters selected above. Try changing or resetting the filters.'
+              : 'No visible campaigns have been recorded for this account yet.'}
           </p>
           {isFiltered && (
             <button
@@ -1196,7 +1196,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>إعادة تعيين جميع الفلاتر</span>
+              <span>Reset All Filters</span>
             </button>
           )}
         </div>
@@ -1204,10 +1204,10 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-stone-400 px-1">
             <span>
-              عرض <strong className="text-white font-mono">{filteredCampaigns.length}</strong> من أصل{' '}
-              <strong className="text-white font-mono">{visibleCampaigns.length}</strong> حملة مرئية
+              Showing <strong className="text-white font-mono">{filteredCampaigns.length}</strong> of{' '}
+              <strong className="text-white font-mono">{visibleCampaigns.length}</strong> visible campaigns
             </span>
-            <span className="text-[11px]">انقر على أي حملة لعرض صفحة التفاصيل الكاملة</span>
+            <span className="text-[11px]">Click any campaign to view its full details page</span>
           </div>
 
           <div className="grid grid-cols-1 gap-3">
@@ -1297,7 +1297,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                           }}
                         >
                           <Building2 className="w-3 h-3 text-purple-400" />
-                          <span>{client?.name || 'عميل غير محدد'}</span>
+                          <span>{client?.name || 'Unassigned client'}</span>
                         </button>
 
                         {campaign.campaign_id_external && (
@@ -1319,7 +1319,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                       <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: 'var(--lilac)' }}>
                         <span className="flex items-center gap-1">
                           <Target className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                          <span>الهدف: {objective}</span>
+                          <span>Objective: {objective}</span>
                         </span>
 
                         <span className="text-stone-500">•</span>
@@ -1327,7 +1327,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                           <span>
-                            {startDate || 'غير محدد'} {endDate ? `إلى ${endDate}` : '(مستمرة)'}
+                            {startDate || 'Not set'} {endDate ? `to ${endDate}` : '(ongoing)'}
                           </span>
                         </span>
 
@@ -1335,7 +1335,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
                         <span className="flex items-center gap-1">
                           <User className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                          <span>المسؤول: {owner?.name || 'غير محدد'} ({team})</span>
+                          <span>Owner: {owner?.name || 'Not set'} ({team})</span>
                         </span>
                       </div>
                     </div>
@@ -1343,7 +1343,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                     {/* Middle: Budget vs Spend */}
                     <div className="w-full lg:w-56 shrink-0 space-y-1.5 p-3 rounded-xl bg-white/[0.02] border border-white/5">
                       <div className="flex items-center justify-between text-xs">
-                        <span style={{ color: 'var(--lilac)' }}>الإنفاق / الميزانية:</span>
+                        <span style={{ color: 'var(--lilac)' }}>Spend / Budget:</span>
                         <span className="font-mono font-bold" style={{ color: 'var(--white)' }}>
                           ${spend.toLocaleString()} / ${budget.toLocaleString()}
                         </span>
@@ -1365,7 +1365,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                       </div>
 
                       <div className="flex items-center justify-between text-[10px] text-stone-400 font-mono">
-                        <span>معدل الاستهلاك</span>
+                        <span>Utilization Rate</span>
                         <span>{spendPct.toFixed(1)}%</span>
                       </div>
                     </div>
@@ -1373,7 +1373,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                     {/* Right: Performance Summary Chips (Only existing metrics) */}
                     <div className="w-full lg:w-72 shrink-0 space-y-2">
                       <div className="text-[10px] font-bold text-stone-400">
-                        مؤشرات الأداء الفعلية (Performance Summary):
+                        Performance Summary:
                       </div>
 
                       {hasPerformanceMetrics ? (
@@ -1389,7 +1389,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
                           {results.conversions !== undefined && (
                             <div className="p-1.5 rounded-lg bg-cyan-950/40 border border-cyan-500/20 text-center">
-                              <div className="text-[9px] text-cyan-400">تحويلات</div>
+                              <div className="text-[9px] text-cyan-400">Conversions</div>
                               <div className="text-xs font-bold font-mono text-cyan-300">
                                 {Number(results.conversions).toLocaleString()}
                               </div>
@@ -1398,7 +1398,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
                           {results.clicks !== undefined && (
                             <div className="p-1.5 rounded-lg bg-purple-950/40 border border-purple-500/20 text-center">
-                              <div className="text-[9px] text-purple-300">نقرات</div>
+                              <div className="text-[9px] text-purple-300">Clicks</div>
                               <div className="text-xs font-bold font-mono text-purple-200">
                                 {Number(results.clicks).toLocaleString()}
                               </div>
@@ -1407,7 +1407,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
                           {results.impressions !== undefined && !results.roas && (
                             <div className="p-1.5 rounded-lg bg-blue-950/40 border border-blue-500/20 text-center">
-                              <div className="text-[9px] text-blue-300">ظهور</div>
+                              <div className="text-[9px] text-blue-300">Impressions</div>
                               <div className="text-xs font-bold font-mono text-blue-200">
                                 {Number(results.impressions).toLocaleString()}
                               </div>
@@ -1434,7 +1434,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                         </div>
                       ) : (
                         <div className="p-2 rounded-xl bg-white/[0.02] border border-white/5 text-center text-[11px] text-stone-400">
-                          لا توجد مقاييس أداء إضافية مسجلة بعد
+                          No additional performance metrics recorded yet
                         </div>
                       )}
                     </div>
@@ -1444,7 +1444,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                       {userCanEdit && (
                         <>
                           <button
-                            title={status === 'active' ? 'إيقاف الحملة مؤقتاً' : 'تفعيل الحملة'}
+                            title={status === 'active' ? 'Pause campaign' : 'Activate campaign'}
                             onClick={(e) => handleQuickToggleStatus(campaign, e)}
                             className="p-2 rounded-xl text-xs transition-all hover:scale-105"
                             style={{
@@ -1457,7 +1457,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                           </button>
 
                           <button
-                            title="تعديل بيانات الحملة"
+                            title="Edit campaign data"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleOpenEditModal(campaign);
@@ -1475,7 +1475,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                       )}
 
                       <button
-                        title="عرض تفاصيل الحملة"
+                        title="View campaign details"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedCampaignForDetails(campaign);
@@ -1487,7 +1487,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                           border: '1px solid var(--border-strong)',
                         }}
                       >
-                        <span>التفاصيل</span>
+                        <span>Details</span>
                         <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -1505,7 +1505,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       {selectedCampaignForDetails && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fadeIn"
-          dir="rtl"
           onClick={() => setSelectedCampaignForDetails(null)}
         >
           <div
@@ -1565,7 +1564,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
                   {selectedCampaignForDetails.campaign_id_external && (
                     <span className="text-xs font-mono text-stone-400">
-                      معرف الحملة: {selectedCampaignForDetails.campaign_id_external}
+                      Campaign ID: {selectedCampaignForDetails.campaign_id_external}
                     </span>
                   )}
                 </div>
@@ -1600,12 +1599,12 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 >
                   <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
                     <Building2 className="w-4 h-4" />
-                    <span>الربط المؤسسي بالعميل والخدمة (Client & Service Relation):</span>
+                    <span>Client & Service Relation:</span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                     <div>
-                      <span className="text-stone-400 block text-[11px]">اسم العميل:</span>
+                      <span className="text-stone-400 block text-[11px]">Client Name:</span>
                       <button
                         onClick={() => {
                           if (!client) return;
@@ -1615,22 +1614,22 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                         disabled={!client}
                         className="text-white text-sm font-bold hover:text-purple-300 hover:underline disabled:no-underline disabled:hover:text-white"
                       >
-                        {client?.name || 'غير محدد'}
+                        {client?.name || 'Not set'}
                       </button>
                       <span className="text-[10px] text-stone-400 block">{client?.industry || ''}</span>
                     </div>
 
                     <div>
-                      <span className="text-stone-400 block text-[11px]">مدير الحسابات (AM):</span>
-                      <strong className="text-purple-200">{amAgent?.name || 'قيد الإسناد'}</strong>
+                      <span className="text-stone-400 block text-[11px]">Account Manager (AM):</span>
+                      <strong className="text-purple-200">{amAgent?.name || 'Pending assignment'}</strong>
                       <span className="text-[10px] text-stone-400 block">
-                        حالة العميل: {client?.status || 'active'}
+                        Client status: {client?.status || 'active'}
                       </span>
                     </div>
 
                     <div>
-                      <span className="text-stone-400 block text-[11px]">الموظف/الفريق المسؤول عن الإعلانات:</span>
-                      <strong className="text-cyan-300">{owner?.name || 'فريق الميديا باينج'}</strong>
+                      <span className="text-stone-400 block text-[11px]">Employee/Team responsible for ads:</span>
+                      <strong className="text-cyan-300">{owner?.name || 'Media Buying Team'}</strong>
                       <span className="text-[10px] text-stone-400 block">
                         {getCampaignTeam(selectedCampaignForDetails)}
                       </span>
@@ -1646,7 +1645,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 className="p-3 rounded-xl"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
               >
-                <span className="text-[11px] text-stone-400 block">هدف الحملة (Objective):</span>
+                <span className="text-[11px] text-stone-400 block">Objective:</span>
                 <strong className="text-white text-xs mt-1 block">
                   {getCampaignObjective(selectedCampaignForDetails)}
                 </strong>
@@ -1656,10 +1655,10 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 className="p-3 rounded-xl"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
               >
-                <span className="text-[11px] text-stone-400 block">تاريخ البدء والانتهاء:</span>
+                <span className="text-[11px] text-stone-400 block">Start & End Date:</span>
                 <strong className="text-white text-xs mt-1 block font-mono">
                   {getCampaignStartDate(selectedCampaignForDetails)}
-                  {getCampaignEndDate(selectedCampaignForDetails) ? ` ← ${getCampaignEndDate(selectedCampaignForDetails)}` : ' (مفتوحة)'}
+                  {getCampaignEndDate(selectedCampaignForDetails) ? ` → ${getCampaignEndDate(selectedCampaignForDetails)}` : ' (ongoing)'}
                 </strong>
               </div>
 
@@ -1667,7 +1666,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 className="p-3 rounded-xl"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
               >
-                <span className="text-[11px] text-stone-400 block">الميزانية المرصودة:</span>
+                <span className="text-[11px] text-stone-400 block">Allocated Budget:</span>
                 <strong className="text-white text-xs mt-1 block font-mono">
                   ${getCampaignBudget(selectedCampaignForDetails).toLocaleString()}
                 </strong>
@@ -1677,7 +1676,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 className="p-3 rounded-xl"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
               >
-                <span className="text-[11px] text-stone-400 block">الإنفاق الفعلي:</span>
+                <span className="text-[11px] text-stone-400 block">Actual Spend:</span>
                 <strong className="text-emerald-400 text-xs mt-1 block font-mono">
                   ${(selectedCampaignForDetails.spend || 0).toLocaleString()}
                 </strong>
@@ -1688,7 +1687,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
                 <BarChart3 className="w-4 h-4 text-purple-400" />
-                <span>نتائج ومؤشرات الأداء المسجلة في قاعدة البيانات (Campaign Performance):</span>
+                <span>Campaign Performance (recorded results):</span>
               </h4>
 
               {(() => {
@@ -1700,7 +1699,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 if (metricEntries.length === 0) {
                   return (
                     <div className="p-4 rounded-xl text-center text-xs text-stone-400 bg-white/[0.02] border border-white/5">
-                      لا توجد مقاييس أداء إضافية مسجلة في سجل هذه الحملة.
+                      No additional performance metrics recorded for this campaign.
                     </div>
                   );
                 }
@@ -1709,15 +1708,15 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {metricEntries.map(([key, val]) => {
                       const displayKey: Record<string, string> = {
-                        roas: 'العائد الإعلاني ROAS',
-                        impressions: 'مرات الظهور (Impressions)',
-                        clicks: 'النقرات (Clicks)',
-                        conversions: 'التحويلات (Conversions)',
-                        ctr: 'نسبة النقر للظهور (CTR %)',
-                        cpc: 'تكلفة النقرة (CPC $)',
-                        cpa: 'تكلفة التحويل (CPA $)',
-                        spend: 'الإنفاق الإعلاني (Spend)',
-                        reach: 'الوصول (Reach)',
+                        roas: 'ROAS',
+                        impressions: 'Impressions',
+                        clicks: 'Clicks',
+                        conversions: 'Conversions',
+                        ctr: 'CTR (%)',
+                        cpc: 'CPC ($)',
+                        cpa: 'CPA ($)',
+                        spend: 'Spend',
+                        reach: 'Reach',
                       };
 
                       return (
@@ -1764,7 +1763,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                   }}
                 >
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>تعديل الحملة</span>
+                  <span>Edit Campaign</span>
                 </button>
               )}
 
@@ -1777,7 +1776,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                   border: '1px solid var(--border-medium)',
                 }}
               >
-                إغلاق
+                Close
               </button>
             </div>
           </div>
@@ -1790,7 +1789,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       {isCreateModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto animate-fadeIn"
-          dir="rtl"
           onClick={() => !isSubmitting && setIsCreateModalOpen(false)}
         >
           <div
@@ -1811,10 +1809,10 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 </div>
                 <div>
                   <h3 className="text-base font-bold" style={{ color: 'var(--white)' }}>
-                    {campaignToEdit ? 'تعديل بيانات الحملة الإعلانية' : 'إنشاء حملة إعلانية ممولة جديدة'}
+                    {campaignToEdit ? 'Edit Campaign Data' : 'Create New Ad Campaign'}
                   </h3>
                   <p className="text-[11px] text-stone-400">
-                    ربط الحملة بالعميل، والمنصة، والميزانية، ومؤشرات الأداء الفعلية
+                    Link the campaign to a client, platform, budget, and actual performance metrics
                   </p>
                 </div>
               </div>
@@ -1841,7 +1839,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-300 flex items-center gap-1">
                   <Building2 className="w-3.5 h-3.5 text-purple-400" />
-                  <span>العميل المرتبط بالحملة (مطلوب):</span>
+                  <span>Client Linked to Campaign (required):</span>
                 </label>
                 <select
                   required
@@ -1855,11 +1853,11 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                   }}
                 >
                   <option value="" disabled className="bg-stone-900 text-white">
-                    اختر العميل...
+                    Select client...
                   </option>
                   {accessibleClients.map((c) => (
                     <option key={c.id} value={c.id} className="bg-stone-900 text-white">
-                      {c.name} ({c.industry || 'بدون تصنيف'})
+                      {c.name} ({c.industry || 'Uncategorized'})
                     </option>
                   ))}
                 </select>
@@ -1867,13 +1865,13 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
               {/* Campaign Name */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-stone-300">اسم الحملة الإعلانية (مطلوب):</label>
+                <label className="text-xs font-bold text-stone-300">Campaign Name (required):</label>
                 <input
                   type="text"
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="مثال: حملة عروض اليوم الوطني - مبيعات المتجر الإلكتروني"
+                  placeholder="Example: National Day Offers Campaign — Online Store Sales"
                   className="w-full px-3 py-2 rounded-xl text-xs outline-none"
                   style={{
                     background: 'rgba(255, 255, 255, 0.05)',
@@ -1886,7 +1884,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               {/* Platform & Objective */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">المنصة الإعلانية:</label>
+                  <label className="text-xs font-bold text-stone-300">Ad Platform:</label>
                   <select
                     value={formData.platform}
                     onChange={(e) => setFormData({ ...formData, platform: e.target.value })}
@@ -1919,12 +1917,12 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">الهدف الإعلاني (Objective):</label>
+                  <label className="text-xs font-bold text-stone-300">Objective:</label>
                   <input
                     type="text"
                     value={formData.objective}
                     onChange={(e) => setFormData({ ...formData, objective: e.target.value })}
-                    placeholder="مثال: التحويلات والمبيعات، أو توليد العملاء المحتملين"
+                    placeholder="Example: Conversions & sales, or lead generation"
                     className="w-full px-3 py-2 rounded-xl text-xs outline-none"
                     style={{
                       background: 'rgba(255, 255, 255, 0.05)',
@@ -1938,7 +1936,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               {/* Status & External ID */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">حالة الحملة:</label>
+                  <label className="text-xs font-bold text-stone-300">Campaign Status:</label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as CampaignStatus })}
@@ -1950,30 +1948,30 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                     }}
                   >
                     <option value="active" className="bg-stone-900 text-white">
-                      نشطة (Active)
+                      Active
                     </option>
                     <option value="paused" className="bg-stone-900 text-white">
-                      متوقفة مؤقتاً (Paused)
+                      Paused
                     </option>
                     <option value="completed" className="bg-stone-900 text-white">
-                      مكتملة (Completed)
+                      Completed
                     </option>
                     <option value="draft" className="bg-stone-900 text-white">
-                      مسودة (Draft)
+                      Draft
                     </option>
                     <option value="archived" className="bg-stone-900 text-white">
-                      مؤرشفة (Archived)
+                      Archived
                     </option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">معرف الحملة في المنصة (اختياري):</label>
+                  <label className="text-xs font-bold text-stone-300">Platform Campaign ID (optional):</label>
                   <input
                     type="text"
                     value={formData.externalId}
                     onChange={(e) => setFormData({ ...formData, externalId: e.target.value })}
-                    placeholder="مثال: act_682940284_cmp01"
+                    placeholder="Example: act_682940284_cmp01"
                     className="w-full px-3 py-2 rounded-xl text-xs font-mono outline-none"
                     style={{
                       background: 'rgba(255, 255, 255, 0.05)',
@@ -1987,7 +1985,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               {/* Budget & Spend */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">الميزانية المرصودة ($ USD):</label>
+                  <label className="text-xs font-bold text-stone-300">Allocated Budget ($ USD):</label>
                   <input
                     type="number"
                     min="0"
@@ -2004,7 +2002,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">الإنفاق الفعلي الحالي ($ USD):</label>
+                  <label className="text-xs font-bold text-stone-300">Current Actual Spend ($ USD):</label>
                   <input
                     type="number"
                     min="0"
@@ -2024,7 +2022,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               {/* Dates */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">تاريخ بدء الحملة:</label>
+                  <label className="text-xs font-bold text-stone-300">Campaign Start Date:</label>
                   <input
                     type="date"
                     required
@@ -2040,7 +2038,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">تاريخ الانتهاء (اختياري):</label>
+                  <label className="text-xs font-bold text-stone-300">End Date (optional):</label>
                   <input
                     type="date"
                     value={formData.endDate}
@@ -2058,7 +2056,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               {/* Owner & Team */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">الموظف المسؤول:</label>
+                  <label className="text-xs font-bold text-stone-300">Responsible Employee:</label>
                   <select
                     value={formData.ownerId}
                     onChange={(e) => setFormData({ ...formData, ownerId: e.target.value })}
@@ -2080,7 +2078,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-stone-300">الفريق المسؤول:</label>
+                  <label className="text-xs font-bold text-stone-300">Responsible Team:</label>
                   <select
                     value={formData.team}
                     onChange={(e) => setFormData({ ...formData, team: e.target.value })}
@@ -2107,58 +2105,58 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               {/* Existing Performance Metrics Inputs (Only existing metrics) */}
               <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2.5">
                 <div className="text-xs font-bold text-stone-300 flex items-center justify-between">
-                  <span>مؤشرات أداء الحملة (اختياري - تُخزن في نتائج الحملة):</span>
-                  <span className="text-[10px] text-stone-400">تحديث مؤشرات المنصة</span>
+                  <span>Campaign Performance Metrics (optional — stored in campaign results):</span>
+                  <span className="text-[10px] text-stone-400">Update Platform Metrics</span>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                   <div>
-                    <label className="text-[10px] text-stone-400 block mb-0.5">ROAS (العائد):</label>
+                    <label className="text-[10px] text-stone-400 block mb-0.5">ROAS:</label>
                     <input
                       type="number"
                       step="0.01"
                       value={formData.roas}
                       onChange={(e) => setFormData({ ...formData, roas: e.target.value })}
-                      placeholder="مثال: 3.25"
+                      placeholder="Example: 3.25"
                       className="w-full px-2.5 py-1.5 rounded-lg text-xs font-mono outline-none"
                       style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'white' }}
                     />
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-stone-400 block mb-0.5">التحويلات (Conversions):</label>
+                    <label className="text-[10px] text-stone-400 block mb-0.5">Conversions:</label>
                     <input
                       type="number"
                       step="1"
                       value={formData.conversions}
                       onChange={(e) => setFormData({ ...formData, conversions: e.target.value })}
-                      placeholder="مثال: 120"
+                      placeholder="Example: 120"
                       className="w-full px-2.5 py-1.5 rounded-lg text-xs font-mono outline-none"
                       style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'white' }}
                     />
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-stone-400 block mb-0.5">النقرات (Clicks):</label>
+                    <label className="text-[10px] text-stone-400 block mb-0.5">Clicks:</label>
                     <input
                       type="number"
                       step="1"
                       value={formData.clicks}
                       onChange={(e) => setFormData({ ...formData, clicks: e.target.value })}
-                      placeholder="مثال: 3500"
+                      placeholder="Example: 3500"
                       className="w-full px-2.5 py-1.5 rounded-lg text-xs font-mono outline-none"
                       style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'white' }}
                     />
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-stone-400 block mb-0.5">مرات الظهور (Impressions):</label>
+                    <label className="text-[10px] text-stone-400 block mb-0.5">Impressions:</label>
                     <input
                       type="number"
                       step="100"
                       value={formData.impressions}
                       onChange={(e) => setFormData({ ...formData, impressions: e.target.value })}
-                      placeholder="مثال: 85000"
+                      placeholder="Example: 85000"
                       className="w-full px-2.5 py-1.5 rounded-lg text-xs font-mono outline-none"
                       style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'white' }}
                     />
@@ -2179,7 +2177,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                     border: '1px solid var(--border-medium)',
                   }}
                 >
-                  إلغاء
+                  Cancel
                 </button>
 
                 <button
@@ -2195,12 +2193,12 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                   {isSubmitting ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>جاري الحفظ في قاعدة البيانات...</span>
+                      <span>Saving to database...</span>
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-white" />
-                      <span>{campaignToEdit ? 'حفظ التعديلات' : 'إنشاء الحملة وتفعيلها'}</span>
+                      <span>{campaignToEdit ? 'Save Changes' : 'Create & Activate Campaign'}</span>
                     </>
                   )}
                 </button>

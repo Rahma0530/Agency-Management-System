@@ -5,9 +5,7 @@ export type AppModuleId = 'onboarding' | 'service_briefs' | 'capacity' | 'tasks'
 export interface RoleMetadata {
   role: UserRole;
   englishTitle: string;
-  arabicTitle: string;
   portalTitleEn: string;
-  portalTitleAr: string;
   portalSlug: string;
   team: string;
   department: string;
@@ -26,9 +24,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   executive: {
     role: 'executive',
     englishTitle: 'Executive Management (C-Level)',
-    arabicTitle: 'الإدارة التنفيذية العليا',
     portalTitleEn: 'Executive Portal',
-    portalTitleAr: 'بوابة الإدارة التنفيذية',
     portalSlug: 'executive',
     team: 'Executive',
     department: 'Executive Board',
@@ -45,9 +41,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   head_of_technical: {
     role: 'head_of_technical',
     englishTitle: 'Head of Technical',
-    arabicTitle: 'رئيس القسم الفني والعمليات',
     portalTitleEn: 'Head of Technical Portal',
-    portalTitleAr: 'بوابة الإدارة الفنية',
     portalSlug: 'head-of-technical',
     team: 'Technical',
     department: 'Technical & Operations',
@@ -64,9 +58,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   sales: {
     role: 'sales',
     englishTitle: 'Sales Representative',
-    arabicTitle: 'فريق المبيعات',
     portalTitleEn: 'Sales Portal',
-    portalTitleAr: 'بوابة المبيعات',
     portalSlug: 'sales',
     team: 'Sales',
     department: 'Sales & Business Development',
@@ -83,9 +75,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   am_team_lead: {
     role: 'am_team_lead',
     englishTitle: 'AM Team Leader',
-    arabicTitle: 'قائد فريق إدارة الحسابات',
     portalTitleEn: 'AM Team Leader Portal',
-    portalTitleAr: 'بوابة قيادة إدارة الحسابات',
     portalSlug: 'am-team-lead',
     team: 'Account Management',
     department: 'Account Management',
@@ -102,9 +92,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   am_agent: {
     role: 'am_agent',
     englishTitle: 'Account Manager (AM)',
-    arabicTitle: 'أخصائي إدارة الحسابات',
     portalTitleEn: 'Account Manager Portal',
-    portalTitleAr: 'بوابة مدير الحساب',
     portalSlug: 'am-agent',
     team: 'Account Management',
     department: 'Account Management',
@@ -121,9 +109,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   media_buying_team_lead: {
     role: 'media_buying_team_lead',
     englishTitle: 'Media Buying Team Leader',
-    arabicTitle: 'قائد فريق الإعلانات الممولة',
     portalTitleEn: 'Media Buying Lead Portal',
-    portalTitleAr: 'بوابة قيادة الميديا باينج',
     portalSlug: 'media-buying-team-lead',
     team: 'Media Buying',
     department: 'Paid Media',
@@ -140,9 +126,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   media_buying_agent: {
     role: 'media_buying_agent',
     englishTitle: 'Media Buying Specialist',
-    arabicTitle: 'أخصائي إعلانات ممولة',
     portalTitleEn: 'Media Buying Specialist Portal',
-    portalTitleAr: 'بوابة أخصائي الميديا باينج',
     portalSlug: 'media-buying-agent',
     team: 'Media Buying',
     department: 'Paid Media',
@@ -159,9 +143,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   seo_team_lead: {
     role: 'seo_team_lead',
     englishTitle: 'SEO Team Leader',
-    arabicTitle: 'قائد فريق تحسين محركات البحث',
     portalTitleEn: 'SEO Team Leader Portal',
-    portalTitleAr: 'بوابة قيادة السيو',
     portalSlug: 'seo-team-lead',
     team: 'SEO',
     department: 'Organic Search (SEO)',
@@ -178,9 +160,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   seo_agent: {
     role: 'seo_agent',
     englishTitle: 'SEO Specialist',
-    arabicTitle: 'أخصائي تحسين محركات البحث',
     portalTitleEn: 'SEO Specialist Portal',
-    portalTitleAr: 'بوابة أخصائي السيو',
     portalSlug: 'seo-agent',
     team: 'SEO',
     department: 'Organic Search (SEO)',
@@ -197,9 +177,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   social_media_team_lead: {
     role: 'social_media_team_lead',
     englishTitle: 'Social Media Team Leader',
-    arabicTitle: 'قائد فريق السوشيال ميديا',
     portalTitleEn: 'Social Media Lead Portal',
-    portalTitleAr: 'بوابة قيادة السوشيال ميديا',
     portalSlug: 'social-media-team-lead',
     team: 'Social Media',
     department: 'Social Media & Content',
@@ -216,9 +194,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   social_media_agent: {
     role: 'social_media_agent',
     englishTitle: 'Social Media Specialist',
-    arabicTitle: 'أخصائي سوشيال ميديا ومحتوى',
     portalTitleEn: 'Social Media Specialist Portal',
-    portalTitleAr: 'بوابة أخصائي السوشيال ميديا',
     portalSlug: 'social-media-agent',
     team: 'Social Media',
     department: 'Social Media & Content',
@@ -235,9 +211,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   graphic_designer: {
     role: 'graphic_designer',
     englishTitle: 'Graphic Designer',
-    arabicTitle: 'مصمم جرافيك',
     portalTitleEn: 'Graphic Designer Portal',
-    portalTitleAr: 'بوابة مصمم الجرافيك',
     portalSlug: 'graphic-designer',
     team: 'Creative & Design',
     department: 'Creative & Visual Design',
@@ -254,9 +228,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   video_editor: {
     role: 'video_editor',
     englishTitle: 'Video Editor',
-    arabicTitle: 'محرر ومونتير فيديو',
     portalTitleEn: 'Video Editor Portal',
-    portalTitleAr: 'بوابة محرر الفيديو',
     portalSlug: 'video-editor',
     team: 'Video Production',
     department: 'Video Production',
@@ -273,9 +245,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
   ai_engineer: {
     role: 'ai_engineer',
     englishTitle: 'AI Engineer',
-    arabicTitle: 'مهندس ذكاء اصطناعي',
     portalTitleEn: 'AI Engineer Portal',
-    portalTitleAr: 'بوابة مهندس الذكاء الاصطناعي',
     portalSlug: 'ai-engineer',
     team: 'AI Engineering',
     department: 'AI & Automation',
