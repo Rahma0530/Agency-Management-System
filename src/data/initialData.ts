@@ -219,6 +219,17 @@ export const INITIAL_USERS: UserRecord[] = [
     auth_id: 'auth-vid-1',
     capacity_limit: 10,
   },
+  // 14. AI Engineer
+  {
+    id: 'usr-ai-eng-1',
+    name: 'كريم النجار',
+    email: 'karim.ai@agency.com',
+    password: 'agency123',
+    role: 'ai_engineer',
+    team: 'AI Engineering',
+    auth_id: 'auth-ai-eng-1',
+    capacity_limit: 10,
+  },
 ];
 
 export const INITIAL_CLIENTS: ClientRecord[] = [

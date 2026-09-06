@@ -270,6 +270,25 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     canAssignAM: false,
     description: 'Video production, motion graphics, and short-form video ads.',
   },
+  ai_engineer: {
+    role: 'ai_engineer',
+    englishTitle: 'AI Engineer',
+    arabicTitle: 'مهندس ذكاء اصطناعي',
+    portalTitleEn: 'AI Engineer Portal',
+    portalTitleAr: 'بوابة مهندس الذكاء الاصطناعي',
+    portalSlug: 'ai-engineer',
+    team: 'AI Engineering',
+    department: 'AI & Automation',
+    badgeBg: 'rgba(45, 212, 191, 0.2)',
+    badgeText: '#2dd4bf',
+    defaultModule: 'daily_operations',
+    allowedModules: ['tasks', 'daily_operations'],
+    canRegisterClients: false,
+    canCreateCampaign: false,
+    canManageCapacity: false,
+    canAssignAM: false,
+    description: 'AI-assisted automation, internal tooling, and technical support across cross-team task delivery.',
+  },
 };
 
 export const getRoleInfo = (role?: UserRole): RoleMetadata => {

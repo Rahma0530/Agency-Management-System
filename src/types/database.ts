@@ -16,7 +16,8 @@ export type UserRole =
   | 'social_media_team_lead'    // Social Media Team Leader
   | 'social_media_agent'        // Social Media Agent
   | 'graphic_designer'          // Graphic Designer
-  | 'video_editor';             // Video Editor
+  | 'video_editor'              // Video Editor
+  | 'ai_engineer';               // AI Engineer
 
 export type ServiceType = 'seo' | 'social_media' | 'media_buying' | 'creative';
 
