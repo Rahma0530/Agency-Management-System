@@ -33,14 +33,27 @@ import {
   CampaignStatus,
   ClientRecord,
   UserRecord,
+  PackageRecord,
+  BriefRecord,
+  TaskRecord,
+  DailyLogRecord,
+  ExtraNoteRecord,
+  AssignmentRecord,
 } from '../types/database';
 import { getRoleInfo } from '../data/roles';
+import { ClientDashboard } from './ClientDashboard';
 
 interface CampaignManagementModuleProps {
   campaigns: CampaignRecord[];
   clients: ClientRecord[];
   users: UserRecord[];
   currentUser: UserRecord;
+  packages: PackageRecord[];
+  briefs: BriefRecord[];
+  tasks: TaskRecord[];
+  dailyLogs: DailyLogRecord[];
+  extraNotes: ExtraNoteRecord[];
+  assignments: AssignmentRecord[];
   onCreateCampaign: (campaignData: Partial<CampaignRecord>) => Promise<void> | void;
   onUpdateCampaign: (id: string, updates: Partial<CampaignRecord>) => Promise<void> | void;
   isLoading?: boolean;
@@ -172,6 +185,12 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   clients,
   users,
   currentUser,
+  packages,
+  briefs,
+  tasks,
+  dailyLogs,
+  extraNotes,
+  assignments,
   onCreateCampaign,
   onUpdateCampaign,
   isLoading = false,
@@ -189,6 +208,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
   // UI Modal States
   const [selectedCampaignForDetails, setSelectedCampaignForDetails] = useState<CampaignRecord | null>(null);
+  const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [campaignToEdit, setCampaignToEdit] = useState<CampaignRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -230,16 +250,28 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
     if (currentUser.role === 'executive' || currentUser.role === 'head_of_technical') {
       return false;
     }
-    // Media Buying Team Lead has full management permissions
+    // Media Buying Team Lead has full management permissions across all campaigns
     if (currentUser.role === 'media_buying_team_lead') {
       return true;
     }
-    // Media Buying Agent can only edit their own campaigns
+    // Media Buying Agent: edit access is based on client assignment, not who created/owns
+    // the campaign — an assigned agent can edit every campaign for their client, even ones
+    // their team lead created.
     if (currentUser.role === 'media_buying_agent') {
-      const ownerId = getCampaignOwnerId(campaign);
-      return ownerId === currentUser.id || (campaign.results as any)?.owner_id === currentUser.id;
+      return assignments.some(
+        (a) =>
+          a.client_id === campaign.client_id &&
+          a.service_type === 'media_buying' &&
+          a.agent_id === currentUser.id
+      );
     }
-    // AM Team Lead and AM Agent are view-only
+    // AM Agent: same client-assignment rule (client.am_agent_id), not ownership/creator —
+    // can edit any campaign for a client formally assigned to them.
+    if (currentUser.role === 'am_agent') {
+      const client = clients.find((c) => c.id === campaign.client_id);
+      return client?.am_agent_id === currentUser.id;
+    }
+    // AM Team Lead remains view-only
     return false;
   };
 
@@ -257,13 +289,15 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
     if (currentUser.role === 'media_buying_team_lead') {
       return campaigns;
     }
-    // 4. Media Buying Agent: ONLY see their assigned campaigns (cannot see other agents' private campaign data)
+    // 4. Media Buying Agent: ONLY campaigns for clients they're personally assigned to —
+    //    strict client-based exclusivity, not campaign ownership.
     if (currentUser.role === 'media_buying_agent') {
-      return campaigns.filter(
-        (c) =>
-          getCampaignOwnerId(c) === currentUser.id ||
-          (c.results as any)?.owner_id === currentUser.id
+      const myClientIds = new Set(
+        assignments
+          .filter((a) => a.service_type === 'media_buying' && a.agent_id === currentUser.id)
+          .map((a) => a.client_id)
       );
+      return campaigns.filter((c) => myClientIds.has(c.client_id));
     }
     // 5. AM Team Lead: all campaigns for clients in agency
     if (currentUser.role === 'am_team_lead') {
@@ -277,12 +311,20 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       return campaigns.filter((c) => myClientIds.has(c.client_id));
     }
     return [];
-  }, [campaigns, clients, currentUser]);
+  }, [campaigns, clients, currentUser, assignments]);
 
   // Clients accessible to current user for campaign linking
   const accessibleClients = useMemo(() => {
     if (currentUser.role === 'executive' || currentUser.role === 'head_of_technical' || currentUser.role === 'media_buying_team_lead') {
       return clients;
+    }
+    if (currentUser.role === 'media_buying_agent') {
+      const myClientIds = new Set(
+        assignments
+          .filter((a) => a.service_type === 'media_buying' && a.agent_id === currentUser.id)
+          .map((a) => a.client_id)
+      );
+      return clients.filter((c) => myClientIds.has(c.id));
     }
     if (currentUser.role === 'am_agent') {
       return clients.filter((c) => c.am_agent_id === currentUser.id);
@@ -291,7 +333,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       return clients.filter((c) => c.sales_owner_id === currentUser.id);
     }
     return clients;
-  }, [clients, currentUser]);
+  }, [clients, currentUser, assignments]);
 
   // -------------------------------------------------------------
   // 2. DASHBOARD KPI SUMMARY COMPUTATION
@@ -596,6 +638,8 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
     selectedOwnerId !== 'all' ||
     selectedDateRange !== 'all' ||
     searchQuery.trim() !== '';
+
+  const activeDashboardClient = clients.find((c) => c.id === dashboardClientId) || null;
 
   return (
     <div className="space-y-6 animate-fadeIn" dir="rtl">
@@ -1238,8 +1282,14 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                         </span>
 
                         {/* Client Relation Badge */}
-                        <span
-                          className="px-2.5 py-0.5 rounded-full text-[11px] font-medium flex items-center gap-1"
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (client) setDashboardClientId(client.id);
+                          }}
+                          disabled={!client}
+                          title={client ? `View ${client.name}'s dashboard` : undefined}
+                          className="px-2.5 py-0.5 rounded-full text-[11px] font-medium flex items-center gap-1 transition-colors hover:bg-purple-900/40 hover:text-purple-200 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white"
                           style={{
                             background: 'rgba(255, 255, 255, 0.05)',
                             color: 'var(--white)',
@@ -1248,7 +1298,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                         >
                           <Building2 className="w-3 h-3 text-purple-400" />
                           <span>{client?.name || 'عميل غير محدد'}</span>
-                        </span>
+                        </button>
 
                         {campaign.campaign_id_external && (
                           <span className="text-[10px] font-mono text-stone-400">
@@ -1556,7 +1606,17 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                     <div>
                       <span className="text-stone-400 block text-[11px]">اسم العميل:</span>
-                      <strong className="text-white text-sm">{client?.name || 'غير محدد'}</strong>
+                      <button
+                        onClick={() => {
+                          if (!client) return;
+                          setSelectedCampaignForDetails(null);
+                          setDashboardClientId(client.id);
+                        }}
+                        disabled={!client}
+                        className="text-white text-sm font-bold hover:text-purple-300 hover:underline disabled:no-underline disabled:hover:text-white"
+                      >
+                        {client?.name || 'غير محدد'}
+                      </button>
                       <span className="text-[10px] text-stone-400 block">{client?.industry || ''}</span>
                     </div>
 
@@ -2148,6 +2208,24 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
             </form>
           </div>
         </div>
+      )}
+
+      {activeDashboardClient && (
+        <ClientDashboard
+          client={activeDashboardClient}
+          packageRecord={packages.find((p) => p.id === activeDashboardClient.package_id)}
+          allPackages={packages}
+          users={users}
+          currentUser={currentUser}
+          briefs={briefs}
+          campaigns={campaigns}
+          tasks={tasks}
+          dailyLogs={dailyLogs}
+          extraNotes={extraNotes}
+          assignments={assignments}
+          initialTab="campaigns"
+          onClose={() => setDashboardClientId(null)}
+        />
       )}
     </div>
   );

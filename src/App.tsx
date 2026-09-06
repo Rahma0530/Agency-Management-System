@@ -1322,6 +1322,12 @@ export default function App() {
                   clients={clients}
                   users={users}
                   currentUser={currentUser}
+                  packages={packages}
+                  briefs={briefs}
+                  tasks={tasks}
+                  dailyLogs={dailyLogs}
+                  extraNotes={extraNotes}
+                  assignments={assignments}
                   onCreateCampaign={handleCreateCampaign}
                   onUpdateCampaign={handleUpdateCampaign}
                   isLoading={loading}

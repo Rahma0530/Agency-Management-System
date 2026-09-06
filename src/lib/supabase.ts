@@ -276,16 +276,10 @@ export function isClientAccessibleUnderRLS(
 
   // 6. Media Buying Agent: ONLY clients assigned to them
   if (viewer.role === 'media_buying_agent') {
-    const isAssigned = inMemoryAssignments.some(
-      (a) => a.client_id === client.id && a.agent_id === viewer.id
+    // Strict client-based exclusivity: formal assignment only, no ownership/task fallback
+    return inMemoryAssignments.some(
+      (a) => a.client_id === client.id && a.service_type === 'media_buying' && a.agent_id === viewer.id
     );
-    const hasCampaign = inMemoryCampaigns.some(
-      (c) => c.client_id === client.id && (c.owner_id === viewer.id || (c.results as any)?.owner_id === viewer.id)
-    );
-    const hasTask = inMemoryTasks.some(
-      (t) => t.client_id === client.id && t.assigned_to === viewer.id
-    );
-    return isAssigned || hasCampaign || hasTask;
   }
 
   // 7. SEO & Social Leads: Full visibility in their department
@@ -351,13 +345,12 @@ export function isCampaignAccessibleUnderRLS(
     return true;
   }
 
-  // 7. Media Buying Agent: ONLY assigned campaigns (cannot see other agents' private campaign data)
+  // 7. Media Buying Agent: ONLY campaigns for clients formally assigned to them —
+  //    ownership/creator no longer grants access on its own.
   if (viewer.role === 'media_buying_agent') {
-    const isOwner = campaign.owner_id === viewer.id || (campaign.results as any)?.owner_id === viewer.id;
-    const isAssignedClient = inMemoryAssignments.some(
-      (a) => a.client_id === campaign.client_id && a.agent_id === viewer.id
+    return inMemoryAssignments.some(
+      (a) => a.client_id === campaign.client_id && a.service_type === 'media_buying' && a.agent_id === viewer.id
     );
-    return isOwner || isAssignedClient;
   }
 
   return false;
@@ -820,9 +813,17 @@ function createCampaignsRLSQueryBuilder(rawBuilder?: any) {
           if (idFilter) {
             const target = inMemoryCampaigns.find((c) => c.id === idFilter.value);
             if (target) {
-              // Check edit permission
+              // Check edit permission — client assignment, not campaign ownership/creator
               const canEdit = viewer?.role === 'media_buying_team_lead' ||
-                (viewer?.role === 'media_buying_agent' && (target.owner_id === viewer?.id || !target.owner_id));
+                (viewer?.role === 'media_buying_agent' &&
+                  inMemoryAssignments.some(
+                    (a) =>
+                      a.client_id === target.client_id &&
+                      a.service_type === 'media_buying' &&
+                      a.agent_id === viewer.id
+                  )) ||
+                (viewer?.role === 'am_agent' &&
+                  inMemoryClients.find((c) => c.id === target.client_id)?.am_agent_id === viewer.id);
               if (!canEdit) {
                 const errResp = {
                   data: null,
