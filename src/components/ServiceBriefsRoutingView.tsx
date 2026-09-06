@@ -396,7 +396,12 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
 
   // Filter clients based on role and assignment rules:
   // - Team Leader: All clients whose package includes this service
-  // - Service Agent: ONLY clients where assignment.agent_id === currentUser.id AND service_type === serviceType
+  // - Service Agent: ONLY clients where assignment.agent_id === currentUser.id, in ANY
+  //   service — being formally assigned to a client for one service is enough to unlock
+  //   that client here too, since once inside ClientDashboard the agent can see that
+  //   client's briefs across every service, not only serviceType (see ClientDashboard's
+  //   clientBriefs, which is never filtered by service_type). This queue itself still
+  //   only lists clients subscribed to serviceType, via the hasService check below.
   const authorizedClients = clients.filter((c) => {
     const pkg = packages.find((p) => p.id === c.package_id);
     const hasService = pkg?.services.includes(serviceType);
@@ -406,7 +411,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
       return true;
     } else {
       const myAssignment = assignments.find(
-        (a) => a.client_id === c.id && a.service_type === serviceType && a.agent_id === currentUser.id
+        (a) => a.client_id === c.id && a.agent_id === currentUser.id
       );
       return !!myAssignment;
     }

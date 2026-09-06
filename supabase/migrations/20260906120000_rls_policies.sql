@@ -206,6 +206,28 @@ as $$
   );
 $$;
 
+-- True if the caller has ANY assignments-table row for this client, in any
+-- service. Deliberately looser than agent_assigned() above: used only for
+-- brief READ visibility, where being formally assigned to a client for one
+-- service is meant to unlock every service's brief for that same client
+-- (see the briefs_select_rls policy). It must NOT be used for anything
+-- that grants write access or client/campaign visibility — those stay
+-- scoped to the specific service via agent_assigned().
+create or replace function public.agent_assigned_any_service(p_client_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+    from public.assignments a
+    where a.client_id = p_client_id
+      and a.agent_id = public.app_user_id()
+  );
+$$;
+
 -- True if the caller is the Account Manager on record for this client
 -- (clients.am_agent_id). Mirrors the am_agent branch of
 -- isClientAccessibleUnderRLS / isCampaignAccessibleUnderRLS, and the
@@ -381,10 +403,20 @@ alter table public.briefs enable row level security;
 --     (clients.am_agent_id = them), any service — read-only (AM never
 --     submits/edits a brief, only the owning service team does).
 --   - Service Team Lead (SEO / Media Buying / Social Media): briefs for
---     their own service, for any client whose package includes it.
---   - Service Agent: briefs for their own service, ONLY for clients they
---     are formally assigned to via `assignments` — strict exclusivity, no
---     ownership/task fallback.
+--     their own service, for any client whose package includes it. Unlike
+--     agents below, leads are NOT broadened to cross-service — a lead only
+--     ever sees their own department's brief, for every client in it.
+--   - Service Agent: once formally assigned to a client for ANY service
+--     (an assignments row with agent_id = them, service_type doesn't have
+--     to match the brief's), they can read that client's briefs for EVERY
+--     service — SEO + Social Media + Media Buying — not just their own.
+--     They still see zero briefs for a client they have no assignment for
+--     at all, even if that client happens to use their department's
+--     service (strict exclusivity is unchanged; only the service_type
+--     match within an assigned client was too narrow). Note this is READ
+--     visibility only — the write policy below still requires the
+--     assignment's service_type to match the brief being submitted, since
+--     an agent shouldn't be authoring a brief outside their own expertise.
 --   - Executive / Head of Technical: full visibility. This isn't reachable
 --     through the current UI (neither role has "service_briefs" in
 --     allowedModules), but every other RLS function in this codebase grants
@@ -404,9 +436,7 @@ using (
   or (public.app_user_role() = 'seo_team_lead' and service_type = 'seo' and public.client_has_service(client_id, 'seo'))
   or (public.app_user_role() = 'media_buying_team_lead' and service_type = 'media_buying' and public.client_has_service(client_id, 'media_buying'))
   or (public.app_user_role() = 'social_media_team_lead' and service_type = 'social_media' and public.client_has_service(client_id, 'social_media'))
-  or (public.app_user_role() = 'seo_agent' and service_type = 'seo' and public.client_has_service(client_id, 'seo') and public.agent_assigned(client_id, 'seo'))
-  or (public.app_user_role() = 'media_buying_agent' and service_type = 'media_buying' and public.client_has_service(client_id, 'media_buying') and public.agent_assigned(client_id, 'media_buying'))
-  or (public.app_user_role() = 'social_media_agent' and service_type = 'social_media' and public.client_has_service(client_id, 'social_media') and public.agent_assigned(client_id, 'social_media'))
+  or (public.app_user_role() in ('seo_agent', 'media_buying_agent', 'social_media_agent') and public.agent_assigned_any_service(client_id))
   or (public.app_user_role() in ('graphic_designer', 'video_editor') and service_type = 'creative' and submitted_by = public.app_user_id())
 );
 
