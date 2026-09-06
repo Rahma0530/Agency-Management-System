@@ -980,9 +980,9 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               }}
             >
               <option value="all" className="bg-stone-900 text-white">
-                جميع العملاء ({clients.length})
+                جميع العملاء ({accessibleClients.length})
               </option>
-              {clients.map((c) => (
+              {accessibleClients.map((c) => (
                 <option key={c.id} value={c.id} className="bg-stone-900 text-white">
                   {c.name}
                 </option>
