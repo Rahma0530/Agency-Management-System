@@ -1003,8 +1003,8 @@ export const getSupabase = (): SupabaseClient => {
 
 export const supabase = getSupabase();
 
-// Expose supabase globally for browser verification and direct security testing
-if (typeof window !== 'undefined') {
+// Dev-only: expose supabase globally for browser verification and direct security testing
+if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as any).supabase = supabase;
 }
 
