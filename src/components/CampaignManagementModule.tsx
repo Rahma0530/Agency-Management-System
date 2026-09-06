@@ -23,7 +23,6 @@ import {
   RefreshCw,
   SlidersHorizontal,
   Building2,
-  ChevronRight,
   Info,
   ShieldCheck,
   Zap,
@@ -207,7 +206,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // UI Modal States
-  const [selectedCampaignForDetails, setSelectedCampaignForDetails] = useState<CampaignRecord | null>(null);
   const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [campaignToEdit, setCampaignToEdit] = useState<CampaignRecord | null>(null);
@@ -572,14 +570,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
       if (campaignToEdit) {
         await onUpdateCampaign(campaignToEdit.id, payload);
-        // If details modal is open for this campaign, refresh it
-        if (selectedCampaignForDetails?.id === campaignToEdit.id) {
-          setSelectedCampaignForDetails({
-            ...campaignToEdit,
-            ...payload,
-            results: newResults,
-          } as CampaignRecord);
-        }
       } else {
         await onCreateCampaign(payload);
       }
@@ -607,13 +597,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           status: newSt,
         },
       });
-      if (selectedCampaignForDetails?.id === campaign.id) {
-        setSelectedCampaignForDetails({
-          ...selectedCampaignForDetails,
-          status: newSt,
-          results: { ...(selectedCampaignForDetails.results || {}), status: newSt },
-        });
-      }
     } catch (err: any) {
       console.error(err);
     }
@@ -1213,16 +1196,8 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           <div className="grid grid-cols-1 gap-3">
             {filteredCampaigns.map((campaign) => {
               const client = clients.find((c) => c.id === campaign.client_id);
-              const owner = users.find((u) => u.id === getCampaignOwnerId(campaign));
               const name = getCampaignName(campaign);
               const status = getCampaignStatus(campaign);
-              const objective = getCampaignObjective(campaign);
-              const budget = getCampaignBudget(campaign);
-              const startDate = getCampaignStartDate(campaign);
-              const endDate = getCampaignEndDate(campaign);
-              const team = getCampaignTeam(campaign);
-              const spend = campaign.spend || 0;
-              const spendPct = budget > 0 ? (spend / budget) * 100 : 0;
 
               const platformCfg = PLATFORM_CONFIG[campaign.platform] || {
                 label: campaign.platform,
@@ -1235,25 +1210,18 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.active;
               const userCanEdit = canEdit(campaign);
 
-              // Results performance summary
-              const results = campaign.results || {};
-              const hasPerformanceMetrics = Object.keys(results).some(
-                (k) => !['name', 'objective', 'status', 'budget', 'start_date', 'end_date', 'owner_id', 'team'].includes(k)
-              );
-
               return (
                 <div
                   key={campaign.id}
                   id={`campaign-card-${campaign.id}`}
-                  onClick={() => setSelectedCampaignForDetails(campaign)}
-                  className="rounded-2xl p-4 transition-all duration-200 cursor-pointer hover:border-purple-500/40 hover:shadow-lg group"
+                  className="rounded-2xl p-4 transition-all duration-200 hover:border-purple-500/40 hover:shadow-lg group"
                   style={{
                     background: 'var(--surface)',
                     border: '1px solid var(--border-subtle)',
                   }}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    {/* Left: Identity, Platform, Client & Objective */}
+                    {/* Left: Identity, Platform, Client */}
                     <div className="space-y-2 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         {/* Platform Badge */}
@@ -1314,129 +1282,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                       >
                         {name}
                       </h4>
-
-                      {/* Marketing Objective */}
-                      <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: 'var(--lilac)' }}>
-                        <span className="flex items-center gap-1">
-                          <Target className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                          <span>Objective: {objective}</span>
-                        </span>
-
-                        <span className="text-stone-500">•</span>
-
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                          <span>
-                            {startDate || 'Not set'} {endDate ? `to ${endDate}` : '(ongoing)'}
-                          </span>
-                        </span>
-
-                        <span className="text-stone-500">•</span>
-
-                        <span className="flex items-center gap-1">
-                          <User className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                          <span>Owner: {owner?.name || 'Not set'} ({team})</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Middle: Budget vs Spend */}
-                    <div className="w-full lg:w-56 shrink-0 space-y-1.5 p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span style={{ color: 'var(--lilac)' }}>Spend / Budget:</span>
-                        <span className="font-mono font-bold" style={{ color: 'var(--white)' }}>
-                          ${spend.toLocaleString()} / ${budget.toLocaleString()}
-                        </span>
-                      </div>
-
-                      <div className="w-full bg-stone-800 rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-300"
-                          style={{
-                            width: `${Math.min(spendPct, 100)}%`,
-                            background:
-                              spendPct > 100
-                                ? 'var(--roas-bad)'
-                                : spendPct > 80
-                                ? 'var(--roas-mid)'
-                                : 'var(--roas-good)',
-                          }}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between text-[10px] text-stone-400 font-mono">
-                        <span>Utilization Rate</span>
-                        <span>{spendPct.toFixed(1)}%</span>
-                      </div>
-                    </div>
-
-                    {/* Right: Performance Summary Chips (Only existing metrics) */}
-                    <div className="w-full lg:w-72 shrink-0 space-y-2">
-                      <div className="text-[10px] font-bold text-stone-400">
-                        Performance Summary:
-                      </div>
-
-                      {hasPerformanceMetrics ? (
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {results.roas !== undefined && (
-                            <div className="p-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/20 text-center">
-                              <div className="text-[9px] text-emerald-400">ROAS</div>
-                              <div className="text-xs font-bold font-mono text-emerald-300">
-                                {results.roas}x
-                              </div>
-                            </div>
-                          )}
-
-                          {results.conversions !== undefined && (
-                            <div className="p-1.5 rounded-lg bg-cyan-950/40 border border-cyan-500/20 text-center">
-                              <div className="text-[9px] text-cyan-400">Conversions</div>
-                              <div className="text-xs font-bold font-mono text-cyan-300">
-                                {Number(results.conversions).toLocaleString()}
-                              </div>
-                            </div>
-                          )}
-
-                          {results.clicks !== undefined && (
-                            <div className="p-1.5 rounded-lg bg-purple-950/40 border border-purple-500/20 text-center">
-                              <div className="text-[9px] text-purple-300">Clicks</div>
-                              <div className="text-xs font-bold font-mono text-purple-200">
-                                {Number(results.clicks).toLocaleString()}
-                              </div>
-                            </div>
-                          )}
-
-                          {results.impressions !== undefined && !results.roas && (
-                            <div className="p-1.5 rounded-lg bg-blue-950/40 border border-blue-500/20 text-center">
-                              <div className="text-[9px] text-blue-300">Impressions</div>
-                              <div className="text-xs font-bold font-mono text-blue-200">
-                                {Number(results.impressions).toLocaleString()}
-                              </div>
-                            </div>
-                          )}
-
-                          {results.ctr !== undefined && !results.conversions && (
-                            <div className="p-1.5 rounded-lg bg-amber-950/40 border border-amber-500/20 text-center">
-                              <div className="text-[9px] text-amber-300">CTR</div>
-                              <div className="text-xs font-bold font-mono text-amber-200">
-                                {results.ctr}%
-                              </div>
-                            </div>
-                          )}
-
-                          {results.cpa !== undefined && (
-                            <div className="p-1.5 rounded-lg bg-stone-800/60 border border-stone-700 text-center">
-                              <div className="text-[9px] text-stone-300">CPA</div>
-                              <div className="text-xs font-bold font-mono text-white">
-                                ${results.cpa}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="p-2 rounded-xl bg-white/[0.02] border border-white/5 text-center text-[11px] text-stone-400">
-                          No additional performance metrics recorded yet
-                        </div>
-                      )}
                     </div>
 
                     {/* Actions */}
@@ -1473,23 +1318,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                           </button>
                         </>
                       )}
-
-                      <button
-                        title="View campaign details"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedCampaignForDetails(campaign);
-                        }}
-                        className="px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
-                        style={{
-                          background: 'rgba(123, 47, 247, 0.25)',
-                          color: 'var(--purple-light)',
-                          border: '1px solid var(--border-strong)',
-                        }}
-                      >
-                        <span>Details</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -1500,291 +1328,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       )}
 
       {/* ------------------------------------------------------------- */}
-      {/* MODAL 1: CAMPAIGN DETAILS VIEW */}
-      {/* ------------------------------------------------------------- */}
-      {selectedCampaignForDetails && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fadeIn"
-          onClick={() => setSelectedCampaignForDetails(null)}
-        >
-          <div
-            className="w-full max-w-3xl rounded-3xl p-6 shadow-2xl relative space-y-6 max-h-[90vh] overflow-y-auto"
-            style={{
-              background: 'var(--surface-modal)',
-              border: '1px solid var(--border-strong)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
-              <div className="space-y-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Platform */}
-                  {(() => {
-                    const cfg =
-                      PLATFORM_CONFIG[selectedCampaignForDetails.platform] || {
-                        label: selectedCampaignForDetails.platform,
-                        enLabel: selectedCampaignForDetails.platform,
-                        bg: 'rgba(255, 255, 255, 0.1)',
-                        text: '#ffffff',
-                        border: 'rgba(255, 255, 255, 0.2)',
-                      };
-                    return (
-                      <span
-                        className="px-2.5 py-0.5 rounded-full text-xs font-bold"
-                        style={{
-                          background: cfg.bg,
-                          color: cfg.text,
-                          border: `1px solid ${cfg.border}`,
-                        }}
-                      >
-                        {cfg.enLabel}
-                      </span>
-                    );
-                  })()}
-
-                  {/* Status */}
-                  {(() => {
-                    const st = getCampaignStatus(selectedCampaignForDetails);
-                    const cfg = STATUS_CONFIG[st] || STATUS_CONFIG.active;
-                    return (
-                      <span
-                        className="px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1"
-                        style={{
-                          background: cfg.bg,
-                          color: cfg.text,
-                          border: `1px solid ${cfg.border}`,
-                        }}
-                      >
-                        {cfg.icon}
-                        <span>{cfg.label}</span>
-                      </span>
-                    );
-                  })()}
-
-                  {selectedCampaignForDetails.campaign_id_external && (
-                    <span className="text-xs font-mono text-stone-400">
-                      Campaign ID: {selectedCampaignForDetails.campaign_id_external}
-                    </span>
-                  )}
-                </div>
-
-                <h3 className="text-lg md:text-xl font-bold" style={{ color: 'var(--white)' }}>
-                  {getCampaignName(selectedCampaignForDetails)}
-                </h3>
-              </div>
-
-              <button
-                onClick={() => setSelectedCampaignForDetails(null)}
-                className="p-2 rounded-xl text-stone-400 hover:text-white transition-all"
-                style={{ background: 'rgba(255, 255, 255, 0.05)' }}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Client & Service Relation Box */}
-            {(() => {
-              const client = clients.find((c) => c.id === selectedCampaignForDetails.client_id);
-              const owner = users.find((u) => u.id === getCampaignOwnerId(selectedCampaignForDetails));
-              const amAgent = users.find((u) => u.id === client?.am_agent_id);
-
-              return (
-                <div
-                  className="p-4 rounded-2xl space-y-3"
-                  style={{
-                    background: 'rgba(123, 47, 247, 0.1)',
-                    border: '1px solid var(--border-medium)',
-                  }}
-                >
-                  <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                    <Building2 className="w-4 h-4" />
-                    <span>Client & Service Relation:</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                    <div>
-                      <span className="text-stone-400 block text-[11px]">Client Name:</span>
-                      <button
-                        onClick={() => {
-                          if (!client) return;
-                          setSelectedCampaignForDetails(null);
-                          setDashboardClientId(client.id);
-                        }}
-                        disabled={!client}
-                        className="text-white text-sm font-bold hover:text-purple-300 hover:underline disabled:no-underline disabled:hover:text-white"
-                      >
-                        {client?.name || 'Not set'}
-                      </button>
-                      <span className="text-[10px] text-stone-400 block">{client?.industry || ''}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-stone-400 block text-[11px]">Account Manager (AM):</span>
-                      <strong className="text-purple-200">{amAgent?.name || 'Pending assignment'}</strong>
-                      <span className="text-[10px] text-stone-400 block">
-                        Client status: {client?.status || 'active'}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-stone-400 block text-[11px]">Employee/Team responsible for ads:</span>
-                      <strong className="text-cyan-300">{owner?.name || 'Media Buying Team'}</strong>
-                      <span className="text-[10px] text-stone-400 block">
-                        {getCampaignTeam(selectedCampaignForDetails)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Campaign Core Details Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-              <div
-                className="p-3 rounded-xl"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
-              >
-                <span className="text-[11px] text-stone-400 block">Objective:</span>
-                <strong className="text-white text-xs mt-1 block">
-                  {getCampaignObjective(selectedCampaignForDetails)}
-                </strong>
-              </div>
-
-              <div
-                className="p-3 rounded-xl"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
-              >
-                <span className="text-[11px] text-stone-400 block">Start & End Date:</span>
-                <strong className="text-white text-xs mt-1 block font-mono">
-                  {getCampaignStartDate(selectedCampaignForDetails)}
-                  {getCampaignEndDate(selectedCampaignForDetails) ? ` → ${getCampaignEndDate(selectedCampaignForDetails)}` : ' (ongoing)'}
-                </strong>
-              </div>
-
-              <div
-                className="p-3 rounded-xl"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
-              >
-                <span className="text-[11px] text-stone-400 block">Allocated Budget:</span>
-                <strong className="text-white text-xs mt-1 block font-mono">
-                  ${getCampaignBudget(selectedCampaignForDetails).toLocaleString()}
-                </strong>
-              </div>
-
-              <div
-                className="p-3 rounded-xl"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border-subtle)' }}
-              >
-                <span className="text-[11px] text-stone-400 block">Actual Spend:</span>
-                <strong className="text-emerald-400 text-xs mt-1 block font-mono">
-                  ${(selectedCampaignForDetails.spend || 0).toLocaleString()}
-                </strong>
-              </div>
-            </div>
-
-            {/* Performance Metrics Section (Strictly existing metrics) */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
-                <BarChart3 className="w-4 h-4 text-purple-400" />
-                <span>Campaign Performance (recorded results):</span>
-              </h4>
-
-              {(() => {
-                const results = selectedCampaignForDetails.results || {};
-                const metricEntries = Object.entries(results).filter(
-                  ([k]) => !['name', 'objective', 'status', 'budget', 'start_date', 'end_date', 'owner_id', 'team'].includes(k)
-                );
-
-                if (metricEntries.length === 0) {
-                  return (
-                    <div className="p-4 rounded-xl text-center text-xs text-stone-400 bg-white/[0.02] border border-white/5">
-                      No additional performance metrics recorded for this campaign.
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {metricEntries.map(([key, val]) => {
-                      const displayKey: Record<string, string> = {
-                        roas: 'ROAS',
-                        impressions: 'Impressions',
-                        clicks: 'Clicks',
-                        conversions: 'Conversions',
-                        ctr: 'CTR (%)',
-                        cpc: 'CPC ($)',
-                        cpa: 'CPA ($)',
-                        spend: 'Spend',
-                        reach: 'Reach',
-                      };
-
-                      return (
-                        <div
-                          key={key}
-                          className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center space-y-1"
-                        >
-                          <span className="text-[11px] text-stone-400 block">
-                            {displayKey[key] || key}
-                          </span>
-                          <strong className="text-base font-bold font-mono text-purple-200">
-                            {typeof val === 'number'
-                              ? key === 'roas'
-                                ? `${val}x`
-                                : key === 'ctr'
-                                ? `${val}%`
-                                : key.startsWith('cp') || key === 'spend'
-                                ? `$${val}`
-                                : val.toLocaleString()
-                              : String(val)}
-                          </strong>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
-              {canEdit(selectedCampaignForDetails) && (
-                <button
-                  onClick={() => {
-                    const c = selectedCampaignForDetails;
-                    setSelectedCampaignForDetails(null);
-                    handleOpenEditModal(c);
-                  }}
-                  className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md"
-                  style={{
-                    background: 'var(--gradient-badge)',
-                    color: 'var(--white)',
-                    border: '1px solid var(--border-strong)',
-                  }}
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Edit Campaign</span>
-                </button>
-              )}
-
-              <button
-                onClick={() => setSelectedCampaignForDetails(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold transition-all"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  color: 'var(--white)',
-                  border: '1px solid var(--border-medium)',
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------- */}
-      {/* MODAL 2: CAMPAIGN CREATION & EDITING */}
+      {/* MODAL: CAMPAIGN CREATION & EDITING */}
       {/* ------------------------------------------------------------- */}
       {isCreateModalOpen && (
         <div

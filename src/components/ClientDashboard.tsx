@@ -36,7 +36,15 @@ import {
   TaskStatus,
 } from '../types/database';
 import { DynamicBriefForm } from './DynamicBriefForm';
-import { getCampaignName, getCampaignStatus, getCampaignBudget } from './CampaignManagementModule';
+import {
+  getCampaignName,
+  getCampaignStatus,
+  getCampaignBudget,
+  getCampaignObjective,
+  getCampaignStartDate,
+  getCampaignEndDate,
+  getCampaignOwnerId,
+} from './CampaignManagementModule';
 
 interface ClientDashboardProps {
   client: ClientRecord;
@@ -676,6 +684,9 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {clientCampaigns.map((cmp) => {
                       const res = cmp.results || {};
+                      const owner = users.find((u) => u.id === getCampaignOwnerId(cmp));
+                      const startDate = getCampaignStartDate(cmp);
+                      const endDate = getCampaignEndDate(cmp);
                       return (
                         <div
                           key={cmp.id}
@@ -701,6 +712,20 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                             </div>
                             <span className="text-xs font-mono font-bold text-emerald-400">
                               {res.roas ? `${res.roas}x ROAS` : ''}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-400">
+                            <span>
+                              Objective: <strong className="text-stone-200">{getCampaignObjective(cmp)}</strong>
+                            </span>
+                            <span className="text-stone-600">•</span>
+                            <span>
+                              {startDate || 'Not set'} {endDate ? `to ${endDate}` : '(ongoing)'}
+                            </span>
+                            <span className="text-stone-600">•</span>
+                            <span>
+                              Owner: <strong className="text-stone-200">{owner?.name || 'Not set'}</strong>
                             </span>
                           </div>
 
