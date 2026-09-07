@@ -241,7 +241,13 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     currentUser.role === 'media_buying_team_lead' ||
     currentUser.role === 'media_buying_agent' ||
     currentUser.role === 'social_media_team_lead' ||
-    currentUser.role === 'social_media_agent';
+    currentUser.role === 'social_media_agent' ||
+    currentUser.role === 'graphic_designer' ||
+    currentUser.role === 'video_editor';
+
+  // Per spec, the brief feature only becomes available once an AM Agent has actually been
+  // assigned to run the discovery meeting — before that there's nothing to document yet.
+  const isAMAgentAssigned = !!client.am_agent_id;
 
   const amAgents = users.filter((u) => u.role === 'am_agent');
 
@@ -373,7 +379,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>Service Briefs{hasBriefViewAccess ? ` (${clientBriefs.length})` : ''}</span>
+            <span>Service Briefs{hasBriefViewAccess && isAMAgentAssigned ? ` (${clientBriefs.length})` : ''}</span>
           </button>
 
           <button
@@ -851,6 +857,24 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                     relevant operational service teams, and Executive/Head of Technical oversight.
                     It is not available for your role.
                   </p>
+                </div>
+              ) : !isAMAgentAssigned ? (
+                <div className="p-8 text-center rounded-xl bg-amber-950/20 border border-amber-900/30">
+                  <Clock className="w-10 h-10 text-amber-400 mx-auto mb-2" />
+                  <h3 className="text-sm font-bold text-white">Awaiting AM Agent Assignment</h3>
+                  <p className="text-xs text-stone-400 max-w-md mx-auto mt-1">
+                    Service briefs can be documented once an Account Manager is assigned to this
+                    client.
+                  </p>
+                  {currentUser.role === 'am_team_lead' && (
+                    <button
+                      onClick={() => setActiveTab('team')}
+                      className="mt-4 px-4 py-2 rounded-xl text-xs font-bold text-purple-200 bg-purple-900/40 hover:bg-purple-800/60 hover:text-white border border-purple-700/40 transition-all inline-flex items-center gap-1.5 mx-auto"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Go to Assigned Team</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Save, History, CheckCircle2, Layers, Table, Edit3, Globe, Share2, Target, AlertCircle, Lock } from 'lucide-react';
+import { Save, History, CheckCircle2, Layers, Table, Edit3, Globe, Share2, Target, AlertCircle, Lock, Palette } from 'lucide-react';
 import { BriefRecord, ServiceType } from '../types/database';
+import { BRIEF_FIELD_SCHEMAS } from '../data/briefFieldSchemas';
 
 interface DynamicBriefFormProps {
   clientId: string;
@@ -70,6 +71,8 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
         return <Share2 className="w-4 h-4 text-purple-400" />;
       case 'media_buying':
         return <Target className="w-4 h-4 text-amber-400" />;
+      case 'creative':
+        return <Palette className="w-4 h-4 text-pink-400" />;
       default:
         return <Layers className="w-4 h-4 text-stone-400" />;
     }
@@ -83,10 +86,14 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
         return 'Social Media Management';
       case 'media_buying':
         return 'Paid Advertising (Media Buying)';
+      case 'creative':
+        return 'Creative (Graphic Design & Video)';
       default:
         return serviceType;
     }
   };
+
+  const fieldDefs = BRIEF_FIELD_SCHEMAS[serviceType] || [];
 
   return (
     <div
@@ -212,361 +219,63 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
       {activeView === 'edit' && (
         <fieldset
           disabled={!canEdit}
-          className={`space-y-4 border-0 p-0 m-0 min-w-0 ${!canEdit ? 'opacity-60' : ''}`}
+          className={`border-0 p-0 m-0 min-w-0 ${!canEdit ? 'opacity-60' : ''}`}
         >
-          {serviceType === 'seo' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {fieldDefs.map((field) => (
+              <div key={field.key} className={field.span === 'full' ? 'md:col-span-2' : ''}>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Website URL
+                  {field.label}
                 </label>
-                <input
-                  type="text"
-                  placeholder="https://example.com"
-                  value={formData.website_url || ''}
-                  onChange={(e) => handleFieldChange('website_url', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
+                {field.type === 'textarea' ? (
+                  <textarea
+                    rows={field.rows || 2}
+                    placeholder={field.placeholder}
+                    value={formData[field.key] || ''}
+                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    style={{
+                      background: 'rgba(10, 10, 13, 0.85)',
+                      border: '1px solid var(--border-soft)',
+                      color: 'var(--white)',
+                    }}
+                  />
+                ) : field.type === 'tag-list' ? (
+                  <input
+                    type="text"
+                    placeholder={field.placeholder}
+                    value={
+                      Array.isArray(formData[field.key])
+                        ? formData[field.key].join(', ')
+                        : formData[field.key] || ''
+                    }
+                    onChange={(e) =>
+                      handleFieldChange(field.key, e.target.value.split(',').map((s) => s.trim()))
+                    }
+                    className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    style={{
+                      background: 'rgba(10, 10, 13, 0.85)',
+                      border: '1px solid var(--border-soft)',
+                      color: 'var(--white)',
+                    }}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    placeholder={field.placeholder}
+                    value={formData[field.key] || ''}
+                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    style={{
+                      background: 'rgba(10, 10, 13, 0.85)',
+                      border: '1px solid var(--border-soft)',
+                      color: 'var(--white)',
+                    }}
+                  />
+                )}
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  CMS Platform
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: WordPress, Shopify, Next.js, Custom PHP..."
-                  value={formData.cms_platform || ''}
-                  onChange={(e) => handleFieldChange('cms_platform', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Target Keywords
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Enter keywords separated by commas or new lines..."
-                  value={formData.target_keywords || ''}
-                  onChange={(e) => handleFieldChange('target_keywords', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Geo-Targeting
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: Saudi Arabia (Riyadh, Jeddah), UAE..."
-                  value={formData.target_locations || ''}
-                  onChange={(e) => handleFieldChange('target_locations', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Current Organic Traffic (Estimated)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: 5,000 visitors/month"
-                  value={formData.current_organic_traffic || ''}
-                  onChange={(e) => handleFieldChange('current_organic_traffic', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Competitor URLs
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Enter competitor URLs..."
-                  value={formData.competitor_urls || ''}
-                  onChange={(e) => handleFieldChange('competitor_urls', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Primary Goals
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="What outcomes were agreed upon with the client?"
-                  value={formData.primary_goals || ''}
-                  onChange={(e) => handleFieldChange('primary_goals', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {serviceType === 'social_media' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Social Channels
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: Instagram, TikTok, LinkedIn, X"
-                  value={Array.isArray(formData.social_channels) ? formData.social_channels.join(', ') : formData.social_channels || ''}
-                  onChange={(e) => handleFieldChange('social_channels', e.target.value.split(',').map((s) => s.trim()))}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Tone of Voice
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: Premium and elegant, friendly and playful, formal and informative..."
-                  value={formData.brand_tone || ''}
-                  onChange={(e) => handleFieldChange('brand_tone', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Target Weekly Posting Frequency
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: 5 posts + 1 reel + daily stories"
-                  value={formData.posting_frequency || ''}
-                  onChange={(e) => handleFieldChange('posting_frequency', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Brand & Content Assets Link (Google Drive / Assets)
-                </label>
-                <input
-                  type="text"
-                  placeholder="https://drive.google.com/..."
-                  value={formData.assets_drive_link || ''}
-                  onChange={(e) => handleFieldChange('assets_drive_link', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Target Demographics
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Precise description of the target segment and their interests..."
-                  value={formData.target_demographics || ''}
-                  onChange={(e) => handleFieldChange('target_demographics', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Content Pillars
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Example: Educational (40%), promotional (30%), interactive & contests (30%)"
-                  value={formData.content_pillars || ''}
-                  onChange={(e) => handleFieldChange('content_pillars', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {serviceType === 'media_buying' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Ad Platforms
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: Meta Ads, Google Ads, TikTok, Snapchat"
-                  value={Array.isArray(formData.ad_platforms) ? formData.ad_platforms.join(', ') : formData.ad_platforms || ''}
-                  onChange={(e) => handleFieldChange('ad_platforms', e.target.value.split(',').map((s) => s.trim()))}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Ad Spend Budget (Monthly)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: SAR 40,000/month"
-                  value={formData.monthly_ad_budget || ''}
-                  onChange={(e) => handleFieldChange('monthly_ad_budget', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Target ROAS
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: 3.5x or 4.0x"
-                  value={formData.target_roas || ''}
-                  onChange={(e) => handleFieldChange('target_roas', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Primary Conversion Goal
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: Store sales, WhatsApp messages, qualified leads..."
-                  value={formData.primary_conversion_goal || ''}
-                  onChange={(e) => handleFieldChange('primary_conversion_goal', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Pixel & Ad Accounts Access
-                </label>
-                <input
-                  type="text"
-                  placeholder="Example: Business Manager partnership sent, pixel is active on the store"
-                  value={formData.ad_accounts_access_status || ''}
-                  onChange={(e) => handleFieldChange('ad_accounts_access_status', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  Audience Details & Demographic Targeting
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Interests, exclusions, Lookalike audiences needed..."
-                  value={formData.target_audiences || ''}
-                  onChange={(e) => handleFieldChange('target_audiences', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
+            ))}
+          </div>
         </fieldset>
       )}
 

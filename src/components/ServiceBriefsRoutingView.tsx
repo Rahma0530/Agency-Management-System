@@ -35,6 +35,7 @@ import {
   UserRole,
 } from '../types/database';
 import { ClientDashboard } from './ClientDashboard';
+import { BRIEF_FIELD_SCHEMAS } from '../data/briefFieldSchemas';
 
 interface ServiceBriefsRoutingViewProps {
   currentUser: UserRecord;
@@ -520,140 +521,59 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
     }
 
     const f = brief.fields;
+    const fieldDefs = BRIEF_FIELD_SCHEMAS[serviceType] || [];
 
-    if (serviceType === 'seo') {
-      return (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
-              <span className="text-[11px] text-stone-400 block mb-1">Target Website URL</span>
-              <a
-                href={f.website_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-bold text-emerald-300 hover:underline flex items-center gap-1 break-all"
-              >
-                <span>{f.website_url || 'Not specified'}</span>
-                <ExternalLink className="w-3 h-3 shrink-0" />
-              </a>
-            </div>
-            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
-              <span className="text-[11px] text-stone-400 block mb-1">CMS Platform</span>
-              <p className="text-xs font-bold text-white">{f.cms_platform || 'Not specified'}</p>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
-            <span className="text-[11px] text-stone-400 block">Target Keywords</span>
-            <p className="text-xs text-stone-200 leading-relaxed font-mono whitespace-pre-line">
-              {f.target_keywords || 'Not specified'}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
-              <span className="text-[11px] text-stone-400 block mb-1">Geographic Target</span>
-              <p className="text-xs text-white">{f.target_locations || 'Not specified'}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
-              <span className="text-[11px] text-stone-400 block mb-1">Current Organic Traffic</span>
-              <p className="text-xs font-bold text-purple-300">{f.current_organic_traffic || 'N/A'}</p>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
-            <span className="text-[11px] text-stone-400 block">Primary Campaign Goals</span>
-            <p className="text-xs text-stone-200 leading-relaxed">{f.primary_goals || 'Not specified'}</p>
-          </div>
-        </div>
-      );
-    }
-
-    if (serviceType === 'media_buying') {
-      return (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
-              <span className="text-[11px] text-stone-400 block mb-1">Monthly Ad Spend Budget</span>
-              <p className="text-sm font-bold text-sky-400 font-mono">
-                {f.monthly_ad_budget || 'Custom'}
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
-              <span className="text-[11px] text-stone-400 block mb-1">Target ROAS</span>
-              <p className="text-sm font-bold text-emerald-400 font-mono">
-                {f.target_roas || 'N/A'}
-              </p>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
-            <span className="text-[11px] text-stone-400 block">Target Platforms</span>
-            <div className="flex flex-wrap gap-1.5">
-              {Array.isArray(f.ad_platforms) ? (
-                f.ad_platforms.map((plt: string, idx: number) => (
-                  <span
-                    key={idx}
-                    className="px-2.5 py-0.5 rounded text-xs font-semibold bg-sky-950/60 text-sky-300 border border-sky-800/40 uppercase"
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {fieldDefs.map((field) => {
+          const value = f[field.key];
+          return (
+            <div
+              key={field.key}
+              className={`p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1 ${
+                field.span === 'full' ? 'sm:col-span-2' : ''
+              }`}
+            >
+              <span className="text-[11px] text-stone-400 block">{field.label}</span>
+              {field.type === 'tag-list' ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.isArray(value) && value.length > 0 ? (
+                    value.map((item: string, idx: number) => (
+                      <span
+                        key={idx}
+                        className={`px-2.5 py-0.5 rounded text-xs font-semibold uppercase border ${field.chipClassName || ''}`}
+                      >
+                        {item}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-white">{value || field.fallback || 'Not specified'}</span>
+                  )}
+                </div>
+              ) : field.type === 'url' ? (
+                value ? (
+                  <a
+                    href={value}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`hover:underline flex items-center gap-1 break-all ${field.valueClassName || 'text-xs font-bold text-purple-300'}`}
                   >
-                    {plt}
-                  </span>
-                ))
+                    <span>{value}</span>
+                    <ExternalLink className="w-3 h-3 shrink-0" />
+                  </a>
+                ) : (
+                  <p className="text-xs text-stone-400">{field.fallback || 'Not specified'}</p>
+                )
               ) : (
-                <span className="text-xs text-white">{f.ad_platforms || 'Not specified'}</span>
+                <p className={`leading-relaxed ${field.valueClassName || 'text-xs text-stone-200'}`}>
+                  {value || field.fallback || 'Not specified'}
+                </p>
               )}
             </div>
-          </div>
-
-          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
-            <span className="text-[11px] text-stone-400 block">Primary Conversion Goal</span>
-            <p className="text-xs text-stone-200 font-bold">{f.primary_conversion_goal || 'Not specified'}</p>
-          </div>
-        </div>
-      );
-    }
-
-    if (serviceType === 'social_media') {
-      return (
-        <div className="space-y-3">
-          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
-            <span className="text-[11px] text-stone-400 block">Channels</span>
-            <div className="flex flex-wrap gap-1.5">
-              {Array.isArray(f.social_channels) ? (
-                f.social_channels.map((chn: string, idx: number) => (
-                  <span
-                    key={idx}
-                    className="px-2 py-0.5 rounded text-xs font-semibold bg-pink-950/60 text-pink-300 border border-pink-800/40 uppercase"
-                  >
-                    {chn}
-                  </span>
-                ))
-              ) : (
-                <span className="text-xs text-white">{f.social_channels || 'Not specified'}</span>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
-              <span className="text-[11px] text-stone-400 block mb-1">Brand Voice & Tone</span>
-              <p className="text-xs font-bold text-white">{f.brand_tone || 'Not specified'}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30">
-              <span className="text-[11px] text-stone-400 block mb-1">Posting Frequency</span>
-              <p className="text-xs font-bold text-purple-300">{f.posting_frequency || 'Weekly'}</p>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/30 space-y-1">
-            <span className="text-[11px] text-stone-400 block">Content Pillars</span>
-            <p className="text-xs text-stone-200 leading-relaxed">{f.content_pillars || 'Not specified'}</p>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
+          );
+        })}
+      </div>
+    );
   };
 
   const activeDashboardClient = clients.find((c) => c.id === dashboardClientId) || null;
