@@ -13,9 +13,17 @@ interface ClientRegistrationModalProps {
     package_id: string;
     contract_value: number;
     start_date: string;
+    renewal_date: string;
     am_team_lead_id?: string;
   }) => Promise<void>;
 }
+
+const addOneYear = (dateStr: string): string => {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().split('T')[0];
+};
 
 export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = ({
   isOpen,
@@ -29,6 +37,8 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
   const [packageId, setPackageId] = useState(packages[0]?.id || '');
   const [contractValue, setContractValue] = useState<number | ''>('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [renewalDate, setRenewalDate] = useState(addOneYear(new Date().toISOString().split('T')[0]));
+  const [renewalDateTouched, setRenewalDateTouched] = useState(false);
   const [amTeamLeadId, setAmTeamLeadId] = useState(amTeamLeaders[0]?.id || 'usr-am-lead');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -55,12 +65,14 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
         package_id: packageId,
         contract_value: contractValue ? Number(contractValue) : 0,
         start_date: startDate,
+        renewal_date: renewalDate,
         am_team_lead_id: amTeamLeadId,
       });
       // reset
       setName('');
       setIndustry('');
       setContractValue('');
+      setRenewalDateTouched(false);
       onClose();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Error registering client');
@@ -99,7 +111,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                 Register New Client
               </h3>
               <p className="text-xs" style={{ color: 'var(--grey)' }}>
-                Client will automatically route to Account Management onboarding queue
+                Client will be created as a Lead — hand off to Account Management to begin onboarding
               </p>
             </div>
           </div>
@@ -220,7 +232,13 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(e) => {
+                    const newStart = e.target.value;
+                    setStartDate(newStart);
+                    if (!renewalDateTouched) {
+                      setRenewalDate(addOneYear(newStart));
+                    }
+                  }}
                   className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400"
                   style={{
                     background: 'rgba(10, 10, 13, 0.8)',
@@ -230,6 +248,32 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                 />
               </div>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
+              Renewal Date
+            </label>
+            <div className="relative">
+              <Calendar className="w-4 h-4 absolute left-3 top-3 text-stone-400 pointer-events-none" />
+              <input
+                type="date"
+                value={renewalDate}
+                onChange={(e) => {
+                  setRenewalDate(e.target.value);
+                  setRenewalDateTouched(true);
+                }}
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400"
+                style={{
+                  background: 'rgba(10, 10, 13, 0.8)',
+                  border: '1px solid var(--border-soft)',
+                  color: 'var(--white)',
+                }}
+              />
+            </div>
+            <p className="text-[11px] text-stone-400 mt-1">
+              Defaults to one year from the contract start date. Adjust if needed.
+            </p>
           </div>
 
           {selectedPkg && (

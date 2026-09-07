@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import {
   ClientRecord,
+  ClientStatus,
   PackageRecord,
   UserRecord,
   BriefRecord,
@@ -56,6 +57,12 @@ interface AMQueueProps {
     submitted_by: string;
   }) => Promise<void>;
   onUpdateTaskStatus?: (taskId: string, newStatus: TaskStatus) => Promise<void>;
+  onUpdateClientStatus?: (
+    clientId: string,
+    newStatus: ClientStatus,
+    options?: { churn_reason?: string; renewal_date?: string }
+  ) => Promise<void>;
+  onMarkClientViewed?: (clientId: string) => Promise<void> | void;
 }
 
 export const AMQueue: React.FC<AMQueueProps> = ({
@@ -73,6 +80,8 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   onAssignAMAgent,
   onSaveBrief,
   onUpdateTaskStatus,
+  onUpdateClientStatus,
+  onMarkClientViewed,
 }) => {
   const resolvedUser = currentUser || users.find((u) => u.id === currentUserId) || users[0];
   const effectiveUserId = resolvedUser?.id || currentUserId || '';
@@ -95,13 +104,15 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   }
 
   // Strict Client Filtering:
+  // - Only clients that have been handed off by Sales (status !== 'lead') appear in the AM queue.
   // - AM Agent: ONLY view clients assigned specifically to that AM Agent.
-  // - AM Team Leader: View all clients managed by the AM team (assigned + unassigned).
+  // - AM Team Leader: View all handed-off clients managed by the AM team (assigned + unassigned), unfiltered by am_team_lead_id.
   const visibleClients = useMemo(() => {
+    const handedOff = clients.filter((c) => c.status !== 'lead');
     if (isAMAgent) {
-      return clients.filter((c) => c.am_agent_id === effectiveUserId);
+      return handedOff.filter((c) => c.am_agent_id === effectiveUserId);
     }
-    return clients;
+    return handedOff;
   }, [clients, isAMAgent, effectiveUserId]);
 
   const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
@@ -339,8 +350,15 @@ export const AMQueue: React.FC<AMQueueProps> = ({
                             {client.name.charAt(0)}
                           </div>
                           <div>
-                            <span className="font-bold text-white group-hover:text-purple-300 transition-colors">
+                            <span className="font-bold text-white group-hover:text-purple-300 transition-colors inline-flex items-center gap-1.5">
                               {client.name}
+                              {isAMTeamLead &&
+                                client.am_team_lead_id === resolvedUser?.id &&
+                                !client.am_team_lead_viewed_at && (
+                                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase bg-purple-600 text-white">
+                                    New
+                                  </span>
+                                )}
                             </span>
                             <span className="text-[10px] text-stone-400 block font-mono">
                               {client.id}
@@ -480,6 +498,8 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           onSaveBrief={onSaveBrief}
           onAssignAMAgent={onAssignAMAgent}
           onUpdateTaskStatus={onUpdateTaskStatus}
+          onUpdateClientStatus={onUpdateClientStatus}
+          onMarkClientViewed={onMarkClientViewed}
         />
       )}
     </div>

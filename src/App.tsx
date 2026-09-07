@@ -22,6 +22,7 @@ import {
 import { supabase, isSupabaseConfigured, setSupabaseSessionUser } from './lib/supabase';
 import {
   ClientRecord,
+  ClientStatus,
   PackageRecord,
   UserRecord,
   BriefRecord,
@@ -369,13 +370,14 @@ export default function App() {
     loadData();
   }, [authenticatedUser, loadData]);
 
-  // 1. Register a new client from the Sales team (with automatic transfer to Onboarding)
+  // 1. Register a new client from the Sales team (starts as a Lead, pending handoff to Account Management)
   const handleRegisterClient = async (clientData: {
     name: string;
     industry: string;
     package_id: string;
     contract_value: number;
     start_date: string;
+    renewal_date: string;
     am_team_lead_id?: string;
   }) => {
     const newClientPayload: Partial<ClientRecord> = {
@@ -383,12 +385,13 @@ export default function App() {
       name: clientData.name,
       industry: clientData.industry,
       package_id: clientData.package_id,
-      status: 'onboarding', // Immediate automatic transfer to Account Management
+      status: 'lead',
       sales_owner_id: currentUser.id,
       am_agent_id: null, // Awaiting Account Manager assignment
       am_team_lead_id: clientData.am_team_lead_id || 'usr-am-lead',
       contract_value: clientData.contract_value,
       start_date: clientData.start_date,
+      renewal_date: clientData.renewal_date,
       created_at: new Date().toISOString(),
     };
 
@@ -412,9 +415,7 @@ export default function App() {
       setClients((prev) => [newClientPayload as ClientRecord, ...prev]);
     }
 
-    showNotification(
-      `Client "${clientData.name}" registered and moved to the Account Management queue successfully!`
-    );
+    showNotification(`Client "${clientData.name}" registered as a Lead successfully!`);
   };
 
   // 2. Assign the client to an Account Manager (AM Agent)
@@ -437,6 +438,61 @@ export default function App() {
 
     const agent = users.find((u) => u.id === agentId);
     showNotification(`Client assigned to Account Manager: ${agent?.name || agentId}`);
+  };
+
+  // 2b. Transition a client's lifecycle status (Lead -> Onboarding -> Active -> Renewal -> Churned)
+  const handleUpdateClientStatus = async (
+    clientId: string,
+    newStatus: ClientStatus,
+    options?: { churn_reason?: string; renewal_date?: string }
+  ) => {
+    const updatePayload: Partial<ClientRecord> = { status: newStatus };
+    if (newStatus === 'churned') {
+      updatePayload.churn_reason = options?.churn_reason || null;
+    }
+    if (options?.renewal_date) {
+      updatePayload.renewal_date = options.renewal_date;
+    }
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('clients')
+          .update(updatePayload)
+          .eq('id', clientId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase update client status error:', err);
+      }
+    }
+
+    setClients((prev) =>
+      prev.map((c) => (c.id === clientId ? { ...c, ...updatePayload } : c))
+    );
+
+    const client = clients.find((c) => c.id === clientId);
+    showNotification(`Client "${client?.name || clientId}" status updated to ${newStatus}.`);
+  };
+
+  // 2c. Mark a client as viewed by its assigned AM Team Lead (clears the "New" indicator)
+  const handleMarkClientViewedByAMLead = async (clientId: string) => {
+    const viewedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('clients')
+          .update({ am_team_lead_viewed_at: viewedAt })
+          .eq('id', clientId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase mark client viewed error:', err);
+      }
+    }
+
+    setClients((prev) =>
+      prev.map((c) => (c.id === clientId ? { ...c, am_team_lead_viewed_at: viewedAt } : c))
+    );
   };
 
   // Assign a service specialist (SEO / Social Media / Media Buying) to a client, by that team's lead
@@ -1228,6 +1284,7 @@ export default function App() {
                     packages={packages}
                     users={users}
                     onOpenRegisterModal={() => setIsRegisterModalOpen(true)}
+                    onUpdateClientStatus={handleUpdateClientStatus}
                   />
                 ) : (
                   <AMQueue
@@ -1239,6 +1296,8 @@ export default function App() {
                     currentUserId={currentUser.id}
                     onAssignAMAgent={handleAssignAMAgent}
                     onSaveBrief={handleSaveBrief}
+                    onUpdateClientStatus={handleUpdateClientStatus}
+                    onMarkClientViewed={handleMarkClientViewedByAMLead}
                   />
                 )}
               </div>

@@ -60,6 +60,9 @@ export interface ClientRecord {
   am_team_lead_id?: string | null;
   contract_value?: number | null;
   start_date?: string | null;
+  renewal_date?: string | null;
+  am_team_lead_viewed_at?: string | null;
+  churn_reason?: string | null;
   created_at?: string;
 }
 

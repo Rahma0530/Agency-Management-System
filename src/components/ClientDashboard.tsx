@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import {
   ClientRecord,
+  ClientStatus,
   PackageRecord,
   UserRecord,
   BriefRecord,
@@ -70,9 +71,23 @@ interface ClientDashboardProps {
   onAssignAMAgent?: (clientId: string, agentId: string) => Promise<void>;
   onUpdateTaskStatus?: (taskId: string, newStatus: TaskStatus) => Promise<void>;
   onCreateCampaign?: (campaignData: Partial<CampaignRecord>) => Promise<void> | void;
+  onUpdateClientStatus?: (
+    clientId: string,
+    newStatus: ClientStatus,
+    options?: { churn_reason?: string; renewal_date?: string }
+  ) => Promise<void>;
+  onMarkClientViewed?: (clientId: string) => Promise<void> | void;
 }
 
 type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs';
+
+const CLIENT_STATUS_META: Record<ClientStatus, { label: string; bg: string; color: string; border: string }> = {
+  lead: { label: 'Lead', bg: 'rgba(168, 155, 184, 0.15)', color: 'var(--lilac)', border: 'rgba(168, 155, 184, 0.3)' },
+  onboarding: { label: 'Onboarding', bg: 'rgba(123, 47, 247, 0.2)', color: 'var(--purple-light)', border: 'rgba(123, 47, 247, 0.35)' },
+  active: { label: 'Active', bg: 'rgba(169, 245, 193, 0.2)', color: 'var(--roas-good)', border: 'rgba(169, 245, 193, 0.3)' },
+  renewal: { label: 'Renewal', bg: 'rgba(245, 226, 154, 0.2)', color: 'var(--roas-mid)', border: 'rgba(245, 226, 154, 0.3)' },
+  churned: { label: 'Churned', bg: 'rgba(245, 163, 163, 0.2)', color: 'var(--roas-bad)', border: 'rgba(245, 163, 163, 0.3)' },
+};
 
 export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   client,
@@ -92,11 +107,16 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   onAssignAMAgent,
   onUpdateTaskStatus,
   onCreateCampaign,
+  onUpdateClientStatus,
+  onMarkClientViewed,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
   const [isAssigningAM, setIsAssigningAM] = useState(false);
   const [selectedAMId, setSelectedAMId] = useState(client.am_agent_id || '');
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [showChurnConfirm, setShowChurnConfirm] = useState(false);
+  const [churnReasonInput, setChurnReasonInput] = useState('');
 
   // Resolve client services from package
   const pkg = packageRecord || allPackages.find((p) => p.id === client.package_id);
@@ -108,6 +128,19 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
       setSelectedBriefService(services[0]);
     }
   }, [services, selectedBriefService]);
+
+  // Clear the "New" indicator once the assigned AM Team Lead opens this client
+  React.useEffect(() => {
+    if (
+      onMarkClientViewed &&
+      currentUser.role === 'am_team_lead' &&
+      client.am_team_lead_id === currentUser.id &&
+      !client.am_team_lead_viewed_at
+    ) {
+      onMarkClientViewed(client.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.id]);
 
   // Client Briefs
   const clientBriefs = useMemo(
@@ -196,6 +229,38 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     }
   };
 
+  // Lifecycle transition permissions
+  const canManageLifecycle =
+    currentUser.role === 'am_team_lead' ||
+    currentUser.role === 'executive' ||
+    currentUser.role === 'head_of_technical' ||
+    (currentUser.role === 'am_agent' && client.am_agent_id === currentUser.id);
+
+  const canHandoffToAM =
+    currentUser.role === 'sales' && client.sales_owner_id === currentUser.id && client.status === 'lead';
+
+  const handleTransition = async (newStatus: ClientStatus, options?: { churn_reason?: string; renewal_date?: string }) => {
+    if (!onUpdateClientStatus) return;
+    setIsUpdatingStatus(true);
+    try {
+      await onUpdateClientStatus(client.id, newStatus, options);
+      if (newStatus === 'churned') {
+        setShowChurnConfirm(false);
+        setChurnReasonInput('');
+      }
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const isRenewalApproaching =
+    client.status === 'active' &&
+    !!client.renewal_date &&
+    (() => {
+      const daysUntil = (new Date(client.renewal_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      return daysUntil <= 30 && daysUntil >= -365;
+    })();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn">
       <div
@@ -220,12 +285,12 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                 <span
                   className="px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider"
                   style={{
-                    background: client.status === 'active' ? 'rgba(169, 245, 193, 0.2)' : 'rgba(245, 226, 154, 0.2)',
-                    color: client.status === 'active' ? 'var(--roas-good)' : 'var(--roas-mid)',
-                    border: `1px solid ${client.status === 'active' ? 'rgba(169, 245, 193, 0.3)' : 'rgba(245, 226, 154, 0.3)'}`,
+                    background: (CLIENT_STATUS_META[client.status] || CLIENT_STATUS_META.onboarding).bg,
+                    color: (CLIENT_STATUS_META[client.status] || CLIENT_STATUS_META.onboarding).color,
+                    border: `1px solid ${(CLIENT_STATUS_META[client.status] || CLIENT_STATUS_META.onboarding).border}`,
                   }}
                 >
-                  {client.status || 'Onboarding'}
+                  {(CLIENT_STATUS_META[client.status] || CLIENT_STATUS_META.onboarding).label}
                 </span>
                 <span className="text-xs text-stone-400 font-mono">ID: {client.id}</span>
               </div>
@@ -233,6 +298,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                 <span>Industry: <strong className="text-white">{client.industry || 'General Business'}</strong></span>
                 <span>Contract: <strong className="text-emerald-400 font-mono">{client.contract_value ? `${client.contract_value.toLocaleString()} SAR/mo` : 'Custom'}</strong></span>
                 <span>Start Date: <strong className="text-stone-200">{client.start_date || 'Immediate'}</strong></span>
+                <span>Renewal Date: <strong className="text-stone-200">{client.renewal_date || 'Not set'}</strong></span>
               </div>
             </div>
           </div>
@@ -395,6 +461,147 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                     {client.am_agent_id ? 'Account Manager Assigned' : 'Awaiting AM Assignment'}
                   </span>
                 </div>
+              </div>
+
+              {/* Client Lifecycle */}
+              <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-purple-400" />
+                    <span>Client Lifecycle</span>
+                  </h3>
+                  <span
+                    className="px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider"
+                    style={{
+                      background: (CLIENT_STATUS_META[client.status] || CLIENT_STATUS_META.onboarding).bg,
+                      color: (CLIENT_STATUS_META[client.status] || CLIENT_STATUS_META.onboarding).color,
+                      border: `1px solid ${(CLIENT_STATUS_META[client.status] || CLIENT_STATUS_META.onboarding).border}`,
+                    }}
+                  >
+                    {(CLIENT_STATUS_META[client.status] || CLIENT_STATUS_META.onboarding).label}
+                  </span>
+                </div>
+
+                {client.status === 'churned' && (
+                  <div className="p-3 rounded-lg bg-red-950/30 border border-red-800/40 text-xs text-red-300">
+                    <strong className="block mb-0.5">Churn Reason</strong>
+                    <span>{client.churn_reason || 'No reason recorded.'}</span>
+                  </div>
+                )}
+
+                {isRenewalApproaching && (
+                  <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-xs text-amber-300 flex items-center gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      Renewal date ({client.renewal_date}) is approaching. Confirm to move this client into the
+                      Renewal stage.
+                    </span>
+                  </div>
+                )}
+
+                {client.status !== 'churned' && !showChurnConfirm && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {client.status === 'lead' && canHandoffToAM && onUpdateClientStatus && (
+                      <button
+                        onClick={() => handleTransition('onboarding')}
+                        disabled={isUpdatingStatus}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-200 bg-emerald-900/40 hover:bg-emerald-800/60 hover:text-white border border-emerald-700/40 transition-all"
+                      >
+                        Hand Off to AM
+                      </button>
+                    )}
+
+                    {client.status === 'onboarding' && canManageLifecycle && onUpdateClientStatus && (
+                      <button
+                        onClick={() => handleTransition('active')}
+                        disabled={isUpdatingStatus}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-200 bg-emerald-900/40 hover:bg-emerald-800/60 hover:text-white border border-emerald-700/40 transition-all"
+                      >
+                        Mark as Active
+                      </button>
+                    )}
+
+                    {client.status === 'active' && canManageLifecycle && onUpdateClientStatus && (
+                      <button
+                        onClick={() => handleTransition('renewal')}
+                        disabled={isUpdatingStatus}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-200 bg-amber-900/40 hover:bg-amber-800/60 hover:text-white border border-amber-700/40 transition-all"
+                      >
+                        Move to Renewal
+                      </button>
+                    )}
+
+                    {client.status === 'renewal' && canManageLifecycle && onUpdateClientStatus && (
+                      <button
+                        onClick={() => {
+                          const nextRenewal = client.renewal_date
+                            ? (() => {
+                                const d = new Date(client.renewal_date as string);
+                                d.setFullYear(d.getFullYear() + 1);
+                                return d.toISOString().split('T')[0];
+                              })()
+                            : undefined;
+                          handleTransition('active', nextRenewal ? { renewal_date: nextRenewal } : undefined);
+                        }}
+                        disabled={isUpdatingStatus}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-200 bg-emerald-900/40 hover:bg-emerald-800/60 hover:text-white border border-emerald-700/40 transition-all"
+                      >
+                        Confirm Renewal
+                      </button>
+                    )}
+
+                    {(client.status === 'onboarding' || client.status === 'active' || client.status === 'renewal') &&
+                      canManageLifecycle &&
+                      onUpdateClientStatus && (
+                        <button
+                          onClick={() => setShowChurnConfirm(true)}
+                          disabled={isUpdatingStatus}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-300 bg-red-950/30 hover:bg-red-900/50 hover:text-white border border-red-800/40 transition-all"
+                        >
+                          Mark as Churned
+                        </button>
+                      )}
+
+                    {client.status === 'lead' && !canHandoffToAM && (
+                      <span className="text-[11px] text-stone-400">
+                        Awaiting handoff from Sales to Account Management.
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {showChurnConfirm && (
+                  <div className="p-3 rounded-lg bg-red-950/20 border border-red-800/40 space-y-2">
+                    <label className="block text-xs font-semibold text-red-300">
+                      Churn Reason <span className="text-red-400">*</span> (required, this action is permanent)
+                    </label>
+                    <textarea
+                      value={churnReasonInput}
+                      onChange={(e) => setChurnReasonInput(e.target.value)}
+                      placeholder="e.g. Budget cuts, switched to in-house team..."
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-lg text-xs bg-black/30 border border-red-900/40 text-white outline-none focus:border-red-400"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          setShowChurnConfirm(false);
+                          setChurnReasonInput('');
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-stone-300 bg-stone-800/40 hover:bg-stone-800/70 border border-stone-700/40 transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleTransition('churned', { churn_reason: churnReasonInput.trim() })}
+                        disabled={isUpdatingStatus || !churnReasonInput.trim()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-red-700 hover:bg-red-600 disabled:opacity-50 transition-all"
+                      >
+                        Confirm Churn
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Quick Summary Grid */}

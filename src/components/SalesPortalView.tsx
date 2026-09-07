@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   ClientRecord,
+  ClientStatus,
   PackageRecord,
   UserRecord,
   BriefRecord,
@@ -26,6 +27,14 @@ import {
   AssignmentRecord,
 } from '../types/database';
 import { ClientDashboard } from './ClientDashboard';
+
+const STATUS_BADGE_META: Record<ClientStatus, { label: string; className: string }> = {
+  lead: { label: 'Lead', className: 'bg-stone-800/60 text-stone-300 border-stone-700/40' },
+  onboarding: { label: 'Onboarding', className: 'bg-purple-950/60 text-purple-300 border-purple-800/40' },
+  active: { label: 'Active', className: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40' },
+  renewal: { label: 'Renewal', className: 'bg-amber-950/60 text-amber-300 border-amber-800/40' },
+  churned: { label: 'Churned', className: 'bg-red-950/60 text-red-300 border-red-800/40' },
+};
 
 interface SalesPortalViewProps {
   currentUser: UserRecord;
@@ -39,6 +48,11 @@ interface SalesPortalViewProps {
   extraNotes?: ExtraNoteRecord[];
   assignments?: AssignmentRecord[];
   onOpenRegisterModal: () => void;
+  onUpdateClientStatus?: (
+    clientId: string,
+    newStatus: ClientStatus,
+    options?: { churn_reason?: string; renewal_date?: string }
+  ) => Promise<void>;
 }
 
 export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
@@ -53,6 +67,7 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
   extraNotes = [],
   assignments = [],
   onOpenRegisterModal,
+  onUpdateClientStatus,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
@@ -154,9 +169,9 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
           </div>
           <div className="text-sm font-bold text-purple-200 mt-1 flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4 text-purple-400" />
-            <span>Auto-routed to AM</span>
+            <span>Hand Off to AM</span>
           </div>
-          <span className="text-[11px] text-stone-400 block">Managed by AM Team Lead</span>
+          <span className="text-[11px] text-stone-400 block">Confirm handoff once a client is closed</span>
         </div>
       </div>
 
@@ -266,23 +281,39 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-950/60 text-purple-300 border border-purple-800/40 inline-flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-purple-400" />
-                          <span>Routed to AM</span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border inline-flex items-center gap-1 ${STATUS_BADGE_META[client.status]?.className || STATUS_BADGE_META.lead.className}`}
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>{STATUS_BADGE_META[client.status]?.label || client.status}</span>
                         </span>
                       </td>
 
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDashboardClientId(client.id);
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-purple-200 bg-purple-900/40 hover:bg-purple-800/60 hover:text-white border border-purple-700/40 transition-all inline-flex items-center gap-1.5"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View Dashboard</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          {client.status === 'lead' && onUpdateClientStatus && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onUpdateClientStatus(client.id, 'onboarding');
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-200 bg-emerald-900/40 hover:bg-emerald-800/60 hover:text-white border border-emerald-700/40 transition-all inline-flex items-center gap-1.5"
+                            >
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                              <span>Hand Off to AM</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDashboardClientId(client.id);
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-purple-200 bg-purple-900/40 hover:bg-purple-800/60 hover:text-white border border-purple-700/40 transition-all inline-flex items-center gap-1.5"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View Dashboard</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -307,6 +338,7 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
           dailyLogs={dailyLogs}
           extraNotes={extraNotes}
           assignments={assignments}
+          onUpdateClientStatus={onUpdateClientStatus}
           onClose={() => setDashboardClientId(null)}
         />
       )}
