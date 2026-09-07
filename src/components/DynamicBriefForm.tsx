@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, History, CheckCircle2, Layers, Table, Edit3, Globe, Share2, Target, AlertCircle } from 'lucide-react';
+import { Save, History, CheckCircle2, Layers, Table, Edit3, Globe, Share2, Target, AlertCircle, Lock } from 'lucide-react';
 import { BriefRecord, ServiceType } from '../types/database';
 
 interface DynamicBriefFormProps {
@@ -8,6 +8,7 @@ interface DynamicBriefFormProps {
   serviceType: ServiceType;
   existingBrief?: BriefRecord;
   currentUserId: string;
+  canEdit: boolean;
   onSaveBrief: (briefData: {
     client_id: string;
     service_type: ServiceType;
@@ -23,6 +24,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   serviceType,
   existingBrief,
   currentUserId,
+  canEdit,
   onSaveBrief,
 }) => {
   const [activeView, setActiveView] = useState<'edit' | 'spreadsheet'>('edit');
@@ -38,6 +40,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   };
 
   const handleSave = async () => {
+    if (!canEdit) return;
     setIsSaving(true);
     setErrorMsg('');
     setSaveSuccess(false);
@@ -153,20 +156,35 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md"
-            style={{
-              background: 'var(--gradient-badge)',
-              color: 'var(--white)',
-              border: '1px solid var(--border-strong)',
-              opacity: isSaving ? 0.7 : 1,
-            }}
-          >
-            <Save className="w-3.5 h-3.5" />
-            {isSaving ? 'Saving...' : 'Save as New Version'}
-          </button>
+          {canEdit ? (
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md"
+              style={{
+                background: 'var(--gradient-badge)',
+                color: 'var(--white)',
+                border: '1px solid var(--border-strong)',
+                opacity: isSaving ? 0.7 : 1,
+              }}
+            >
+              <Save className="w-3.5 h-3.5" />
+              {isSaving ? 'Saving...' : 'Save as New Version'}
+            </button>
+          ) : (
+            <span
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold"
+              style={{
+                background: 'rgba(168, 155, 184, 0.1)',
+                color: 'var(--grey)',
+                border: '1px solid var(--border-soft)',
+              }}
+              title="Only the assigned AM Agent or AM Team Lead can edit this brief"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              View Only
+            </span>
+          )}
         </div>
       </div>
 
@@ -192,7 +210,10 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
       {/* VIEW 1: Dynamic Form per Service Type */}
       {activeView === 'edit' && (
-        <div className="space-y-4">
+        <fieldset
+          disabled={!canEdit}
+          className={`space-y-4 border-0 p-0 m-0 min-w-0 ${!canEdit ? 'opacity-60' : ''}`}
+        >
           {serviceType === 'seo' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -546,7 +567,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
               </div>
             </div>
           )}
-        </div>
+        </fieldset>
       )}
 
       {/* VIEW 2: Spreadsheet Tabular Review View */}

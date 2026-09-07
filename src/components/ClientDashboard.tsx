@@ -217,6 +217,14 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     currentUser.role === 'executive' ||
     currentUser.role === 'head_of_technical';
 
+  // Only the AM department can actually enter/edit brief data: am_agent is the primary author
+  // (they run the client meeting), am_team_lead can edit as department oversight/fallback.
+  // Every other role (sales, service teams, executive) is read-only here, and only when a real
+  // save handler was actually wired through by the parent screen — never a silent no-op.
+  const canEditBrief =
+    (currentUser.role === 'am_agent' || currentUser.role === 'am_team_lead') &&
+    typeof onSaveBrief === 'function';
+
   const amAgents = users.filter((u) => u.role === 'am_agent');
 
   const handleAssignAM = async () => {
@@ -845,11 +853,13 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               {selectedBriefService ? (
                 <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
                   <DynamicBriefForm
-                    client={client}
+                    clientId={client.id}
+                    clientName={client.name}
                     serviceType={selectedBriefService}
                     existingBrief={clientBriefs.find((b) => b.service_type === selectedBriefService)}
                     onSaveBrief={onSaveBrief || (async () => {})}
                     currentUserId={currentUser.id}
+                    canEdit={canEditBrief}
                   />
                 </div>
               ) : (
