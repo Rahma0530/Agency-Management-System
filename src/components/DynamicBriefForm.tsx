@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Save, History, CheckCircle2, Layers, Table, Edit3, Globe, Share2, Target, AlertCircle, Lock, Palette } from 'lucide-react';
-import { BriefRecord, ServiceType } from '../types/database';
+import { Save, CheckCircle2, Layers, Table, Edit3, Globe, Share2, Target, AlertCircle, Lock, Palette } from 'lucide-react';
+import { BriefRecord, BriefRevisionRecord, ServiceType } from '../types/database';
 import { BRIEF_FIELD_SCHEMAS } from '../data/briefFieldSchemas';
+import { BriefEditHistory } from './BriefEditHistory';
 
 interface DynamicBriefFormProps {
   clientId: string;
   clientName: string;
   serviceType: ServiceType;
   existingBrief?: BriefRecord;
+  revisions?: BriefRevisionRecord[];
   currentUserId: string;
   canEdit: boolean;
   onSaveBrief: (briefData: {
@@ -24,6 +26,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   clientName,
   serviceType,
   existingBrief,
+  revisions = [],
   currentUserId,
   canEdit,
   onSaveBrief,
@@ -193,6 +196,10 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
             </span>
           )}
         </div>
+      </div>
+
+      <div className="mb-4">
+        <BriefEditHistory revisions={revisions} serviceType={serviceType} />
       </div>
 
       {errorMsg && (

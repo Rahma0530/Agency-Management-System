@@ -34,6 +34,7 @@ import {
   UserRecord,
   PackageRecord,
   BriefRecord,
+  BriefRevisionRecord,
   TaskRecord,
   DailyLogRecord,
   ExtraNoteRecord,
@@ -49,6 +50,7 @@ interface CampaignManagementModuleProps {
   currentUser: UserRecord;
   packages: PackageRecord[];
   briefs: BriefRecord[];
+  briefRevisions?: BriefRevisionRecord[];
   tasks: TaskRecord[];
   dailyLogs: DailyLogRecord[];
   extraNotes: ExtraNoteRecord[];
@@ -186,6 +188,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   currentUser,
   packages,
   briefs,
+  briefRevisions = [],
   tasks,
   dailyLogs,
   extraNotes,
@@ -1758,6 +1761,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           users={users}
           currentUser={currentUser}
           briefs={briefs}
+          briefRevisions={briefRevisions}
           campaigns={campaigns}
           tasks={tasks}
           dailyLogs={dailyLogs}

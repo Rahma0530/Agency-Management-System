@@ -28,6 +28,7 @@ import {
   PackageRecord,
   UserRecord,
   BriefRecord,
+  BriefRevisionRecord,
   CampaignRecord,
   TaskRecord,
   DailyLogRecord,
@@ -54,6 +55,7 @@ interface ClientDashboardProps {
   users: UserRecord[];
   currentUser: UserRecord;
   briefs: BriefRecord[];
+  briefRevisions?: BriefRevisionRecord[];
   campaigns: CampaignRecord[];
   tasks: TaskRecord[];
   dailyLogs: DailyLogRecord[];
@@ -96,6 +98,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   users,
   currentUser,
   briefs,
+  briefRevisions = [],
   campaigns,
   tasks,
   dailyLogs,
@@ -911,6 +914,10 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                         clientName={client.name}
                         serviceType={selectedBriefService}
                         existingBrief={clientBriefs.find((b) => b.service_type === selectedBriefService)}
+                        revisions={briefRevisions.filter(
+                          (r) =>
+                            r.client_id === client.id && r.service_type === selectedBriefService
+                        )}
                         onSaveBrief={onSaveBrief || (async () => {})}
                         currentUserId={currentUser.id}
                         canEdit={canEditBrief}

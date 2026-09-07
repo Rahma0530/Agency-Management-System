@@ -26,6 +26,7 @@ import {
   PackageRecord,
   UserRecord,
   BriefRecord,
+  BriefRevisionRecord,
   TaskRecord,
   CapacityLogRecord,
   DailyLogRecord,
@@ -82,6 +83,7 @@ export default function App() {
   const [users, setUsers] = useState<UserRecord[]>(INITIAL_USERS);
   const [clients, setClients] = useState<ClientRecord[]>(INITIAL_CLIENTS);
   const [briefs, setBriefs] = useState<BriefRecord[]>(INITIAL_BRIEFS);
+  const [briefRevisions, setBriefRevisions] = useState<BriefRevisionRecord[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>(INITIAL_TASKS);
   const [capacityLogs, setCapacityLogs] = useState<CapacityLogRecord[]>(INITIAL_CAPACITY_LOGS);
   const [dailyLogs, setDailyLogs] = useState<DailyLogRecord[]>(INITIAL_DAILY_LOGS);
@@ -321,6 +323,14 @@ export default function App() {
         const { data: briefData, error: briefErr } = await supabase.from('briefs').select('*');
         if (!briefErr && briefData && briefData.length > 0) {
           setBriefs(briefData as BriefRecord[]);
+        }
+
+        // Fetch brief revision history
+        const { data: briefRevisionData, error: briefRevisionErr } = await supabase
+          .from('brief_revisions')
+          .select('*');
+        if (!briefRevisionErr && briefRevisionData && briefRevisionData.length > 0) {
+          setBriefRevisions(briefRevisionData as BriefRevisionRecord[]);
         }
 
         // Fetch tasks
@@ -568,6 +578,7 @@ export default function App() {
     );
 
     let updatedBriefs: BriefRecord[] = [];
+    let savedBrief: BriefRecord;
 
     if (existingIndex >= 0) {
       const existing = briefs[existingIndex];
@@ -576,6 +587,9 @@ export default function App() {
         fields: briefData.fields,
         version: existing.version + 1,
         submitted_by: briefData.submitted_by,
+        // A materially edited brief should re-flag as unread for the relevant Team Lead, even
+        // if they'd already seen an earlier version.
+        team_lead_viewed_at: null,
         updated_at: new Date().toISOString(),
       };
 
@@ -587,6 +601,7 @@ export default function App() {
               fields: updated.fields,
               version: updated.version,
               submitted_by: updated.submitted_by,
+              team_lead_viewed_at: updated.team_lead_viewed_at,
               updated_at: updated.updated_at,
             })
             .eq('id', existing.id);
@@ -597,6 +612,7 @@ export default function App() {
 
       updatedBriefs = [...briefs];
       updatedBriefs[existingIndex] = updated;
+      savedBrief = updated;
     } else {
       const newBrief: BriefRecord = {
         id: `brf-${Date.now().toString().slice(-4)}`,
@@ -605,6 +621,7 @@ export default function App() {
         fields: briefData.fields,
         version: 1,
         submitted_by: briefData.submitted_by,
+        team_lead_viewed_at: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -621,10 +638,57 @@ export default function App() {
       }
 
       updatedBriefs = [newBrief, ...briefs];
+      savedBrief = newBrief;
     }
 
     setBriefs(updatedBriefs);
+
+    // Append-only revision snapshot — one row per save, including this first one.
+    const revision: BriefRevisionRecord = {
+      id: `brfrev-${Date.now().toString().slice(-4)}`,
+      brief_id: savedBrief.id,
+      client_id: savedBrief.client_id,
+      service_type: savedBrief.service_type,
+      version: savedBrief.version,
+      fields: savedBrief.fields,
+      edited_by: savedBrief.submitted_by,
+      edited_at: savedBrief.updated_at || new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data } = await supabase.from('brief_revisions').insert([revision]).select();
+        if (data && data[0]) {
+          revision.id = data[0].id;
+        }
+      } catch (err) {
+        console.error('Supabase brief revision insert error:', err);
+      }
+    }
+
+    setBriefRevisions((prev) => [revision, ...prev]);
     showNotification('Brief documented and saved as an official version successfully.');
+  };
+
+  // 3b. Mark a brief as viewed by the relevant service Team Lead (clears its "New" indicator)
+  const handleMarkBriefViewedByTeamLead = async (briefId: string) => {
+    const viewedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('briefs')
+          .update({ team_lead_viewed_at: viewedAt })
+          .eq('id', briefId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase mark brief viewed error:', err);
+      }
+    }
+
+    setBriefs((prev) =>
+      prev.map((b) => (b.id === briefId ? { ...b, team_lead_viewed_at: viewedAt } : b))
+    );
   };
 
   // 4. Update the employee's capacity limit
@@ -1292,6 +1356,7 @@ export default function App() {
                     packages={packages}
                     users={users}
                     briefs={briefs}
+                    briefRevisions={briefRevisions}
                     currentUser={currentUser}
                     currentUserId={currentUser.id}
                     onAssignAMAgent={handleAssignAMAgent}
@@ -1311,6 +1376,7 @@ export default function App() {
                   clients={clients}
                   packages={packages}
                   briefs={briefs}
+                  briefRevisions={briefRevisions}
                   assignments={assignments}
                   users={users}
                   campaigns={campaigns}
@@ -1318,6 +1384,7 @@ export default function App() {
                   dailyLogs={dailyLogs}
                   extraNotes={extraNotes}
                   onAssignServiceAgent={handleAssignServiceAgent}
+                  onMarkBriefViewed={handleMarkBriefViewedByTeamLead}
                 />
               </div>
             )}
@@ -1382,6 +1449,7 @@ export default function App() {
                   currentUser={currentUser}
                   packages={packages}
                   briefs={briefs}
+                  briefRevisions={briefRevisions}
                   tasks={tasks}
                   dailyLogs={dailyLogs}
                   extraNotes={extraNotes}

@@ -25,6 +25,7 @@ import {
   PackageRecord,
   UserRecord,
   BriefRecord,
+  BriefRevisionRecord,
   ServiceType,
   UserRole,
   CampaignRecord,
@@ -41,6 +42,7 @@ interface AMQueueProps {
   packages: PackageRecord[];
   users: UserRecord[];
   briefs: BriefRecord[];
+  briefRevisions?: BriefRevisionRecord[];
   campaigns?: CampaignRecord[];
   tasks?: TaskRecord[];
   dailyLogs?: DailyLogRecord[];
@@ -70,6 +72,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   packages,
   users,
   briefs,
+  briefRevisions = [],
   campaigns = [],
   tasks = [],
   dailyLogs = [],
@@ -489,6 +492,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           users={users}
           currentUser={resolvedUser}
           briefs={briefs}
+          briefRevisions={briefRevisions}
           campaigns={campaigns}
           tasks={tasks}
           dailyLogs={dailyLogs}

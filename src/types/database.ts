@@ -74,8 +74,24 @@ export interface BriefRecord {
   fields: Record<string, any>;
   submitted_by: string;
   version: number;
+  // Cleared to null on every save; set when the relevant service Team Lead views this brief.
+  // Shared per-role (no per-client "assigned service team lead" concept exists), unlike the
+  // per-individual am_team_lead_viewed_at on ClientRecord.
+  team_lead_viewed_at?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+// 4b. brief_revisions — append-only audit log; one full field snapshot per brief save
+export interface BriefRevisionRecord {
+  id: string;
+  brief_id: string;
+  client_id: string; // denormalized from the parent brief, for RLS scoping without a join
+  service_type: ServiceType; // denormalized, same reason
+  version: number; // matches briefs.version at the moment of this save
+  fields: Record<string, any>;
+  edited_by: string;
+  edited_at: string;
 }
 
 // 5. assignments
@@ -234,6 +250,7 @@ export interface Database {
       packages: { Row: PackageRecord; Insert: Partial<PackageRecord>; Update: Partial<PackageRecord>; Relationships: any[] };
       clients: { Row: ClientRecord; Insert: Partial<ClientRecord>; Update: Partial<ClientRecord>; Relationships: any[] };
       briefs: { Row: BriefRecord; Insert: Partial<BriefRecord>; Update: Partial<BriefRecord>; Relationships: any[] };
+      brief_revisions: { Row: BriefRevisionRecord; Insert: Partial<BriefRevisionRecord>; Update: Partial<BriefRevisionRecord>; Relationships: any[] };
       assignments: { Row: AssignmentRecord; Insert: Partial<AssignmentRecord>; Update: Partial<AssignmentRecord>; Relationships: any[] };
       tasks: { Row: TaskRecord; Insert: Partial<TaskRecord>; Update: Partial<TaskRecord>; Relationships: any[] };
       campaigns: { Row: CampaignRecord; Insert: Partial<CampaignRecord>; Update: Partial<CampaignRecord>; Relationships: any[] };
