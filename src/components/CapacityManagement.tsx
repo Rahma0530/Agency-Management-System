@@ -113,6 +113,15 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     'video_editor',
   ];
 
+  // Team leads don't carry a tracked capacity buffer the way agents do — a
+  // capacity_limit of 0 is a normal, intentional value for these 4 roles
+  // (not missing data), so every place below that resolves or validates a
+  // limit treats them differently from agents.
+  const TEAM_LEAD_ROLES: UserRole[] = ['am_team_lead', 'media_buying_team_lead', 'seo_team_lead', 'social_media_team_lead'];
+  const isTeamLeadRole = (role?: UserRole) => !!role && TEAM_LEAD_ROLES.includes(role);
+  const resolveCapacityLimit = (u: UserRecord) =>
+    isTeamLeadRole(u.role) ? (u.capacity_limit ?? 0) : (u.capacity_limit || 8);
+
   const operationalUsers = useMemo(() => {
     // Under Supabase RLS, `users` is scoped by the backend data access layer.
     // For Team Leaders, the Detailed Team Matrix & Employee Cards reflect:
@@ -215,7 +224,10 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     // 3. Workload calculation
     const isAm = user.role === 'am_agent' || user.role === 'am_team_lead';
     const usedCapacity = isAm ? assignedClients.length : activeTasks.length;
-    const capacityLimit = user.capacity_limit || 8;
+    const capacityLimit = resolveCapacityLimit(user);
+    // Team leads may genuinely have a limit of 0 (no tracked buffer) — that's
+    // not an error, just nothing to compute a rate against.
+    const isUntracked = capacityLimit === 0;
     const remainingCapacity = Math.max(0, capacityLimit - usedCapacity);
     const utilizationRate = capacityLimit > 0 ? Math.round((usedCapacity / capacityLimit) * 100) : 0;
 
@@ -224,9 +236,9 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     // Near Capacity: 75% - 99%
     // Over Capacity: >= 100%
     let status: 'available' | 'near_capacity' | 'over_capacity' = 'available';
-    if (utilizationRate >= 100) {
+    if (!isUntracked && utilizationRate >= 100) {
       status = 'over_capacity';
-    } else if (utilizationRate >= 75) {
+    } else if (!isUntracked && utilizationRate >= 75) {
       status = 'near_capacity';
     }
 
@@ -242,6 +254,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
       activeTasks,
       usedCapacity,
       capacityLimit,
+      isUntracked,
       remainingCapacity,
       utilizationRate,
       status,
@@ -303,11 +316,13 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
       return;
     }
     setEditingUserId(user.id);
-    setTempLimit(user.capacity_limit || 8);
+    setTempLimit(resolveCapacityLimit(user));
   };
 
   const handleSaveLimit = async (userId: string) => {
-    if (tempLimit < 1) return;
+    const targetUser = users.find((u) => u.id === userId);
+    const minLimit = isTeamLeadRole(targetUser?.role) ? 0 : 1;
+    if (tempLimit < minLimit) return;
     setIsSaving(true);
     try {
       await onUpdateUserCapacity(userId, tempLimit);
@@ -856,10 +871,13 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                           <div className="flex items-center gap-2">
                             <input
                               type="number"
-                              min="1"
+                              min={isTeamLeadRole(item.user.role) ? 0 : 1}
                               max="30"
                               value={tempLimit}
-                              onChange={(e) => setTempLimit(parseInt(e.target.value) || 1)}
+                              onChange={(e) => {
+                                const parsed = parseInt(e.target.value, 10);
+                                setTempLimit(Number.isNaN(parsed) ? 0 : parsed);
+                              }}
                               className="w-20 px-2 py-1 rounded-lg text-xs bg-stone-900 border border-purple-400/50 text-white font-bold text-center focus:outline-none"
                             />
                             <button
@@ -872,6 +890,11 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                               <span>{isSaving ? 'Saving...' : 'Confirm Capacity'}</span>
                             </button>
                           </div>
+                          {isTeamLeadRole(item.user.role) && (
+                            <p className="text-[10px] text-stone-400">
+                              0 is valid for team leads — they don't need a tracked capacity buffer.
+                            </p>
+                          )}
                         </div>
                       )}
 
@@ -880,17 +903,17 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                         <div className="flex items-center justify-between text-xs mb-1.5">
                           <span className="text-stone-400 text-[11px]">Current utilization rate:</span>
                           <span
-                            className="font-bold text-xs"
-                            style={{ color: statusBadgeColor }}
+                            className={`font-bold text-xs ${item.isUntracked ? 'text-stone-400' : ''}`}
+                            style={item.isUntracked ? undefined : { color: statusBadgeColor }}
                           >
-                            {item.utilizationRate}%
+                            {item.isUntracked ? 'N/A' : `${item.utilizationRate}%`}
                           </span>
                         </div>
                         <div className="w-full h-2 rounded-full bg-stone-800 overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-500"
                             style={{
-                              width: `${Math.min(100, item.utilizationRate)}%`,
+                              width: item.isUntracked ? '0%' : `${Math.min(100, item.utilizationRate)}%`,
                               background:
                                 item.status === 'over_capacity'
                                   ? 'var(--roas-bad)'
@@ -1049,8 +1072,11 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                       >
                         {item.remainingCapacity}
                       </td>
-                      <td className="p-3.5 text-center font-bold" style={{ color: statusBadgeColor }}>
-                        {item.utilizationRate}%
+                      <td
+                        className={`p-3.5 text-center font-bold ${item.isUntracked ? 'text-stone-400' : ''}`}
+                        style={item.isUntracked ? undefined : { color: statusBadgeColor }}
+                      >
+                        {item.isUntracked ? 'N/A' : `${item.utilizationRate}%`}
                       </td>
                       <td className="p-3.5 text-center">
                         <span
@@ -1129,8 +1155,9 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                 ) : (
                   capacityLogs.map((log) => {
                     const agent = users.find((u) => u.id === log.agent_id);
-                    const limit = agent?.capacity_limit || 8;
-                    const rate = Math.round((log.active_clients_count / limit) * 100);
+                    const limit = agent ? resolveCapacityLimit(agent) : 8;
+                    const isUntracked = limit === 0;
+                    const rate = isUntracked ? 0 : Math.round((log.active_clients_count / limit) * 100);
 
                     return (
                       <tr key={log.id} className="hover:bg-stone-900/40 transition-colors">
@@ -1145,14 +1172,16 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                         <td className="p-3.5 text-center">
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              rate >= 100
+                              isUntracked
+                                ? 'bg-stone-800/60 text-stone-400 border border-stone-700'
+                                : rate >= 100
                                 ? 'bg-red-950/60 text-red-400 border border-red-500/30'
                                 : rate >= 75
                                 ? 'bg-amber-950/60 text-amber-400 border border-amber-500/30'
                                 : 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/30'
                             }`}
                           >
-                            {rate}% utilized
+                            {isUntracked ? 'N/A' : `${rate}% utilized`}
                           </span>
                         </td>
                       </tr>
@@ -1201,7 +1230,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                 >
                   {operationalUsers.map((u) => (
                     <option key={u.id} value={u.id} className="bg-stone-900 text-white">
-                      {u.name} ({u.team || u.role}) - Limit: {u.capacity_limit || 8}
+                      {u.name} ({u.team || u.role}) - Limit: {resolveCapacityLimit(u)}
                     </option>
                   ))}
                 </select>

@@ -237,6 +237,14 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
     return relevantTasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
   }, [sortedEmployeeTasks, todayStr]);
 
+  // Team leads don't carry a tracked capacity buffer the way agents do — a
+  // capacity_limit of 0 is a normal, intentional value for these 4 roles
+  // (not missing data), so workload math treats them differently from agents.
+  const TEAM_LEAD_ROLES: UserRole[] = ['am_team_lead', 'media_buying_team_lead', 'seo_team_lead', 'social_media_team_lead'];
+  const isTeamLeadRole = (role?: UserRole) => !!role && TEAM_LEAD_ROLES.includes(role);
+  const resolveCapacityLimit = (u: UserRecord) =>
+    isTeamLeadRole(u.role) ? (u.capacity_limit ?? 0) : (u.capacity_limit || 8);
+
   // 3. TEAM / MANAGER VIEW CALCULATIONS
   // Team members accessible under current user's RLS scope
   const teamMembers = useMemo(() => {
@@ -293,8 +301,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
       const blocked = memberTasks.filter((t) => t.status === 'blocked');
       const totalEstimated = active.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
       const totalActual = memberTasks.reduce((sum, t) => sum + (t.actual_hours || 0), 0);
-      const limit = member.capacity_limit || 8;
-      const rate = Math.round((active.length / limit) * 100);
+      const limit = resolveCapacityLimit(member);
+      // Team leads may genuinely have a limit of 0 (no tracked buffer) — not
+      // an error, just nothing to compute a rate against.
+      const isUntracked = limit === 0;
+      const rate = isUntracked ? 0 : Math.round((active.length / limit) * 100);
 
       return {
         member,
@@ -306,6 +317,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
         totalEstimated,
         totalActual,
         limit,
+        isUntracked,
         rate,
       };
     });
@@ -684,7 +696,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               </div>
               <div className="mt-2">
                 <p className="text-2xl font-bold text-white">{todayWorkloadHours} <span className="text-xs font-normal text-stone-400">hrs</span></p>
-                <p className="text-[10px] text-stone-400 mt-0.5">Against capacity: {effectiveEmployee.capacity_limit || 8} tasks</p>
+                <p className="text-[10px] text-stone-400 mt-0.5">Against capacity: {resolveCapacityLimit(effectiveEmployee)} tasks</p>
               </div>
             </div>
 
@@ -1502,8 +1514,8 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           {/* Team Workload Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {teamWorkloadSummary.map((item) => {
-              const isOver = item.rate >= 100;
-              const isNear = item.rate >= 75 && item.rate < 100;
+              const isOver = !item.isUntracked && item.rate >= 100;
+              const isNear = !item.isUntracked && item.rate >= 75 && item.rate < 100;
 
               return (
                 <div
@@ -1528,14 +1540,16 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
 
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
-                          isOver
+                          item.isUntracked
+                            ? 'bg-stone-800 text-stone-400 border border-stone-700'
+                            : isOver
                             ? 'bg-red-950 text-red-400 border border-red-500/40'
                             : isNear
                             ? 'bg-amber-950 text-amber-400 border border-amber-500/40'
                             : 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
                         }`}
                       >
-                        {item.rate}% load
+                        {item.isUntracked ? 'N/A' : `${item.rate}% load`}
                       </span>
                     </div>
 
@@ -1549,7 +1563,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                         <div
                           className="h-full rounded-full transition-all"
                           style={{
-                            width: `${Math.min(100, item.rate)}%`,
+                            width: item.isUntracked ? '0%' : `${Math.min(100, item.rate)}%`,
                             background: isOver
                               ? 'var(--roas-bad)'
                               : isNear
