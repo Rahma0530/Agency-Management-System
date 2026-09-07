@@ -118,29 +118,32 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     // For Team Leaders, the Detailed Team Matrix & Employee Cards reflect:
     // Team Leader -> Team Agents + Graphic Designers + Video Editors
     const role = currentUser?.role;
+    let result: UserRecord[];
     if (role === 'am_team_lead') {
-      return users.filter(
+      result = users.filter(
         (u) => u.role === 'am_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
       );
-    }
-    if (role === 'media_buying_team_lead') {
-      return users.filter(
+    } else if (role === 'media_buying_team_lead') {
+      result = users.filter(
         (u) => u.role === 'media_buying_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
       );
-    }
-    if (role === 'seo_team_lead') {
-      return users.filter(
+    } else if (role === 'seo_team_lead') {
+      result = users.filter(
         (u) => u.role === 'seo_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
       );
-    }
-    if (role === 'social_media_team_lead') {
-      return users.filter(
+    } else if (role === 'social_media_team_lead') {
+      result = users.filter(
         (u) => u.role === 'social_media_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
       );
+    } else {
+      result = users.filter(
+        (u) => operationalRoles.includes(u.role) || (u.capacity_limit && u.capacity_limit > 0)
+      );
     }
-    return users.filter(
-      (u) => operationalRoles.includes(u.role) || (u.capacity_limit && u.capacity_limit > 0)
-    );
+    // Executive and Head of Technical never receive task assignments, so they
+    // never belong in a capacity/workload employee list — even when the
+    // viewer is one of them.
+    return result.filter((u) => u.role !== 'executive' && u.role !== 'head_of_technical');
   }, [users, currentUser]);
 
   // Dynamically derived departments list reflecting only visible employees under RLS

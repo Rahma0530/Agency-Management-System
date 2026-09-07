@@ -240,11 +240,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
   // 3. TEAM / MANAGER VIEW CALCULATIONS
   // Team members accessible under current user's RLS scope
   const teamMembers = useMemo(() => {
+    let result: UserRecord[];
     if (currentUser.role === 'executive' || currentUser.role === 'head_of_technical') {
-      return users.filter((u) => u.role !== 'client');
-    }
-    if (currentUser.role === 'am_team_lead') {
-      return users.filter(
+      result = users.filter((u) => u.role !== 'client');
+    } else if (currentUser.role === 'am_team_lead') {
+      result = users.filter(
         (u) =>
           u.team === 'Account Management' ||
           u.manager_id === currentUser.id ||
@@ -252,13 +252,12 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           u.role === 'video_editor' ||
           u.id === currentUser.id
       );
-    }
-    if (
+    } else if (
       currentUser.role === 'seo_team_lead' ||
       currentUser.role === 'media_buying_team_lead' ||
       currentUser.role === 'social_media_team_lead'
     ) {
-      return users.filter(
+      result = users.filter(
         (u) =>
           (currentUser.team && u.team === currentUser.team) ||
           u.manager_id === currentUser.id ||
@@ -266,12 +265,16 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
           u.role === 'video_editor' ||
           u.id === currentUser.id
       );
+    } else if (currentUser.role === 'graphic_designer' || currentUser.role === 'video_editor') {
+      // Shared creative peers for Graphic Designer & Video Editor
+      result = users.filter((u) => u.role === 'graphic_designer' || u.role === 'video_editor' || u.id === currentUser.id);
+    } else {
+      result = [currentUser];
     }
-    // Shared creative peers for Graphic Designer & Video Editor
-    if (currentUser.role === 'graphic_designer' || currentUser.role === 'video_editor') {
-      return users.filter((u) => u.role === 'graphic_designer' || u.role === 'video_editor' || u.id === currentUser.id);
-    }
-    return [currentUser];
+    // Executive and Head of Technical never receive task assignments, so they
+    // never belong in this workload/team-member list — even when the viewer
+    // is one of them.
+    return result.filter((u) => u.role !== 'executive' && u.role !== 'head_of_technical');
   }, [users, currentUser]);
 
   // All blockers across visible tasks for Blockers Hub
