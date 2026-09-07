@@ -219,11 +219,29 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
 
   // Only the AM department can actually enter/edit brief data: am_agent is the primary author
   // (they run the client meeting), am_team_lead can edit as department oversight/fallback.
-  // Every other role (sales, service teams, executive) is read-only here, and only when a real
-  // save handler was actually wired through by the parent screen — never a silent no-op.
+  // Everyone else who is allowed to see brief content at all (service teams, executive/HoT) is
+  // read-only, and only when a real save handler was actually wired through by the parent
+  // screen — never a silent no-op.
   const canEditBrief =
     (currentUser.role === 'am_agent' || currentUser.role === 'am_team_lead') &&
     typeof onSaveBrief === 'function';
+
+  // Brief content (answers gathered from the client meeting) is deliberately restricted to the
+  // AM department (who capture it), the operational service teams it's written for, and
+  // leadership oversight — mirrors hasCampaignViewAccess above. Sales' role ends at handoff to
+  // AM, so they never see brief content, regardless of whether any brief data exists yet — this
+  // must be an explicit allow-list, not a byproduct of a prop the caller forgot to pass.
+  const hasBriefViewAccess =
+    currentUser.role === 'am_agent' ||
+    currentUser.role === 'am_team_lead' ||
+    currentUser.role === 'executive' ||
+    currentUser.role === 'head_of_technical' ||
+    currentUser.role === 'seo_team_lead' ||
+    currentUser.role === 'seo_agent' ||
+    currentUser.role === 'media_buying_team_lead' ||
+    currentUser.role === 'media_buying_agent' ||
+    currentUser.role === 'social_media_team_lead' ||
+    currentUser.role === 'social_media_agent';
 
   const amAgents = users.filter((u) => u.role === 'am_agent');
 
@@ -355,7 +373,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>Service Briefs ({clientBriefs.length})</span>
+            <span>Service Briefs{hasBriefViewAccess ? ` (${clientBriefs.length})` : ''}</span>
           </button>
 
           <button
@@ -824,46 +842,60 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
           {/* 3. SERVICE BRIEFS */}
           {activeTab === 'briefs' && (
             <div className="space-y-4">
-              {/* Service Sub-tabs */}
-              <div className="flex items-center gap-2 border-b border-purple-900/30 pb-3">
-                {services.map((srv) => {
-                  const hasBrief = clientBriefs.some((b) => b.service_type === srv);
-                  const isSelected = selectedBriefService === srv;
-                  return (
-                    <button
-                      key={srv}
-                      onClick={() => setSelectedBriefService(srv)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-purple-600 text-white shadow'
-                          : 'bg-stone-900/60 text-stone-400 hover:text-white border border-stone-800'
-                      }`}
-                    >
-                      <span>{srv.replace('_', ' ').toUpperCase()} Brief</span>
-                      {hasBrief ? (
-                        <span className="w-2 h-2 rounded-full bg-emerald-400" title="Submitted" />
-                      ) : (
-                        <span className="w-2 h-2 rounded-full bg-amber-400" title="Pending" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {selectedBriefService ? (
-                <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
-                  <DynamicBriefForm
-                    clientId={client.id}
-                    clientName={client.name}
-                    serviceType={selectedBriefService}
-                    existingBrief={clientBriefs.find((b) => b.service_type === selectedBriefService)}
-                    onSaveBrief={onSaveBrief || (async () => {})}
-                    currentUserId={currentUser.id}
-                    canEdit={canEditBrief}
-                  />
+              {!hasBriefViewAccess ? (
+                <div className="p-8 text-center rounded-xl bg-purple-950/20 border border-purple-900/30">
+                  <Shield className="w-10 h-10 text-purple-400 mx-auto mb-2" />
+                  <h3 className="text-sm font-bold text-white">Brief Access Restricted</h3>
+                  <p className="text-xs text-stone-400 max-w-md mx-auto mt-1">
+                    Service brief content is available only to the Account Management team, the
+                    relevant operational service teams, and Executive/Head of Technical oversight.
+                    It is not available for your role.
+                  </p>
                 </div>
               ) : (
-                <p className="text-xs text-stone-400">No service brief selected.</p>
+                <>
+                  {/* Service Sub-tabs */}
+                  <div className="flex items-center gap-2 border-b border-purple-900/30 pb-3">
+                    {services.map((srv) => {
+                      const hasBrief = clientBriefs.some((b) => b.service_type === srv);
+                      const isSelected = selectedBriefService === srv;
+                      return (
+                        <button
+                          key={srv}
+                          onClick={() => setSelectedBriefService(srv)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-purple-600 text-white shadow'
+                              : 'bg-stone-900/60 text-stone-400 hover:text-white border border-stone-800'
+                          }`}
+                        >
+                          <span>{srv.replace('_', ' ').toUpperCase()} Brief</span>
+                          {hasBrief ? (
+                            <span className="w-2 h-2 rounded-full bg-emerald-400" title="Submitted" />
+                          ) : (
+                            <span className="w-2 h-2 rounded-full bg-amber-400" title="Pending" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {selectedBriefService ? (
+                    <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
+                      <DynamicBriefForm
+                        clientId={client.id}
+                        clientName={client.name}
+                        serviceType={selectedBriefService}
+                        existingBrief={clientBriefs.find((b) => b.service_type === selectedBriefService)}
+                        onSaveBrief={onSaveBrief || (async () => {})}
+                        currentUserId={currentUser.id}
+                        canEdit={canEditBrief}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-stone-400">No service brief selected.</p>
+                  )}
+                </>
               )}
             </div>
           )}
