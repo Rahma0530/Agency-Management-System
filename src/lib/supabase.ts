@@ -421,14 +421,14 @@ let rawClientInstance: SupabaseClient | null = null;
  */
 function createSanitizedFetch(apiKey: string): typeof fetch {
   const selfBearer = `Bearer ${apiKey}`;
-  return (input, init) => {
+  return async (input, init) => {
     const headers = new Headers(init?.headers);
     const authBefore = headers.get('Authorization');
     const willStrip = authBefore === selfBearer;
     // TEMPORARY DEBUG LOGGING — remove once the 401s are confirmed resolved.
     const requestUrl =
       typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-    console.log('[supabase debug] fetch:', requestUrl, {
+    console.log('[supabase debug] fetch (before):', requestUrl, {
       authBefore,
       apikeyHeader: headers.get('apikey'),
       willStrip,
@@ -436,7 +436,32 @@ function createSanitizedFetch(apiKey: string): typeof fetch {
     if (willStrip) {
       headers.delete('Authorization');
     }
-    return fetch(input, { ...init, headers });
+    // Log the ACTUAL final headers object about to be handed to the real fetch —
+    // not what we intended, but what Headers.entries() reports right now.
+    console.log(
+      '[supabase debug] fetch (final headers sent):',
+      requestUrl,
+      Object.fromEntries(headers.entries())
+    );
+    const response = await fetch(input, { ...init, headers });
+    // Clone so the SDK can still read the real body itself; log status + body
+    // so we can see PostgREST/Supabase's actual error message, which will tell
+    // us whether this is still an auth/header problem or something else (e.g.
+    // a missing table grant, which surfaces as "permission denied for table X").
+    if (!response.ok) {
+      response
+        .clone()
+        .text()
+        .then((body) => {
+          console.log('[supabase debug] fetch (response):', requestUrl, {
+            status: response.status,
+            statusText: response.statusText,
+            body,
+          });
+        })
+        .catch(() => {});
+    }
+    return response;
   };
 }
 
