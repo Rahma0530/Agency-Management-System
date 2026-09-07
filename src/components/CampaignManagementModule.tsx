@@ -206,10 +206,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // UI Modal States
-  // TEMPORARY DEBUG REBUILD: state re-declared fresh (not reused from any prior
-  // version) while diagnosing why the client badge click reportedly doesn't
-  // register in one specific environment. Remove the debug bits below once
-  // confirmed working there.
   const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [campaignToEdit, setCampaignToEdit] = useState<CampaignRecord | null>(null);
@@ -630,29 +626,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* TEMPORARY DEBUG REBUILD: always-visible readout of dashboardClientId,
-          pinned so it's visible regardless of scroll position, to prove
-          whether clicking the client badge actually updates this state —
-          independent of whether ClientDashboard visually renders. Remove
-          this block once the badge click is confirmed working. */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 12,
-          right: 12,
-          zIndex: 9999,
-          background: '#000',
-          color: '#0f0',
-          fontFamily: 'monospace',
-          fontSize: 12,
-          padding: '6px 10px',
-          borderRadius: 6,
-          border: '1px solid #0f0',
-        }}
-      >
-        DEBUG dashboardClientId: {dashboardClientId === null ? 'null' : dashboardClientId}
-      </div>
-
       {/* ------------------------------------------------------------- */}
       {/* MODULE HEADER & RLS SCOPE BANNER */}
       {/* ------------------------------------------------------------- */}
@@ -1276,19 +1249,10 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                           <span>{statusCfg.label}</span>
                         </span>
 
-                        {/* Client Relation Badge — TEMPORARY DEBUG REBUILD: minimal
-                            plain element, no stopPropagation, no disabled logic, just
-                            a bare onClick with a console.log so we can see in the real
-                            browser's console whether the click is even registering. */}
+                        {/* Client Relation Badge */}
                         <span
                           onClick={() => {
-                            console.log('[client badge] click fired. campaign.client_id =', campaign.client_id, 'resolved client =', client);
-                            if (client) {
-                              console.log('[client badge] calling setDashboardClientId with', client.id);
-                              setDashboardClientId(client.id);
-                            } else {
-                              console.log('[client badge] no client resolved — nothing to open');
-                            }
+                            if (client) setDashboardClientId(client.id);
                           }}
                           title={client ? `View ${client.name}'s dashboard` : undefined}
                           className="px-2.5 py-0.5 rounded-full text-[11px] font-medium flex items-center gap-1 cursor-pointer hover:bg-purple-900/40 hover:text-purple-200"
