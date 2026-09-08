@@ -1,5 +1,6 @@
 -- ============================================================================
 -- Fix id / foreign-key column types: uuid -> text
+-- (and drop AI Studio's pre-existing RLS policies that block the ALTER)
 -- ============================================================================
 --
 -- WHY THIS MIGRATION EXISTS
@@ -41,12 +42,68 @@
 -- list) -- its type is still converted below, just without a matching
 -- constraint step. Same for daily_logs.linked_task_ids (an array of task
 -- ids -- Postgres foreign keys don't apply to array columns).
+--
+-- ALSO DISCOVERED: these 16 tables already carry RLS policies from AI
+-- Studio's original schema-generation step (independent of and predating
+-- anything in this repo, same origin as the uuid columns above) --
+-- Postgres refuses ALTER COLUMN TYPE while any policy's USING/WITH CHECK
+-- expression references that column, regardless of the policy's command
+-- type (SELECT/INSERT/UPDATE all block it equally). Confirmed live, for
+-- reference/audit -- not relied on for correctness, see below:
+--   assignments: assignments_select_by_role, assignments_update_leads_only, assignments_write_leads_only
+--   briefs: briefs_insert_am_agent, briefs_select_by_role
+--   campaigns: campaigns_select_by_assignment, campaigns_update_media_team, campaigns_write_media_team
+--   capacity_logs: capacity_logs_insert_self_or_admin, capacity_logs_select_self_or_management
+--   client_comparisons: client_comparisons_select_by_assignment, client_comparisons_write_admin_only
+--   clients: clients_insert_sales_only, clients_select_by_role, clients_update_owner_or_admin
+--   daily_logs: daily_logs_insert_self_only, daily_logs_select_self_or_lead
+--   extra_notes: extra_notes_insert_self_only, extra_notes_select_self_or_lead
+--   kpi_scores: kpi_scores_select_self_or_reviewer, kpi_scores_write_leads_only
+--   meetings: meetings_insert_am_and_admin, meetings_select_by_role
+--   performance_reviews: performance_reviews_write_leads_only (unconfirmed whether a
+--     SELECT policy also exists -- irrelevant to this migration, see below)
+--   reports: reports_select_by_role, reports_write_am_and_admin
+--   social_insights: social_insights_select_by_assignment, social_insights_update_social_team, social_insights_write_social_team
+--   tasks: tasks_insert_leads_and_agents, tasks_select_by_role, tasks_update_owner_or_lead
+--   users: users_insert_admin_only, users_select_self_or_management, users_update_self_or_admin
+-- Rather than drop these by the exact names above (which risks the exact
+-- gap noted for performance_reviews -- an unlisted policy would still
+-- block its column's ALTER), step 1 below dynamically discovers and drops
+-- EVERY policy on these 16 tables directly from pg_policies, so
+-- completeness of the list above never matters. None of these old
+-- policies are recreated -- they're fully superseded by the policies
+-- 20260906120000_rls_policies.sql creates immediately after this
+-- migration runs.
 -- ============================================================================
 
 begin;
 
 -- ----------------------------------------------------------------------------
--- 1. Drop foreign key constraints (users_auth_id_fkey excluded -- untouched)
+-- 1. Drop every existing RLS policy on these 16 tables, whatever it's
+--    named -- see header. Not recreated here; superseded by
+--    20260906120000_rls_policies.sql, which runs immediately after.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  pol record;
+begin
+  for pol in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in (
+        'users', 'packages', 'clients', 'briefs', 'assignments', 'tasks',
+        'campaigns', 'social_insights', 'reports', 'capacity_logs',
+        'daily_logs', 'extra_notes', 'performance_reviews', 'meetings',
+        'kpi_scores', 'client_comparisons'
+      )
+  loop
+    execute format('drop policy if exists %I on %I.%I', pol.policyname, pol.schemaname, pol.tablename);
+  end loop;
+end $$;
+
+-- ----------------------------------------------------------------------------
+-- 2. Drop foreign key constraints (users_auth_id_fkey excluded -- untouched)
 -- ----------------------------------------------------------------------------
 alter table public.assignments drop constraint if exists assignments_agent_id_fkey;
 alter table public.assignments drop constraint if exists assignments_client_id_fkey;
@@ -76,7 +133,7 @@ alter table public.tasks drop constraint if exists tasks_created_by_fkey;
 alter table public.users drop constraint if exists users_manager_id_fkey;
 
 -- ----------------------------------------------------------------------------
--- 2. Primary keys: drop the gen_random_uuid() default (the app always
+-- 3. Primary keys: drop the gen_random_uuid() default (the app always
 --    supplies its own id, never relies on server-side generation), then
 --    convert uuid -> text. A USING clause is included explicitly on every
 --    ALTER below even though all tables are confirmed empty, so the cast
@@ -132,7 +189,7 @@ alter table public.client_comparisons alter column id drop default;
 alter table public.client_comparisons alter column id type text using id::text;
 
 -- ----------------------------------------------------------------------------
--- 3. Foreign-key-shaped columns: uuid -> text (auth_id excluded, see header)
+-- 4. Foreign-key-shaped columns: uuid -> text (auth_id excluded, see header)
 -- ----------------------------------------------------------------------------
 alter table public.users alter column manager_id type text using manager_id::text;
 
@@ -179,7 +236,7 @@ alter table public.kpi_scores alter column reviewed_by type text using reviewed_
 alter table public.client_comparisons alter column client_id type text using client_id::text;
 
 -- ----------------------------------------------------------------------------
--- 4. Re-add foreign key constraints, identical names and directions,
+-- 5. Re-add foreign key constraints, identical names and directions,
 --    now text -> text.
 -- ----------------------------------------------------------------------------
 alter table public.assignments add constraint assignments_agent_id_fkey foreign key (agent_id) references public.users (id);
