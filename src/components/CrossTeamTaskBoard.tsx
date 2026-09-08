@@ -39,10 +39,21 @@ import {
   TaskPriority,
   TaskCommentRecord,
 } from '../types/database';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { SubtaskList } from './SubtaskList';
 import { TaskCommentThread } from './TaskCommentThread';
 import { TaskCalendarView } from './TaskCalendarView';
+import { KanbanColumn } from './KanbanColumn';
+import { KanbanTaskCardContent } from './KanbanTaskCard';
 
 interface CrossTeamTaskBoardProps {
   tasks: TaskRecord[];
@@ -435,6 +446,30 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Kanban drag-and-drop. A minimum drag distance keeps a plain click still
+  // opening Task Details (the existing behavior) instead of every pointer
+  // press being swallowed as a drag start.
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+  const [draggingTask, setDraggingTask] = useState<TaskRecord | null>(null);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const task = tasks.find((t) => t.id === event.active.id);
+    setDraggingTask(task || null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setDraggingTask(null);
+    if (!over) return;
+    const targetStatus = over.id as TaskStatus;
+    const task = tasks.find((t) => t.id === active.id);
+    if (task && task.status !== targetStatus) {
+      handleMoveStatus(task.id, targetStatus);
     }
   };
 
@@ -863,219 +898,52 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
 
       {/* VIEW 1: KANBAN BOARD */}
       {viewMode === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
-          {columns.map((column) => {
-            const columnTasks = filteredTasks.filter((t) => t.status === column.id);
+        <DndContext sensors={dndSensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
+            {columns.map((column) => {
+              const columnTasks = filteredTasks.filter((t) => t.status === column.id);
+              return (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  columns={columns}
+                  tasks={columnTasks}
+                  allTasks={tasks}
+                  clients={clients}
+                  users={users}
+                  isOverdue={isOverdue}
+                  isDueSoon={isDueSoon}
+                  onOpenDetails={setSelectedTaskDetails}
+                  onEditTask={openEditModal}
+                  onMoveStatus={handleMoveStatus}
+                />
+              );
+            })}
+          </div>
 
-            return (
-              <div
-                key={column.id}
-                className="rounded-[18px] p-3 flex flex-col gap-3 min-h-[500px]"
-                style={{
-                  background: 'rgba(21, 19, 24, 0.65)',
-                  border: '1px solid var(--border-soft)',
-                }}
-              >
-                {/* Column Header */}
-                <div className="flex items-center justify-between pb-2 border-b border-stone-800">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: column.color }} />
-                    <h4 className="text-xs font-bold text-white">{column.label}</h4>
-                  </div>
-                  <span
-                    className="px-2 py-0.5 rounded-full text-[11px] font-bold"
-                    style={{ background: column.badgeBg, color: column.color }}
-                  >
-                    {columnTasks.length}
-                  </span>
-                </div>
-
-                {/* Column Task Cards */}
-                <div className="space-y-3 flex-1 overflow-y-auto max-h-[750px] pr-0.5">
-                  {columnTasks.length === 0 ? (
-                    <div className="p-6 text-center text-stone-500 text-xs border border-dashed border-stone-800/80 rounded-xl">
-                      No tasks in this stage
-                    </div>
-                  ) : (
-                    columnTasks.map((task) => {
-                      const client = clients.find((c) => c.id === task.client_id);
-                      const assignee = users.find((u) => u.id === task.assigned_to);
-                      const priority = getPriorityBadge(task.priority);
-                      const teamColor = getTeamColor(task.team);
-                      const overdue = isOverdue(task);
-                      const dueSoon = isDueSoon(task);
-
-                      return (
-                        <div
-                          key={task.id}
-                          className="p-3.5 rounded-xl cursor-pointer hover:border-purple-500/50 transition-all group relative space-y-2.5 shadow-md"
-                          style={{
-                            background: 'var(--gradient-card)',
-                            border: `1px solid ${overdue ? 'rgba(245, 163, 163, 0.4)' : 'var(--border-medium)'}`,
-                          }}
-                          onClick={() => setSelectedTaskDetails(task)}
-                        >
-                          {/* Top Badges: Team & Priority */}
-                          <div className="flex items-center justify-between gap-1">
-                            <span
-                              className="px-2 py-0.5 rounded-md text-[10px] font-bold"
-                              style={{ background: teamColor.bg, color: teamColor.text }}
-                            >
-                              {task.team || 'General'}
-                            </span>
-
-                            <div className="flex items-center gap-1.5">
-                              {overdue && (
-                                <span
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-950/80 text-red-400 border border-red-500/40 animate-pulse flex items-center gap-1"
-                                  title="Task is overdue"
-                                >
-                                  <AlertTriangle className="w-2.5 h-2.5" />
-                                  <span>Overdue</span>
-                                </span>
-                              )}
-                              {!overdue && dueSoon && (
-                                <span
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-400 border border-amber-500/40"
-                                  title="Due soon"
-                                >
-                                  Due Soon
-                                </span>
-                              )}
-                              <span
-                                className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                                style={{
-                                  background: priority.bg,
-                                  color: priority.text,
-                                  border: `1px solid ${priority.border}`,
-                                }}
-                              >
-                                {priority.label}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Task Title */}
-                          <h5 className="text-xs font-bold text-white line-clamp-2 leading-snug group-hover:text-purple-300 transition-colors">
-                            {task.title}
-                          </h5>
-
-                          {/* Associated Client */}
-                          <div className="flex items-center gap-1.5 text-[11px] text-stone-400">
-                            <Building2 className="w-3 h-3 text-purple-400 shrink-0" />
-                            <span className="truncate">{client ? client.name : 'Unassigned Client'}</span>
-                          </div>
-
-                          {/* Subtask progress */}
-                          {(() => {
-                            const subtasks = tasks.filter((t) => t.parent_task_id === task.id);
-                            if (subtasks.length === 0) return null;
-                            const done = subtasks.filter((t) => t.status === 'completed').length;
-                            return (
-                              <div className="flex items-center gap-1 text-[10px] text-stone-400">
-                                <CheckSquare className="w-3 h-3 text-purple-300" />
-                                <span>
-                                  Subtasks: {done}/{subtasks.length}
-                                </span>
-                              </div>
-                            );
-                          })()}
-
-                          {/* Hours Info: Estimated vs Actual */}
-                          {(task.estimated_hours || task.actual_hours !== undefined) && (
-                            <div className="flex items-center justify-between text-[10px] text-stone-400 bg-stone-900/60 px-2 py-1 rounded-md border border-stone-800">
-                              <span className="flex items-center gap-1">
-                                <Timer className="w-3 h-3 text-purple-300" />
-                                <span>Est: {task.estimated_hours || 0}h</span>
-                              </span>
-                              <span>Act: {task.actual_hours || 0}h</span>
-                            </div>
-                          )}
-
-                          {/* Assignee & Due Date Footer */}
-                          <div className="flex items-center justify-between pt-1 border-t border-stone-800/80 text-[11px]">
-                            {/* Assignee Badge */}
-                            {assignee ? (
-                              <div className="flex items-center gap-1.5" title={assignee.name}>
-                                <div
-                                  className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px]"
-                                  style={{ background: 'var(--gradient-badge)', color: 'white' }}
-                                >
-                                  {assignee.name.charAt(0)}
-                                </div>
-                                <span className="text-stone-300 text-[11px] truncate max-w-[80px]">
-                                  {assignee.name.split(' ')[0]}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-[10px] text-amber-400 flex items-center gap-1 font-semibold">
-                                <UserX className="w-3 h-3" />
-                                <span>Unassigned</span>
-                              </span>
-                            )}
-
-                            {/* Due Date */}
-                            {task.due_date && (
-                              <div
-                                className={`flex items-center gap-1 text-[10px] font-mono ${
-                                  overdue ? 'text-red-400 font-bold' : 'text-stone-400'
-                                }`}
-                              >
-                                <Calendar className="w-3 h-3" />
-                                <span>{task.due_date}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Quick Advance Status Arrow Buttons */}
-                          <div
-                            className="pt-1.5 flex items-center justify-between border-t border-stone-800/50"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span className="text-[10px] text-stone-500">Stage:</span>
-                            <div className="flex items-center gap-1">
-                              {column.id !== 'todo' && (
-                                <button
-                                  onClick={() => {
-                                    const prevIdx = columns.findIndex((c) => c.id === column.id) - 1;
-                                    if (prevIdx >= 0) handleMoveStatus(task.id, columns[prevIdx].id);
-                                  }}
-                                  className="p-1 rounded bg-stone-900 text-stone-400 hover:text-white transition-colors"
-                                  title="Previous Stage"
-                                >
-                                  <ChevronLeft className="w-3 h-3" />
-                                </button>
-                              )}
-                              {column.id !== 'completed' && (
-                                <button
-                                  onClick={() => {
-                                    const nextIdx = columns.findIndex((c) => c.id === column.id) + 1;
-                                    if (nextIdx < columns.length) handleMoveStatus(task.id, columns[nextIdx].id);
-                                  }}
-                                  className="p-1 rounded bg-stone-900 text-purple-300 hover:text-white hover:bg-purple-900/60 transition-colors"
-                                  title="Next Stage"
-                                >
-                                  <ChevronRight className="w-3 h-3" />
-                                </button>
-                              )}
-                              <button
-                                onClick={() => openEditModal(task)}
-                                className="p-1 rounded bg-stone-900 text-stone-400 hover:text-white ml-1"
-                                title="Edit Task"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+          <DragOverlay>
+            {draggingTask &&
+              (() => {
+                const subtasks = tasks.filter((t) => t.parent_task_id === draggingTask.id);
+                return (
+                  <KanbanTaskCardContent
+                    task={draggingTask}
+                    client={clients.find((c) => c.id === draggingTask.client_id)}
+                    assignee={users.find((u) => u.id === draggingTask.assigned_to)}
+                    subtaskDone={subtasks.filter((t) => t.status === 'completed').length}
+                    subtaskTotal={subtasks.length}
+                    overdue={isOverdue(draggingTask)}
+                    dueSoon={isDueSoon(draggingTask)}
+                    columns={columns}
+                    onOpenDetails={() => {}}
+                    onEditTask={() => {}}
+                    onMoveStatus={() => {}}
+                    isOverlay
+                  />
+                );
+              })()}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {/* VIEW 2: TABLE / LIST VIEW */}
