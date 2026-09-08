@@ -42,6 +42,7 @@ import {
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { SubtaskList } from './SubtaskList';
 import { TaskCommentThread } from './TaskCommentThread';
+import { TaskCalendarView } from './TaskCalendarView';
 
 interface CrossTeamTaskBoardProps {
   tasks: TaskRecord[];
@@ -74,7 +75,7 @@ interface CrossTeamTaskBoardProps {
 }
 
 export type QuickTaskFilter = 'all' | 'overdue' | 'due_soon' | 'unassigned' | 'my_tasks';
-export type TaskViewMode = 'kanban' | 'table';
+export type TaskViewMode = 'kanban' | 'table' | 'timeline';
 
 export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   tasks,
@@ -639,6 +640,17 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
               >
                 <TableIcon className="w-3.5 h-3.5" />
                 <span>Task List</span>
+              </button>
+              <button
+                onClick={() => setViewMode('timeline')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  viewMode === 'timeline'
+                    ? 'bg-purple-600/30 text-white border border-purple-500/50'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Calendar</span>
               </button>
             </div>
 
@@ -1224,6 +1236,16 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
             </table>
           </div>
         </div>
+      )}
+
+      {/* VIEW 3: TIMELINE / CALENDAR VIEW */}
+      {viewMode === 'timeline' && (
+        <TaskCalendarView
+          tasks={filteredTasks}
+          clients={clients}
+          users={users}
+          onSelectTask={setSelectedTaskDetails}
+        />
       )}
 
       {/* MODAL 1: TASK DETAILS VIEW */}
