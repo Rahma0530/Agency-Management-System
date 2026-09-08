@@ -428,6 +428,33 @@ export function isTaskAccessibleUnderRLS(
   return false;
 }
 
+/**
+ * Builds the Storage object key for a task attachment upload:
+ * "{task_id}/{attachment_id}-{sanitized filename}". The original filename is
+ * never used as-is — this strips path separators, leading dots (blocks
+ * traversal attempts and hidden-file tricks), and anything outside a safe
+ * charset, then truncates length. storage.objects RLS relies on the task_id
+ * being the first path segment (via storage.foldername()), and the
+ * app-generated attachment_id prefix guarantees uniqueness independent of
+ * whatever the uploader named the file.
+ */
+export function sanitizeAttachmentFilename(rawFilename: string): string {
+  const base = rawFilename.split(/[/\\]/).pop() || 'file';
+  const sanitized = base
+    .replace(/^\.+/, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(0, 100);
+  return sanitized || 'file';
+}
+
+export function buildAttachmentStoragePath(
+  taskId: string,
+  attachmentId: string,
+  rawFilename: string
+): string {
+  return `${taskId}/${attachmentId}-${sanitizeAttachmentFilename(rawFilename)}`;
+}
+
 let rawClientInstance: SupabaseClient | null = null;
 
 /**

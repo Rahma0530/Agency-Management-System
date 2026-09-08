@@ -140,6 +140,21 @@ export interface TaskCommentRecord {
   deleted_at?: string | null;
 }
 
+// 6c. task_attachments — files attached to a task. Bytes live in the private
+// 'task-attachments' Storage bucket at storage_path; this row is just the
+// metadata index. Hard-deleted (unlike comments — nothing references an
+// attachment as a parent, so there's no orphaning concern).
+export interface TaskAttachmentRecord {
+  id: string;
+  task_id: string;
+  storage_path: string;
+  filename: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_by: string;
+  uploaded_at: string;
+}
+
 // 7. campaigns
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'archived';
 
@@ -272,6 +287,7 @@ export interface Database {
       assignments: { Row: AssignmentRecord; Insert: Partial<AssignmentRecord>; Update: Partial<AssignmentRecord>; Relationships: any[] };
       tasks: { Row: TaskRecord; Insert: Partial<TaskRecord>; Update: Partial<TaskRecord>; Relationships: any[] };
       task_comments: { Row: TaskCommentRecord; Insert: Partial<TaskCommentRecord>; Update: Partial<TaskCommentRecord>; Relationships: any[] };
+      task_attachments: { Row: TaskAttachmentRecord; Insert: Partial<TaskAttachmentRecord>; Update: Partial<TaskAttachmentRecord>; Relationships: any[] };
       campaigns: { Row: CampaignRecord; Insert: Partial<CampaignRecord>; Update: Partial<CampaignRecord>; Relationships: any[] };
       social_insights: { Row: SocialInsightRecord; Insert: Partial<SocialInsightRecord>; Update: Partial<SocialInsightRecord>; Relationships: any[] };
       reports: { Row: ReportRecord; Insert: Partial<ReportRecord>; Update: Partial<ReportRecord>; Relationships: any[] };

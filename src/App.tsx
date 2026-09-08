@@ -19,7 +19,12 @@ import {
   LogOut,
   Target,
 } from 'lucide-react';
-import { supabase, isSupabaseConfigured, setSupabaseSessionUser } from './lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  setSupabaseSessionUser,
+  buildAttachmentStoragePath,
+} from './lib/supabase';
 import {
   ClientRecord,
   ClientStatus,
@@ -29,6 +34,7 @@ import {
   BriefRevisionRecord,
   TaskRecord,
   TaskCommentRecord,
+  TaskAttachmentRecord,
   CapacityLogRecord,
   DailyLogRecord,
   ExtraNoteRecord,
@@ -98,6 +104,7 @@ export default function App() {
   const [briefRevisions, setBriefRevisions] = useState<BriefRevisionRecord[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>(INITIAL_TASKS);
   const [taskComments, setTaskComments] = useState<TaskCommentRecord[]>([]);
+  const [taskAttachments, setTaskAttachments] = useState<TaskAttachmentRecord[]>([]);
   const [capacityLogs, setCapacityLogs] = useState<CapacityLogRecord[]>(INITIAL_CAPACITY_LOGS);
   const [dailyLogs, setDailyLogs] = useState<DailyLogRecord[]>(INITIAL_DAILY_LOGS);
   const [extraNotes, setExtraNotes] = useState<ExtraNoteRecord[]>(INITIAL_EXTRA_NOTES);
@@ -358,6 +365,14 @@ export default function App() {
           .select('*');
         if (!taskCommentErr && taskCommentData && taskCommentData.length > 0) {
           setTaskComments(taskCommentData as TaskCommentRecord[]);
+        }
+
+        // Fetch task attachment metadata (the files themselves stay in Storage)
+        const { data: taskAttachmentData, error: taskAttachmentErr } = await supabase
+          .from('task_attachments')
+          .select('*');
+        if (!taskAttachmentErr && taskAttachmentData && taskAttachmentData.length > 0) {
+          setTaskAttachments(taskAttachmentData as TaskAttachmentRecord[]);
         }
 
         // Fetch capacity_logs
@@ -906,6 +921,74 @@ export default function App() {
     setTaskComments((prev) =>
       prev.map((c) => (c.id === commentId ? { ...c, ...updates } : c))
     );
+  };
+
+  // 6e. Upload a file attachment to a task. Unlike every other entity in
+  // this app, there is no local/demo-mode fallback for this — file bytes
+  // can't be represented in the in-memory mock-data system, only a real
+  // Supabase Storage bucket can hold them.
+  const handleUploadTaskAttachment = async (taskId: string, file: File) => {
+    if (!supabaseActive) {
+      showNotification('File attachments require a connected Supabase backend.', 'info');
+      return;
+    }
+
+    const attachmentId = `att-${Date.now().toString().slice(-4)}`;
+    const storagePath = buildAttachmentStoragePath(taskId, attachmentId, file.name);
+
+    const { error: uploadError } = await supabase.storage
+      .from('task-attachments')
+      .upload(storagePath, file, { contentType: file.type });
+    if (uploadError) {
+      console.error('Supabase attachment upload error:', uploadError);
+      throw uploadError;
+    }
+
+    const newAttachmentPayload: TaskAttachmentRecord = {
+      id: attachmentId,
+      task_id: taskId,
+      storage_path: storagePath,
+      filename: file.name,
+      file_size: file.size,
+      mime_type: file.type,
+      uploaded_by: currentUser.id,
+      uploaded_at: new Date().toISOString(),
+    };
+
+    const { data, error: insertError } = await supabase
+      .from('task_attachments')
+      .insert([newAttachmentPayload])
+      .select();
+    if (insertError) {
+      console.error('Supabase attachment metadata insert error:', insertError);
+      // The file itself uploaded successfully — clean it up rather than
+      // leaving an orphaned Storage object with no matching metadata row.
+      await supabase.storage.from('task-attachments').remove([storagePath]);
+      throw insertError;
+    }
+
+    setTaskAttachments((prev) => [...prev, (data?.[0] as TaskAttachmentRecord) || newAttachmentPayload]);
+    showNotification(`"${file.name}" attached successfully.`);
+  };
+
+  // 6f. Delete your own attachment — removes both the Storage object and
+  // its metadata row (a real delete, not soft: nothing references an
+  // attachment as a parent, so there's no orphaning concern like comments
+  // have).
+  const handleDeleteTaskAttachment = async (attachmentId: string) => {
+    const attachment = taskAttachments.find((a) => a.id === attachmentId);
+    if (!attachment) return;
+
+    if (supabaseActive) {
+      try {
+        await supabase.storage.from('task-attachments').remove([attachment.storage_path]);
+        await supabase.from('task_attachments').delete().eq('id', attachmentId);
+      } catch (err) {
+        console.error('Supabase attachment delete error:', err);
+      }
+    }
+
+    setTaskAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
   };
 
   // 7. Document a daily activity report (Daily Log)
@@ -1519,6 +1602,9 @@ export default function App() {
                   onAddTaskComment={handleAddTaskComment}
                   onEditTaskComment={handleEditTaskComment}
                   onDeleteTaskComment={handleDeleteTaskComment}
+                  taskAttachments={taskAttachments}
+                  onUploadTaskAttachment={handleUploadTaskAttachment}
+                  onDeleteTaskAttachment={handleDeleteTaskAttachment}
                 />
               </div>
             )}

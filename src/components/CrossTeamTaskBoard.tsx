@@ -38,6 +38,7 @@ import {
   TaskStatus,
   TaskPriority,
   TaskCommentRecord,
+  TaskAttachmentRecord,
 } from '../types/database';
 import {
   DndContext,
@@ -51,6 +52,7 @@ import {
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { SubtaskList } from './SubtaskList';
 import { TaskCommentThread } from './TaskCommentThread';
+import { TaskAttachmentList } from './TaskAttachmentList';
 import { TaskCalendarView } from './TaskCalendarView';
 import { KanbanColumn } from './KanbanColumn';
 import { KanbanTaskCardContent } from './KanbanTaskCard';
@@ -83,6 +85,9 @@ interface CrossTeamTaskBoardProps {
   onAddTaskComment?: (taskId: string, body: string, parentCommentId?: string | null) => Promise<void>;
   onEditTaskComment?: (commentId: string, body: string) => Promise<void>;
   onDeleteTaskComment?: (commentId: string) => Promise<void>;
+  taskAttachments?: TaskAttachmentRecord[];
+  onUploadTaskAttachment?: (taskId: string, file: File) => Promise<void>;
+  onDeleteTaskAttachment?: (attachmentId: string) => Promise<void>;
 }
 
 export type QuickTaskFilter = 'all' | 'overdue' | 'due_soon' | 'unassigned' | 'my_tasks';
@@ -102,6 +107,9 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   onAddTaskComment,
   onEditTaskComment,
   onDeleteTaskComment,
+  taskAttachments = [],
+  onUploadTaskAttachment,
+  onDeleteTaskAttachment,
 }) => {
   // View mode: Kanban board vs Table view
   const [viewMode, setViewMode] = useState<TaskViewMode>('kanban');
@@ -1298,6 +1306,23 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                     level={2}
                     onAddSubtask={openAddSubtaskModal}
                     onEditSubtask={openEditModal}
+                  />
+                </div>
+              )}
+
+              {/* Attachments — private Storage bucket, signed-URL access only */}
+              {onUploadTaskAttachment && onDeleteTaskAttachment && (
+                <div>
+                  <label className="text-[11px] font-semibold text-stone-400 block mb-1.5">
+                    Attachments:
+                  </label>
+                  <TaskAttachmentList
+                    taskId={selectedTaskDetails.id}
+                    attachments={taskAttachments}
+                    users={users}
+                    currentUserId={currentUserId}
+                    onUpload={onUploadTaskAttachment}
+                    onDelete={onDeleteTaskAttachment}
                   />
                 </div>
               )}
