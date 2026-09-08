@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Calendar,
   Clock,
@@ -178,6 +178,43 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
       return 0;
     });
   }, [employeeTasks]);
+
+  // Tasks completed on whichever date the Daily Log modal currently has
+  // selected (not hardcoded to literal-today, so retroactively logging a
+  // past day still gets the right suggestion). Drives both the "Link tasks"
+  // checklist highlight/pre-check and the auto-suggested summary draft.
+  const tasksCompletedOnLogDate = useMemo(() => {
+    return employeeTasks.filter(
+      (t) => t.status === 'completed' && t.completed_at?.split('T')[0] === logDate
+    );
+  }, [employeeTasks, logDate]);
+
+  // Checklist display order for the Daily Log modal: today's (well,
+  // logDate's) completions surfaced first, everything else keeps its usual
+  // priority/due-date order below. Does not affect sortedEmployeeTasks
+  // itself, which several other views (My Tasks, KPI counts) rely on.
+  const dailyLogChecklistTasks = useMemo(() => {
+    const completedIds = new Set(tasksCompletedOnLogDate.map((t) => t.id));
+    return [...sortedEmployeeTasks].sort((a, b) => {
+      const aCompleted = completedIds.has(a.id) ? 1 : 0;
+      const bCompleted = completedIds.has(b.id) ? 1 : 0;
+      return bCompleted - aCompleted;
+    });
+  }, [sortedEmployeeTasks, tasksCompletedOnLogDate]);
+
+  // Auto-suggestion: pre-check logDate's completions and draft a starting
+  // summary sentence — but only while the form is still untouched, so a
+  // preserved draft (Cancel/X don't reset this modal's state) is never
+  // clobbered.
+  useEffect(() => {
+    if (!isLoggingDailyActivity) return;
+    if (dailySummary.trim() || selectedLinkedTasks.length > 0) return;
+    if (tasksCompletedOnLogDate.length === 0) return;
+
+    setSelectedLinkedTasks(tasksCompletedOnLogDate.map((t) => t.id));
+    setDailySummary(`Completed: ${tasksCompletedOnLogDate.map((t) => t.title).join(', ')}.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggingDailyActivity, logDate, tasksCompletedOnLogDate]);
 
   // Filtered employee tasks based on search & filters
   const filteredEmployeeTasks = useMemo(() => {
@@ -1939,16 +1976,19 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   Link tasks you worked on:
                 </label>
                 <div className="max-h-36 overflow-y-auto p-2.5 rounded-xl bg-stone-900/90 border border-stone-800 space-y-1.5">
-                  {sortedEmployeeTasks.length === 0 ? (
+                  {dailyLogChecklistTasks.length === 0 ? (
                     <p className="text-xs text-stone-500">No tasks assigned to this employee.</p>
                   ) : (
-                    sortedEmployeeTasks.map((t) => {
+                    dailyLogChecklistTasks.map((t) => {
                       const isChecked = selectedLinkedTasks.includes(t.id);
+                      const completedOnLogDate = t.completed_at?.split('T')[0] === logDate;
 
                       return (
                         <label
                           key={t.id}
-                          className="flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 cursor-pointer text-xs text-stone-300"
+                          className={`flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 cursor-pointer text-xs text-stone-300 ${
+                            completedOnLogDate ? 'bg-emerald-950/30 border border-emerald-800/40' : ''
+                          }`}
                         >
                           <input
                             type="checkbox"
@@ -1964,6 +2004,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                           />
                           <span className="font-semibold text-white">{t.title}</span>
                           <span className="text-[10px] text-stone-500 mr-auto">({getStatusLabel(t.status)})</span>
+                          {completedOnLogDate && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase bg-emerald-900/60 text-emerald-300 shrink-0">
+                              Completed this day
+                            </span>
+                          )}
                         </label>
                       );
                     })

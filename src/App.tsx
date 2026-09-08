@@ -762,26 +762,12 @@ export default function App() {
 
   // 5. Update task status on the shared board
   const handleUpdateTaskStatus = async (taskId: string, newStatus: TaskStatus) => {
-    if (supabaseActive) {
-      try {
-        await supabase
-          .from('tasks')
-          .update({ status: newStatus })
-          .eq('id', taskId);
-      } catch (err) {
-        console.error('Supabase task update error:', err);
-      }
-    }
+    // completed_at is the only reliable signal for "completed today" (the
+    // Daily Work Log's auto-suggestion) — status alone carries no timing
+    // information, so it's set/cleared here rather than left to drift.
+    const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
+    const updates = { status: newStatus, completed_at: completedAt };
 
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-    );
-
-    showNotification('Task status moved and the shared board updated.');
-  };
-
-  // Update task details and hours
-  const handleUpdateTask = async (taskId: string, updates: Partial<TaskRecord>) => {
     if (supabaseActive) {
       try {
         await supabase
@@ -795,6 +781,34 @@ export default function App() {
 
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+    );
+
+    showNotification('Task status moved and the shared board updated.');
+  };
+
+  // Update task details and hours
+  const handleUpdateTask = async (taskId: string, updates: Partial<TaskRecord>) => {
+    // Same completed_at bookkeeping as handleUpdateTaskStatus, but only when
+    // this edit actually touches status — editing title/description alone
+    // shouldn't disturb it.
+    const finalUpdates: Partial<TaskRecord> = { ...updates };
+    if ('status' in updates) {
+      finalUpdates.completed_at = updates.status === 'completed' ? new Date().toISOString() : null;
+    }
+
+    if (supabaseActive) {
+      try {
+        await supabase
+          .from('tasks')
+          .update(finalUpdates)
+          .eq('id', taskId);
+      } catch (err) {
+        console.error('Supabase task update error:', err);
+      }
+    }
+
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, ...finalUpdates } : t))
     );
 
     showNotification('Task data updated successfully.');

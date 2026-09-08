@@ -123,6 +123,10 @@ export interface TaskRecord {
   // Self-reference for subtasks. Nesting is capped at 3 levels
   // (task -> subtask -> sub-subtask) by a DB trigger.
   parent_task_id?: string | null;
+  // Set when status becomes 'completed', cleared otherwise (see
+  // handleUpdateTaskStatus/handleUpdateTask in App.tsx). Needed to filter
+  // "completed today" — status alone carries no timing information.
+  completed_at?: string | null;
 }
 
 // 6b. task_comments — threaded comments on a task, capped at 3 levels
