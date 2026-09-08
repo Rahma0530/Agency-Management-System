@@ -77,6 +77,17 @@ export default function App() {
   // Active module tab
   const [activeTab, setActiveTab] = useState<AppModule>('onboarding');
   const [unauthorizedRoute, setUnauthorizedRoute] = useState<string | null>(null);
+  // Pre-fills CrossTeamTaskBoard's search box when arriving via a capacity
+  // card's "Assign via Task Board" link, so the target employee's tasks are
+  // already filtered into view.
+  const [taskBoardAssigneePrefill, setTaskBoardAssigneePrefill] = useState('');
+
+  const handleNavigateToModule = (module: AppModuleId, prefillAssigneeName?: string) => {
+    if (prefillAssigneeName !== undefined) {
+      setTaskBoardAssigneePrefill(prefillAssigneeName);
+    }
+    setActiveTab(module);
+  };
 
   // Data State
   const [packages, setPackages] = useState<PackageRecord[]>(INITIAL_PACKAGES);
@@ -1363,6 +1374,7 @@ export default function App() {
                     onSaveBrief={handleSaveBrief}
                     onUpdateClientStatus={handleUpdateClientStatus}
                     onMarkClientViewed={handleMarkClientViewedByAMLead}
+                    onNavigateToModule={handleNavigateToModule}
                   />
                 )}
               </div>
@@ -1385,6 +1397,7 @@ export default function App() {
                   extraNotes={extraNotes}
                   onAssignServiceAgent={handleAssignServiceAgent}
                   onMarkBriefViewed={handleMarkBriefViewedByTeamLead}
+                  onNavigateToModule={handleNavigateToModule}
                 />
               </div>
             )}
@@ -1400,6 +1413,7 @@ export default function App() {
                   currentUser={currentUser}
                   onUpdateUserCapacity={handleUpdateUserCapacity}
                   onLogCapacity={handleLogCapacity}
+                  onNavigateToModule={handleNavigateToModule}
                 />
               </div>
             )}
@@ -1416,6 +1430,7 @@ export default function App() {
                   onUpdateTaskStatus={handleUpdateTaskStatus}
                   onCreateTask={handleCreateTask}
                   onUpdateTask={handleUpdateTask}
+                  initialAssigneeFilter={taskBoardAssigneePrefill}
                 />
               </div>
             )}

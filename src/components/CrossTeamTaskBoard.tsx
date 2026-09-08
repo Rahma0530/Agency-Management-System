@@ -37,8 +37,8 @@ import {
   ClientRecord,
   TaskStatus,
   TaskPriority,
-  UserRole,
 } from '../types/database';
+import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 
 interface CrossTeamTaskBoardProps {
   tasks: TaskRecord[];
@@ -60,6 +60,9 @@ interface CrossTeamTaskBoardProps {
     actual_hours?: number | null;
   }) => Promise<void>;
   onUpdateTask?: (taskId: string, updates: Partial<TaskRecord>) => Promise<void>;
+  // Pre-fills the search box (matches by assignee name) when arriving here via
+  // the "Assign via Task Board" link from CapacityManagement's employee cards.
+  initialAssigneeFilter?: string;
 }
 
 export type QuickTaskFilter = 'all' | 'overdue' | 'due_soon' | 'unassigned' | 'my_tasks';
@@ -74,6 +77,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   onUpdateTaskStatus,
   onCreateTask,
   onUpdateTask,
+  initialAssigneeFilter,
 }) => {
   // View mode: Kanban board vs Table view
   const [viewMode, setViewMode] = useState<TaskViewMode>('kanban');
@@ -85,6 +89,14 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Pre-fill the assignee search when navigated here from a specific
+  // employee's "Assign via Task Board" link.
+  React.useEffect(() => {
+    if (initialAssigneeFilter) {
+      setSearchQuery(initialAssigneeFilter);
+    }
+  }, [initialAssigneeFilter]);
   const [visibilityScope, setVisibilityScope] = useState<'all' | 'my_team' | 'my_tasks'>('all');
 
   // Modals state
@@ -127,14 +139,6 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
     return true;
   };
 
-  // Team leads don't carry a tracked capacity buffer the way agents do — a
-  // capacity_limit of 0 is a normal, intentional value for these 4 roles
-  // (not missing data), so workload math treats them differently from agents.
-  const TEAM_LEAD_ROLES: UserRole[] = ['am_team_lead', 'media_buying_team_lead', 'seo_team_lead', 'social_media_team_lead'];
-  const isTeamLeadRole = (role?: UserRole) => !!role && TEAM_LEAD_ROLES.includes(role);
-  const resolveCapacityLimit = (u: UserRecord) =>
-    isTeamLeadRole(u.role) ? (u.capacity_limit ?? 0) : (u.capacity_limit || 8);
-
   // Teams list
   const teams = [
     { id: 'all', label: 'All Teams' },
@@ -154,27 +158,6 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
     { id: 'completed', label: 'Completed', color: 'var(--roas-good)', badgeBg: 'rgba(169, 245, 193, 0.2)' },
     { id: 'blocked', label: 'Blocked', color: 'var(--roas-bad)', badgeBg: 'rgba(245, 163, 163, 0.2)' },
   ];
-
-  // User helper to check current employee's workload
-  const getUserWorkload = (userId: string) => {
-    const user = users.find((u) => u.id === userId);
-    if (!user) return null;
-    const activeTasksCount = tasks.filter((t) => t.assigned_to === userId && t.status !== 'completed').length;
-    const limit = resolveCapacityLimit(user);
-    // Team leads may genuinely have a limit of 0 (no tracked buffer) — not
-    // an error, just nothing to compute a rate against.
-    const isUntracked = limit === 0;
-    const rate = isUntracked ? 0 : Math.round((activeTasksCount / limit) * 100);
-    return {
-      user,
-      activeTasksCount,
-      limit,
-      isUntracked,
-      rate,
-      isOver: !isUntracked && rate >= 100,
-      isNear: !isUntracked && rate >= 75 && rate < 100,
-    };
-  };
 
   // Helper date functions
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -1407,19 +1390,10 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                     {users
                       .filter(isOperationalAssignee)
                       .map((u) => {
-                        const workload = getUserWorkload(u.id);
-                        const statusNote = workload
-                          ? workload.isUntracked
-                            ? '⚪ N/A'
-                            : workload.isOver
-                            ? '🔴 Full'
-                            : workload.isNear
-                            ? '🟡 High'
-                            : '🟢 Available'
-                          : '';
+                        const capacityData = getUserCapacityData(u, clients, tasks);
                         return (
                           <option key={u.id} value={u.id} className="bg-stone-900 text-white">
-                            {u.name} ({u.team || u.role}) {statusNote}
+                            {u.name} ({u.team || u.role}) {getCapacityIndicator(capacityData)}
                           </option>
                         );
                       })}
@@ -1619,10 +1593,10 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                     {users
                       .filter(isOperationalAssignee)
                       .map((u) => {
-                        const workload = getUserWorkload(u.id);
+                        const capacityData = getUserCapacityData(u, clients, tasks);
                         return (
                           <option key={u.id} value={u.id} className="bg-stone-900 text-white">
-                            {u.name} ({u.team || u.role}) {workload?.isUntracked ? '⚪ N/A' : workload?.isOver ? '🔴 Full' : '🟢 Available'}
+                            {u.name} ({u.team || u.role}) {getCapacityIndicator(capacityData)}
                           </option>
                         );
                       })}

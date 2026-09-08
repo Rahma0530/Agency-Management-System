@@ -19,6 +19,7 @@ import {
   Sparkles,
   Info,
   Eye,
+  Gauge,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -34,6 +35,8 @@ import {
   ServiceType,
   UserRole,
 } from '../types/database';
+import { AppModuleId } from '../data/roles';
+import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { ClientDashboard } from './ClientDashboard';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
@@ -58,7 +61,7 @@ interface ServiceBriefsRoutingViewProps {
     reasonNotes?: string
   ) => Promise<void>;
   onMarkBriefViewed?: (briefId: string) => Promise<void> | void;
-  onNavigateToModule?: (module: string) => void;
+  onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
 }
 
 // AM roles (am_team_lead, am_agent) don't work a single service — they need visibility into
@@ -501,9 +504,20 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-800/40 text-xs text-purple-200 self-start md:self-center">
-          <Info className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-          <span>Multi-Service Workflow: {serviceNameEn}</span>
+        <div className="flex items-center gap-2 self-start md:self-center">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-800/40 text-xs text-purple-200">
+            <Info className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+            <span>Multi-Service Workflow: {serviceNameEn}</span>
+          </div>
+          {isTeamLead && onNavigateToModule && (
+            <button
+              onClick={() => onNavigateToModule('capacity')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-purple-200 bg-purple-900/30 hover:bg-purple-800/50 hover:text-white border border-purple-700/40 transition-all"
+            >
+              <Gauge className="w-3.5 h-3.5" />
+              <span>View Team Capacity</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -750,11 +764,14 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                         className="flex-1 px-3 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
                       >
                         <option value="" disabled>Select {serviceNameEn} Specialist...</option>
-                        {eligibleAgents.map((ag) => (
-                          <option key={ag.id} value={ag.id}>
-                            {ag.name} ({ag.email})
-                          </option>
-                        ))}
+                        {eligibleAgents.map((ag) => {
+                          const capacityData = getUserCapacityData(ag, clients, tasks);
+                          return (
+                            <option key={ag.id} value={ag.id}>
+                              {ag.name} ({ag.email}) {getCapacityIndicator(capacityData)}
+                            </option>
+                          );
+                        })}
                       </select>
 
                       <button

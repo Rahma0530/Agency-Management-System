@@ -18,6 +18,7 @@ import {
   Info,
   ExternalLink,
   Eye,
+  Gauge,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -35,6 +36,8 @@ import {
   AssignmentRecord,
   TaskStatus,
 } from '../types/database';
+import { AppModuleId } from '../data/roles';
+import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { ClientDashboard } from './ClientDashboard';
 
 interface AMQueueProps {
@@ -65,6 +68,7 @@ interface AMQueueProps {
     options?: { churn_reason?: string; renewal_date?: string }
   ) => Promise<void>;
   onMarkClientViewed?: (clientId: string) => Promise<void> | void;
+  onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
 }
 
 export const AMQueue: React.FC<AMQueueProps> = ({
@@ -85,6 +89,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   onUpdateTaskStatus,
   onUpdateClientStatus,
   onMarkClientViewed,
+  onNavigateToModule,
 }) => {
   const resolvedUser = currentUser || users.find((u) => u.id === currentUserId) || users[0];
   const effectiveUserId = resolvedUser?.id || currentUserId || '';
@@ -233,9 +238,20 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-800/40 text-xs text-purple-200 self-start sm:self-center">
-          <Info className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-          <span>{isAMTeamLead ? 'Full Assignment Control' : 'Assigned Client Scope'}</span>
+        <div className="flex items-center gap-2 self-start sm:self-center">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-800/40 text-xs text-purple-200">
+            <Info className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+            <span>{isAMTeamLead ? 'Full Assignment Control' : 'Assigned Client Scope'}</span>
+          </div>
+          {isAMTeamLead && onNavigateToModule && (
+            <button
+              onClick={() => onNavigateToModule('capacity')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-purple-200 bg-purple-900/30 hover:bg-purple-800/50 hover:text-white border border-purple-700/40 transition-all"
+            >
+              <Gauge className="w-3.5 h-3.5" />
+              <span>View Team Capacity</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -433,11 +449,14 @@ export const AMQueue: React.FC<AMQueueProps> = ({
                               className="px-2 py-1 rounded-lg text-xs bg-[#120d1e] border border-purple-900/40 text-white focus:outline-none focus:border-purple-400"
                             >
                               <option value="">-- Assign AM --</option>
-                              {amAgents.map((ag) => (
-                                <option key={ag.id} value={ag.id}>
-                                  {ag.name}
-                                </option>
-                              ))}
+                              {amAgents.map((ag) => {
+                                const capacityData = getUserCapacityData(ag, clients);
+                                return (
+                                  <option key={ag.id} value={ag.id}>
+                                    {ag.name} {getCapacityIndicator(capacityData)}
+                                  </option>
+                                );
+                              })}
                             </select>
                             {assigningAgentId[client.id] &&
                               assigningAgentId[client.id] !== client.am_agent_id && (

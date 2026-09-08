@@ -25,6 +25,7 @@ import {
   History,
   Briefcase,
   AlertCircle,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   UserRecord,
@@ -33,7 +34,8 @@ import {
   CapacityLogRecord,
   UserRole,
 } from '../types/database';
-import { getRoleInfo } from '../data/roles';
+import { getRoleInfo, AppModuleId } from '../data/roles';
+import { isTeamLeadRole, resolveCapacityLimit, getUserCapacityData as getSharedUserCapacityData } from '../lib/capacity';
 
 interface CapacityManagementProps {
   users: UserRecord[];
@@ -43,6 +45,7 @@ interface CapacityManagementProps {
   currentUser?: UserRecord;
   onUpdateUserCapacity: (userId: string, newLimit: number) => Promise<void>;
   onLogCapacity?: (agentId: string, date: string, count: number) => Promise<void>;
+  onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
 }
 
 export type CapacityStatus = 'all' | 'available' | 'near_capacity' | 'over_capacity';
@@ -56,6 +59,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
   currentUser,
   onUpdateUserCapacity,
   onLogCapacity,
+  onNavigateToModule,
 }) => {
   // View mode
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
@@ -113,36 +117,54 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     'video_editor',
   ];
 
-  // Team leads don't carry a tracked capacity buffer the way agents do — a
-  // capacity_limit of 0 is a normal, intentional value for these 4 roles
-  // (not missing data), so every place below that resolves or validates a
-  // limit treats them differently from agents.
-  const TEAM_LEAD_ROLES: UserRole[] = ['am_team_lead', 'media_buying_team_lead', 'seo_team_lead', 'social_media_team_lead'];
-  const isTeamLeadRole = (role?: UserRole) => !!role && TEAM_LEAD_ROLES.includes(role);
-  const resolveCapacityLimit = (u: UserRecord) =>
-    isTeamLeadRole(u.role) ? (u.capacity_limit ?? 0) : (u.capacity_limit || 8);
+  // Other team-lead roles besides the viewer's own — every team lead can see
+  // every other team lead's card (cross-department), the same way they can
+  // already see the shared graphic_designer/video_editor pool, so the
+  // "Assign via Task Board" reverse link (point 4) has a card to render on.
+  const OTHER_TEAM_LEAD_ROLES: Record<string, UserRole[]> = {
+    am_team_lead: ['media_buying_team_lead', 'seo_team_lead', 'social_media_team_lead'],
+    media_buying_team_lead: ['am_team_lead', 'seo_team_lead', 'social_media_team_lead'],
+    seo_team_lead: ['am_team_lead', 'media_buying_team_lead', 'social_media_team_lead'],
+    social_media_team_lead: ['am_team_lead', 'media_buying_team_lead', 'seo_team_lead'],
+  };
 
   const operationalUsers = useMemo(() => {
     // Under Supabase RLS, `users` is scoped by the backend data access layer.
     // For Team Leaders, the Detailed Team Matrix & Employee Cards reflect:
-    // Team Leader -> Team Agents + Graphic Designers + Video Editors
+    // Team Leader -> Team Agents + Graphic Designers + Video Editors + other Team Leads
     const role = currentUser?.role;
     let result: UserRecord[];
     if (role === 'am_team_lead') {
       result = users.filter(
-        (u) => u.role === 'am_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
+        (u) =>
+          u.role === 'am_agent' ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          OTHER_TEAM_LEAD_ROLES.am_team_lead.includes(u.role)
       );
     } else if (role === 'media_buying_team_lead') {
       result = users.filter(
-        (u) => u.role === 'media_buying_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
+        (u) =>
+          u.role === 'media_buying_agent' ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          OTHER_TEAM_LEAD_ROLES.media_buying_team_lead.includes(u.role)
       );
     } else if (role === 'seo_team_lead') {
       result = users.filter(
-        (u) => u.role === 'seo_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
+        (u) =>
+          u.role === 'seo_agent' ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          OTHER_TEAM_LEAD_ROLES.seo_team_lead.includes(u.role)
       );
     } else if (role === 'social_media_team_lead') {
       result = users.filter(
-        (u) => u.role === 'social_media_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
+        (u) =>
+          u.role === 'social_media_agent' ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          OTHER_TEAM_LEAD_ROLES.social_media_team_lead.includes(u.role)
       );
     } else {
       result = users.filter(
@@ -209,38 +231,12 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     ];
   }, [operationalUsers, availableRoles]);
 
-  // Helper to calculate workload and status for each user
+  // Helper to calculate workload and status for each user — delegates to the
+  // shared definition (src/lib/capacity.ts) that CrossTeamTaskBoard, AMQueue
+  // and ServiceBriefsRoutingView also use, adding this screen's own
+  // date-scoped capacity log lookup on top.
   const getUserCapacityData = (user: UserRecord) => {
-    // 1. Assigned active clients (mainly for AM agents)
-    const assignedClients = clients.filter(
-      (c) => c.am_agent_id === user.id && c.status !== 'churned'
-    );
-
-    // 2. Active tasks assigned
-    const activeTasks = tasks.filter(
-      (t) => t.assigned_to === user.id && t.status !== 'completed'
-    );
-
-    // 3. Workload calculation
-    const isAm = user.role === 'am_agent' || user.role === 'am_team_lead';
-    const usedCapacity = isAm ? assignedClients.length : activeTasks.length;
-    const capacityLimit = resolveCapacityLimit(user);
-    // Team leads may genuinely have a limit of 0 (no tracked buffer) — that's
-    // not an error, just nothing to compute a rate against.
-    const isUntracked = capacityLimit === 0;
-    const remainingCapacity = Math.max(0, capacityLimit - usedCapacity);
-    const utilizationRate = capacityLimit > 0 ? Math.round((usedCapacity / capacityLimit) * 100) : 0;
-
-    // Status classification according to required criteria:
-    // Available: < 75%
-    // Near Capacity: 75% - 99%
-    // Over Capacity: >= 100%
-    let status: 'available' | 'near_capacity' | 'over_capacity' = 'available';
-    if (!isUntracked && utilizationRate >= 100) {
-      status = 'over_capacity';
-    } else if (!isUntracked && utilizationRate >= 75) {
-      status = 'near_capacity';
-    }
+    const base = getSharedUserCapacityData(user, clients, tasks);
 
     // Historical capacity log for this user if date selected
     const userLogs = capacityLogs.filter((log) => log.agent_id === user.id);
@@ -249,15 +245,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
       : undefined;
 
     return {
-      user,
-      assignedClients,
-      activeTasks,
-      usedCapacity,
-      capacityLimit,
-      isUntracked,
-      remainingCapacity,
-      utilizationRate,
-      status,
+      ...base,
       userLogs,
       dateSpecificLog,
     };
@@ -361,6 +349,61 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
       bg: info.badgeBg,
       text: info.badgeText,
     };
+  };
+
+  // Reverse link (point 4): from an employee's capacity card, jump straight
+  // into the screen where that employee is actually assigned work. Gated on
+  // BOTH the employee's role (what destination makes sense) AND the current
+  // viewer's role (whether they're actually allowed to act there):
+  //
+  // Employee role                                  Destination     Who sees it
+  // am_agent                                        AM Queue         am_team_lead, executive, head_of_technical
+  // seo_agent/media_buying_agent/social_media_agent  Service Briefs   only that department's own team lead
+  // graphic_designer/video_editor (shared resource)  Task Board       any team lead + executive + head_of_technical
+  // any team_lead role                               Task Board       any OTHER team lead (cross-dept) + exec + HoT
+  // sales / other                                    —                no button
+  const AGENT_TO_OWN_LEAD: Partial<Record<UserRole, UserRole>> = {
+    seo_agent: 'seo_team_lead',
+    media_buying_agent: 'media_buying_team_lead',
+    social_media_agent: 'social_media_team_lead',
+  };
+
+  const getAssignmentLink = (employee: UserRecord): { moduleId: AppModuleId; label: string; prefill?: string } | null => {
+    const viewerRole = currentUser?.role;
+    if (!viewerRole || !onNavigateToModule) return null;
+    const viewerIsExec = viewerRole === 'executive' || viewerRole === 'head_of_technical';
+    const viewerIsTeamLead = isTeamLeadRole(viewerRole);
+
+    if (employee.role === 'am_agent') {
+      if (viewerRole === 'am_team_lead' || viewerIsExec) {
+        return { moduleId: 'onboarding', label: 'Assign via AM Queue' };
+      }
+      return null;
+    }
+
+    const ownLeadRole = AGENT_TO_OWN_LEAD[employee.role];
+    if (ownLeadRole) {
+      if (viewerRole === ownLeadRole) {
+        return { moduleId: 'service_briefs', label: 'Assign via Service Briefs' };
+      }
+      return null;
+    }
+
+    if (employee.role === 'graphic_designer' || employee.role === 'video_editor') {
+      if (viewerIsTeamLead || viewerIsExec) {
+        return { moduleId: 'tasks', label: 'Assign via Task Board', prefill: employee.name };
+      }
+      return null;
+    }
+
+    if (isTeamLeadRole(employee.role)) {
+      if ((viewerIsTeamLead && viewerRole !== employee.role) || viewerIsExec) {
+        return { moduleId: 'tasks', label: 'Assign via Task Board', prefill: employee.name };
+      }
+      return null;
+    }
+
+    return null;
   };
 
   return (
@@ -986,6 +1029,21 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                         )}
                       </div>
                     </div>
+
+                    {/* Reverse link (point 4): jump to where this employee is assigned work */}
+                    {(() => {
+                      const assignLink = getAssignmentLink(item.user);
+                      if (!assignLink) return null;
+                      return (
+                        <button
+                          onClick={() => onNavigateToModule?.(assignLink.moduleId, assignLink.prefill)}
+                          className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-purple-200 bg-purple-900/30 hover:bg-purple-800/50 hover:text-white border border-purple-700/40 transition-all"
+                        >
+                          <span>{assignLink.label}</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </button>
+                      );
+                    })()}
                   </div>
                 );
               })}
