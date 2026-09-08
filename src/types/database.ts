@@ -120,6 +120,24 @@ export interface TaskRecord {
   estimated_hours?: number | null;
   actual_hours?: number | null;
   created_at?: string;
+  // Self-reference for subtasks. Nesting is capped at 3 levels
+  // (task -> subtask -> sub-subtask) by a DB trigger.
+  parent_task_id?: string | null;
+}
+
+// 6b. task_comments — threaded comments on a task, capped at 3 levels
+// (comment -> reply -> reply-to-reply) by a DB trigger, same as tasks
+// nesting. Soft-delete via deleted_at (never a real DELETE) so a deleted
+// comment's replies stay attached to a real row instead of orphaning.
+export interface TaskCommentRecord {
+  id: string;
+  task_id: string;
+  parent_comment_id?: string | null;
+  author_id: string;
+  body: string;
+  created_at: string;
+  edited_at?: string | null;
+  deleted_at?: string | null;
 }
 
 // 7. campaigns
@@ -253,6 +271,7 @@ export interface Database {
       brief_revisions: { Row: BriefRevisionRecord; Insert: Partial<BriefRevisionRecord>; Update: Partial<BriefRevisionRecord>; Relationships: any[] };
       assignments: { Row: AssignmentRecord; Insert: Partial<AssignmentRecord>; Update: Partial<AssignmentRecord>; Relationships: any[] };
       tasks: { Row: TaskRecord; Insert: Partial<TaskRecord>; Update: Partial<TaskRecord>; Relationships: any[] };
+      task_comments: { Row: TaskCommentRecord; Insert: Partial<TaskCommentRecord>; Update: Partial<TaskCommentRecord>; Relationships: any[] };
       campaigns: { Row: CampaignRecord; Insert: Partial<CampaignRecord>; Update: Partial<CampaignRecord>; Relationships: any[] };
       social_insights: { Row: SocialInsightRecord; Insert: Partial<SocialInsightRecord>; Update: Partial<SocialInsightRecord>; Relationships: any[] };
       reports: { Row: ReportRecord; Insert: Partial<ReportRecord>; Update: Partial<ReportRecord>; Relationships: any[] };

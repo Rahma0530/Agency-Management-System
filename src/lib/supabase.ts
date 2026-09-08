@@ -367,10 +367,20 @@ export function isCampaignAccessibleUnderRLS(
  *   fallback would leak every other designer/editor's tasks to them too.
  * - Every other agent role: Assigned tasks, or any task assigned to a
  *   teammate on the same team.
+ * - Subtasks (task.parent_task_id set): visible via EITHER the rules above
+ *   applied to the subtask's own assignee, OR by being able to see its
+ *   parent task (recursing up to 2 more hops — task nesting is capped at 3
+ *   levels by a DB trigger, mirrored client-side by the `depth` guard below,
+ *   so this always terminates). Without this OR, a subtask could be visible
+ *   to its own assignee while its parent (different assignee, different
+ *   team) stays invisible to them — an orphaned, context-less row. And
+ *   without it the other direction, a team lead who can see a parent
+ *   task couldn't see subtasks assigned to someone outside their own team.
  */
 export function isTaskAccessibleUnderRLS(
   viewer: UserRecord | null,
-  task: TaskRecord
+  task: TaskRecord,
+  depth: number = 0
 ): boolean {
   if (!viewer) return true;
 
@@ -391,17 +401,28 @@ export function isTaskAccessibleUnderRLS(
 
   // 4. Shared creative resources: assigned-to-them only, no team fallback
   if (viewer.role === 'graphic_designer' || viewer.role === 'video_editor') {
-    return task.assigned_to === viewer.id;
+    if (task.assigned_to === viewer.id) {
+      return true;
+    }
+  } else {
+    // 5. Directly assigned
+    if (task.assigned_to === viewer.id) {
+      return true;
+    }
+
+    const assignee = inMemoryUsers.find((u) => u.id === task.assigned_to);
+    if (assignee && assignee.team === viewer.team) {
+      return true;
+    }
   }
 
-  // 5. Directly assigned
-  if (task.assigned_to === viewer.id) {
-    return true;
-  }
-
-  const assignee = inMemoryUsers.find((u) => u.id === task.assigned_to);
-  if (assignee && assignee.team === viewer.team) {
-    return true;
+  // 6. Subtask visibility inherited from an ancestor task (bounded by the
+  // same 3-level nesting cap the DB trigger enforces).
+  if (task.parent_task_id && depth < 3) {
+    const parent = inMemoryTasks.find((t) => t.id === task.parent_task_id);
+    if (parent) {
+      return isTaskAccessibleUnderRLS(viewer, parent, depth + 1);
+    }
   }
 
   return false;

@@ -28,6 +28,7 @@ import {
   BriefRecord,
   BriefRevisionRecord,
   TaskRecord,
+  TaskCommentRecord,
   CapacityLogRecord,
   DailyLogRecord,
   ExtraNoteRecord,
@@ -96,6 +97,7 @@ export default function App() {
   const [briefs, setBriefs] = useState<BriefRecord[]>(INITIAL_BRIEFS);
   const [briefRevisions, setBriefRevisions] = useState<BriefRevisionRecord[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>(INITIAL_TASKS);
+  const [taskComments, setTaskComments] = useState<TaskCommentRecord[]>([]);
   const [capacityLogs, setCapacityLogs] = useState<CapacityLogRecord[]>(INITIAL_CAPACITY_LOGS);
   const [dailyLogs, setDailyLogs] = useState<DailyLogRecord[]>(INITIAL_DAILY_LOGS);
   const [extraNotes, setExtraNotes] = useState<ExtraNoteRecord[]>(INITIAL_EXTRA_NOTES);
@@ -348,6 +350,14 @@ export default function App() {
         const { data: taskData, error: taskErr } = await supabase.from('tasks').select('*');
         if (!taskErr && taskData && taskData.length > 0) {
           setTasks(taskData as TaskRecord[]);
+        }
+
+        // Fetch task comments
+        const { data: taskCommentData, error: taskCommentErr } = await supabase
+          .from('task_comments')
+          .select('*');
+        if (!taskCommentErr && taskCommentData && taskCommentData.length > 0) {
+          setTaskComments(taskCommentData as TaskCommentRecord[]);
         }
 
         // Fetch capacity_logs
@@ -775,7 +785,7 @@ export default function App() {
     showNotification('Task data updated successfully.');
   };
 
-  // 6. Add a new shared task
+  // 6. Add a new shared task (or a subtask, when parent_task_id is set)
   const handleCreateTask = async (taskData: {
     client_id: string;
     title: string;
@@ -787,6 +797,7 @@ export default function App() {
     priority: TaskPriority;
     estimated_hours?: number | null;
     actual_hours?: number | null;
+    parent_task_id?: string | null;
   }) => {
     const newTaskPayload: TaskRecord = {
       id: `tsk-${Date.now().toString().slice(-4)}`,
@@ -802,6 +813,7 @@ export default function App() {
       estimated_hours: taskData.estimated_hours ?? 8,
       actual_hours: taskData.actual_hours ?? 0,
       created_at: new Date().toISOString(),
+      parent_task_id: taskData.parent_task_id || null,
     };
 
     if (supabaseActive) {
@@ -822,6 +834,78 @@ export default function App() {
     }
 
     showNotification(`Task "${taskData.title}" added to the shared task board successfully!`);
+  };
+
+  // 6b. Post a task comment or reply (parent_comment_id set for a reply,
+  // capped at 3 levels total by a DB trigger)
+  const handleAddTaskComment = async (
+    taskId: string,
+    body: string,
+    parentCommentId?: string | null
+  ) => {
+    const newCommentPayload: TaskCommentRecord = {
+      id: `cmt-${Date.now().toString().slice(-4)}`,
+      task_id: taskId,
+      parent_comment_id: parentCommentId || null,
+      author_id: currentUser.id,
+      body,
+      created_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = await supabase
+          .from('task_comments')
+          .insert([newCommentPayload])
+          .select();
+        if (error) throw error;
+        if (data && data[0]) {
+          setTaskComments((prev) => [...prev, data[0] as TaskCommentRecord]);
+        } else {
+          setTaskComments((prev) => [...prev, newCommentPayload]);
+        }
+      } catch (err) {
+        console.error('Supabase task comment insert error:', err);
+        setTaskComments((prev) => [...prev, newCommentPayload]);
+      }
+    } else {
+      setTaskComments((prev) => [...prev, newCommentPayload]);
+    }
+  };
+
+  // 6c. Edit your own comment's body (sets edited_at)
+  const handleEditTaskComment = async (commentId: string, body: string) => {
+    const updates: Partial<TaskCommentRecord> = { body, edited_at: new Date().toISOString() };
+
+    if (supabaseActive) {
+      try {
+        await supabase.from('task_comments').update(updates).eq('id', commentId);
+      } catch (err) {
+        console.error('Supabase task comment update error:', err);
+      }
+    }
+
+    setTaskComments((prev) =>
+      prev.map((c) => (c.id === commentId ? { ...c, ...updates } : c))
+    );
+  };
+
+  // 6d. Soft-delete your own comment (sets deleted_at — never a real DELETE,
+  // so any replies stay attached to a real row instead of orphaning)
+  const handleDeleteTaskComment = async (commentId: string) => {
+    const updates: Partial<TaskCommentRecord> = { deleted_at: new Date().toISOString() };
+
+    if (supabaseActive) {
+      try {
+        await supabase.from('task_comments').update(updates).eq('id', commentId);
+      } catch (err) {
+        console.error('Supabase task comment delete error:', err);
+      }
+    }
+
+    setTaskComments((prev) =>
+      prev.map((c) => (c.id === commentId ? { ...c, ...updates } : c))
+    );
   };
 
   // 7. Document a daily activity report (Daily Log)
@@ -1431,6 +1515,10 @@ export default function App() {
                   onCreateTask={handleCreateTask}
                   onUpdateTask={handleUpdateTask}
                   initialAssigneeFilter={taskBoardAssigneePrefill}
+                  taskComments={taskComments}
+                  onAddTaskComment={handleAddTaskComment}
+                  onEditTaskComment={handleEditTaskComment}
+                  onDeleteTaskComment={handleDeleteTaskComment}
                 />
               </div>
             )}
