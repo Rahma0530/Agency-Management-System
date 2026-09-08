@@ -139,6 +139,13 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
     return true;
   };
 
+  // graphic_designer/video_editor are shared creative resources pooled across
+  // every requesting team, not one department's own board — task_visible()
+  // (RLS) already scopes what they're handed down to assigned-to-them-only,
+  // so the scope toggle below has nothing left to offer them.
+  const isSharedCreativeResource =
+    currentUser?.role === 'graphic_designer' || currentUser?.role === 'video_editor';
+
   // Teams list
   const teams = [
     { id: 'all', label: 'All Teams' },
@@ -267,7 +274,14 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   // Handlers
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim() || !newClientId) return;
+    if (!newTitle.trim() || !newClientId || !newDescription.trim() || !newDueDate) {
+      setNotification({
+        text: 'Title, client, description, and due date are all required to create a task.',
+        type: 'error',
+      });
+      setTimeout(() => setNotification(null), 3500);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -316,6 +330,14 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTask || !onUpdateTask) return;
+    if (!editTitle.trim() || !editDescription.trim() || !editDueDate) {
+      setNotification({
+        text: 'Title, description, and due date are all required — none can be cleared.',
+        type: 'error',
+      });
+      setTimeout(() => setNotification(null), 3500);
+      return;
+    }
 
     setIsUpdating(true);
     try {
@@ -576,40 +598,45 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
               </button>
             </div>
 
-            {/* Scope Toggle for RLS permissions demonstration */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-stone-900/80 border border-stone-800 text-xs">
-              <span className="text-[11px] text-stone-400 px-1.5">Scope:</span>
-              <button
-                onClick={() => setVisibilityScope('all')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                  visibilityScope === 'all'
-                    ? 'bg-stone-800 text-white'
-                    : 'text-stone-400 hover:text-white'
-                }`}
-              >
-                All Available
-              </button>
-              <button
-                onClick={() => setVisibilityScope('my_team')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                  visibilityScope === 'my_team'
-                    ? 'bg-stone-800 text-white'
-                    : 'text-stone-400 hover:text-white'
-                }`}
-              >
-                My Team
-              </button>
-              <button
-                onClick={() => setVisibilityScope('my_tasks')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                  visibilityScope === 'my_tasks'
-                    ? 'bg-stone-800 text-white'
-                    : 'text-stone-400 hover:text-white'
-                }`}
-              >
-                My Tasks
-              </button>
-            </div>
+            {/* Scope Toggle for RLS permissions demonstration — hidden for
+                graphic_designer/video_editor, since their tasks are already
+                scoped assigned-only upstream (task_visible / RLS), making
+                every option here identical to "My Tasks". */}
+            {!isSharedCreativeResource && (
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-stone-900/80 border border-stone-800 text-xs">
+                <span className="text-[11px] text-stone-400 px-1.5">Scope:</span>
+                <button
+                  onClick={() => setVisibilityScope('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    visibilityScope === 'all'
+                      ? 'bg-stone-800 text-white'
+                      : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  All Available
+                </button>
+                <button
+                  onClick={() => setVisibilityScope('my_team')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    visibilityScope === 'my_team'
+                      ? 'bg-stone-800 text-white'
+                      : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  My Team
+                </button>
+                <button
+                  onClick={() => setVisibilityScope('my_tasks')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    visibilityScope === 'my_tasks'
+                      ? 'bg-stone-800 text-white'
+                      : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  My Tasks
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Create Task Button */}
@@ -993,6 +1020,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                   <th className="p-3.5">Team</th>
                   <th className="p-3.5 text-center">Priority</th>
                   <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 text-center">Created</th>
                   <th className="p-3.5 text-center">Due Date</th>
                   <th className="p-3.5 text-center">Est. Hours</th>
                   <th className="p-3.5 text-center">Act. Hours</th>
@@ -1002,7 +1030,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
               <tbody className="divide-y divide-stone-800/60">
                 {filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-8 text-center text-stone-400">
+                    <td colSpan={11} className="p-8 text-center text-stone-400">
                       No tasks matching current filter criteria.
                     </td>
                   </tr>
@@ -1075,6 +1103,9 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                           >
                             {colInfo?.label.split(' ')[0]}
                           </span>
+                        </td>
+                        <td className="p-3.5 text-center font-mono text-stone-400">
+                          {task.created_at ? task.created_at.split('T')[0] : '—'}
                         </td>
                         <td className="p-3.5 text-center font-mono">
                           <span className={overdue ? 'text-red-400 font-bold' : 'text-stone-300'}>
@@ -1204,8 +1235,8 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                 </div>
               </div>
 
-              {/* Hours Tracking & Due Date */}
-              <div className="grid grid-cols-3 gap-3 p-3 rounded-xl bg-stone-900/60 border border-stone-800 text-center">
+              {/* Hours Tracking, Created & Due Date */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl bg-stone-900/60 border border-stone-800 text-center">
                 <div>
                   <p className="text-[10px] text-stone-400">Estimated Hours</p>
                   <p className="text-sm font-bold text-purple-300 mt-0.5">
@@ -1216,6 +1247,12 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                   <p className="text-[10px] text-stone-400">Actual Hours</p>
                   <p className="text-sm font-bold text-emerald-400 mt-0.5">
                     {selectedTaskDetails.actual_hours || 0} hrs
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-stone-400">Created</p>
+                  <p className="text-sm font-bold text-stone-300 mt-0.5 font-mono">
+                    {selectedTaskDetails.created_at ? selectedTaskDetails.created_at.split('T')[0] : 'Unknown'}
                   </p>
                 </div>
                 <div>
@@ -1352,6 +1389,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                   onChange={(e) => setNewDescription(e.target.value)}
                   placeholder="Provide technical specifications and deliverables..."
                   className="w-full px-3 py-2 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-purple-500 resize-none"
+                  required
                 />
               </div>
 
@@ -1535,6 +1573,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-purple-500 resize-none"
+                  required
                 />
               </div>
 
@@ -1648,6 +1687,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                     value={editDueDate}
                     onChange={(e) => setEditDueDate(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
+                    required
                   />
                 </div>
               </div>

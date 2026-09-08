@@ -360,8 +360,13 @@ export function isCampaignAccessibleUnderRLS(
  * RLS Authorization Policy for Tasks:
  * - Sales: Strictly FORBIDDEN (returns false)
  * - Executive & Head of Technical: All tasks (cross-team monitoring)
- * - Team Leads: Team tasks and client tasks
- * - Agents: Assigned tasks and team tasks
+ * - Team Leads: Full team tasks
+ * - graphic_designer / video_editor: Directly assigned ONLY — these are shared
+ *   creative resources pooled across every requesting team, not a single
+ *   department's own board, so the usual "same team as the assignee"
+ *   fallback would leak every other designer/editor's tasks to them too.
+ * - Every other agent role: Assigned tasks, or any task assigned to a
+ *   teammate on the same team.
  */
 export function isTaskAccessibleUnderRLS(
   viewer: UserRecord | null,
@@ -384,7 +389,12 @@ export function isTaskAccessibleUnderRLS(
     return true;
   }
 
-  // 4. Directly assigned
+  // 4. Shared creative resources: assigned-to-them only, no team fallback
+  if (viewer.role === 'graphic_designer' || viewer.role === 'video_editor') {
+    return task.assigned_to === viewer.id;
+  }
+
+  // 5. Directly assigned
   if (task.assigned_to === viewer.id) {
     return true;
   }

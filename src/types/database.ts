@@ -110,12 +110,12 @@ export interface TaskRecord {
   id: string;
   client_id: string;
   title: string;
-  description?: string | null;
+  description: string;
   assigned_to?: string | null;
   created_by: string;
   team?: string | null;
   status: TaskStatus;
-  due_date?: string | null;
+  due_date: string;
   priority: TaskPriority;
   estimated_hours?: number | null;
   actual_hours?: number | null;
