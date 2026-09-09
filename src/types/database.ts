@@ -256,11 +256,31 @@ export interface MeetingRecord {
 }
 
 // 15. kpi_scores
+export type PerformancePeriodType = 'monthly' | 'quarterly';
+
+// Shape of KpiScoreRecord.metrics (stored as JSONB — untyped at the DB
+// layer, typed here for the app side). client_satisfaction and
+// task_execution_quality stay null until a real data source exists for
+// them (see src/lib/performanceScore.ts) — the overall score is computed
+// only from the three indicators that do have real data, with weights
+// renormalized across those three.
+export interface KpiScoreMetrics {
+  period_type: PerformancePeriodType;
+  period_start: string;
+  period_end: string;
+  on_time_completion_rate: number | null; // 0-100, null = no completions in period
+  capacity_utilization_score: number | null; // 0-100, null = untracked (capacity_limit 0)
+  initiative_score: number | null; // 0-100, from extra_notes count
+  client_satisfaction: null; // no data source yet
+  task_execution_quality: null; // no data source yet
+  weights: Record<'on_time_completion_rate' | 'capacity_utilization_score' | 'initiative_score', number>;
+}
+
 export interface KpiScoreRecord {
   id: string;
   user_id: string;
   period: string;
-  metrics: Record<string, any>;
+  metrics: KpiScoreMetrics;
   overall_score: number;
   suggested_status?: 'promotion' | 'raise' | 'development_plan' | 'stable' | string | null;
   reviewed_by?: string | null;

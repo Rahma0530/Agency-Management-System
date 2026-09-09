@@ -30,6 +30,7 @@ import {
   MessageSquare,
   ArrowUpRight,
   Check,
+  Star,
 } from 'lucide-react';
 import {
   TaskRecord,
@@ -104,6 +105,16 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
   const [selectedLinkedTasks, setSelectedLinkedTasks] = useState<string[]>([]);
   const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSubmittingLog, setIsSubmittingLog] = useState(false);
+
+  // Extra Effort Log Form State — the genuine "document initiative beyond
+  // normal task scope" entry point. Distinct category from the incidental
+  // 'blocker' notes the blocker-resolution flow auto-logs below, so the
+  // Employee Performance score's initiative indicator only counts
+  // voluntarily-documented effort, not routine blocker bookkeeping.
+  const [isLoggingExtraEffort, setIsLoggingExtraEffort] = useState(false);
+  const [extraEffortText, setExtraEffortText] = useState('');
+  const [extraEffortDate, setExtraEffortDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isSubmittingExtraEffort, setIsSubmittingExtraEffort] = useState(false);
 
   // Quick Time Logging Modal / Popover State
   const [timeLoggingTaskId, setTimeLoggingTaskId] = useState<string | null>(null);
@@ -478,6 +489,29 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
     }
   };
 
+  const handleSubmitExtraEffort = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extraEffortText.trim() || !onCreateExtraNote) return;
+
+    setIsSubmittingExtraEffort(true);
+    try {
+      await onCreateExtraNote({
+        user_id: effectiveEmployee.id,
+        date: extraEffortDate,
+        note_text: extraEffortText.trim(),
+        category: 'initiative',
+      });
+
+      setExtraEffortText('');
+      setIsLoggingExtraEffort(false);
+      showNotification('Extra effort documented successfully.');
+    } catch (err) {
+      showNotification('Unable to save the extra effort note.', 'error');
+    } finally {
+      setIsSubmittingExtraEffort(false);
+    }
+  };
+
   // Helper Labels & Colors
   const getStatusLabel = (status: TaskStatus) => {
     switch (status) {
@@ -629,6 +663,20 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
             <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
             <span>Log Today's Activity</span>
           </button>
+
+          {/* Self-only: extra_notes can only ever be authored as yourself
+              (RLS), and "documented initiative" is inherently self-reported
+              — a manager viewing someone else's board shouldn't see this. */}
+          {onCreateExtraNote && effectiveEmployee.id === currentUser.id && (
+            <button
+              onClick={() => setIsLoggingExtraEffort(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-amber-200 bg-amber-950/30 hover:bg-amber-900/40 border border-amber-800/40 transition-all"
+              title="Document effort beyond normal task scope"
+            >
+              <Star className="w-3.5 h-3.5 text-amber-300" />
+              <span>Log Extra Effort</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -2031,6 +2079,78 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                   style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
                 >
                   {isSubmittingLog ? 'Saving...' : 'Save Daily Report'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Extra Effort Log Modal — the genuine "document initiative" entry
+          point, distinct from the incidental 'blocker' auto-log below. */}
+      {isLoggingExtraEffort && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div
+            className="w-full max-w-lg rounded-[20px] p-6 space-y-4 border shadow-2xl relative"
+            style={{ background: 'var(--surface-dark)', borderColor: 'var(--border-strong)' }}
+          >
+            <div className="flex items-start justify-between pb-3 border-b border-stone-800">
+              <div className="flex items-center gap-2">
+                <Star className="w-5 h-5 text-amber-300" />
+                <h3 className="text-sm font-bold text-white">Log Extra Effort</h3>
+              </div>
+              <button
+                onClick={() => setIsLoggingExtraEffort(false)}
+                className="p-1 rounded-lg text-stone-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-stone-400">
+              Document work beyond your normal task scope — mentoring a teammate, improving a process,
+              taking on something outside your usual role. Counted separately from regular task performance.
+            </p>
+
+            <form onSubmit={handleSubmitExtraEffort} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-semibold text-stone-400 block mb-1">Date:</label>
+                <input
+                  type="date"
+                  required
+                  value={extraEffortDate}
+                  onChange={(e) => setExtraEffortDate(e.target.value)}
+                  className="w-full p-2.5 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-stone-300 block mb-1.5">What did you do?</label>
+                <textarea
+                  rows={4}
+                  required
+                  value={extraEffortText}
+                  onChange={(e) => setExtraEffortText(e.target.value)}
+                  placeholder="Describe the extra effort or initiative..."
+                  className="w-full p-3 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setIsLoggingExtraEffort(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-stone-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingExtraEffort}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-lg hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: '1px solid rgba(245, 158, 11, 0.4)' }}
+                >
+                  {isSubmittingExtraEffort ? 'Saving...' : 'Save Note'}
                 </button>
               </div>
             </form>
