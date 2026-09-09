@@ -19,6 +19,7 @@ import {
   LogOut,
   Target,
   BarChart3,
+  Briefcase,
 } from 'lucide-react';
 import {
   supabase,
@@ -94,6 +95,7 @@ import { CrossTeamTaskBoard } from './components/CrossTeamTaskBoard';
 import { DailyOperationsModule } from './components/DailyOperationsModule';
 import { CampaignManagementModule } from './components/CampaignManagementModule';
 import { ServiceBriefsRoutingView } from './components/ServiceBriefsRoutingView';
+import { MyWorkHub } from './components/MyWorkHub';
 import { SalesPortalView } from './components/SalesPortalView';
 import { AccessDenied } from './components/AccessDenied';
 import { RolePortalHeader } from './components/RolePortalHeader';
@@ -1597,6 +1599,26 @@ export default function App() {
           }}
         >
           <nav className="flex flex-col gap-1.5 p-4">
+            {/* Tab -1: My Work (personal landing view — clients/tasks/deadlines/daily log/performance) */}
+            {userRoleInfo.allowedModules.includes('my_work') && (
+              <button
+                onClick={() => handleTabChange('my_work')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'my_work'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'my_work' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'my_work' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'my_work' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <Briefcase className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">My Work</span>
+              </button>
+            )}
+
             {/* Tab 0: Leadership Dashboard */}
             {userRoleInfo.allowedModules.includes('dashboard') && (
               <button
@@ -1881,6 +1903,27 @@ export default function App() {
                   assignments={assignments}
                   briefs={briefs}
                   kpiScores={kpiScores}
+                  onNavigateToModule={handleNavigateToModule}
+                />
+              </div>
+            )}
+
+            {/* Tab -1: My Work (personal landing view) */}
+            {activeTab === 'my_work' && (
+              <div className="space-y-6">
+                <MyWorkHub
+                  currentUser={currentUser}
+                  users={users}
+                  clients={clients}
+                  tasks={tasks}
+                  dailyLogs={dailyLogs}
+                  extraNotes={extraNotes}
+                  kpiScores={kpiScores}
+                  capacityLogs={capacityLogs}
+                  onUpdateTaskStatus={handleUpdateTaskStatus}
+                  onCreateDailyLog={handleCreateDailyLog}
+                  onCreateExtraNote={handleCreateExtraNote}
+                  onGenerateKpiScore={handleGenerateKpiScore}
                   onNavigateToModule={handleNavigateToModule}
                 />
               </div>

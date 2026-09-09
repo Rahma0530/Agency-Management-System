@@ -43,6 +43,7 @@ import {
   TaskPriority,
   UserRole,
 } from '../types/database';
+import { getTodayStr, isTaskOverdue, isTaskDueToday, sortTasksByPriorityThenDueDate } from '../lib/employeeWork';
 
 interface DailyOperationsModuleProps {
   tasks: TaskRecord[];
@@ -147,48 +148,19 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
   }, [users, selectedEmployeeId, currentUser]);
 
   // Today's date string (YYYY-MM-DD)
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => getTodayStr(), []);
 
-  // Helper date functions
-  const isOverdue = (task: TaskRecord) => {
-    if (!task.due_date) return false;
-    if (task.status === 'completed') return false;
-    return task.due_date < todayStr;
-  };
-
-  const isDueToday = (task: TaskRecord) => {
-    if (!task.due_date) return false;
-    if (task.status === 'completed') return false;
-    return task.due_date === todayStr;
-  };
+  // Helper date functions — shared with MyWorkHub.tsx via lib/employeeWork.ts
+  const isOverdue = (task: TaskRecord) => isTaskOverdue(task, todayStr);
+  const isDueToday = (task: TaskRecord) => isTaskDueToday(task, todayStr);
 
   // 1. All tasks assigned to the effective employee
   const employeeTasks = useMemo(() => {
     return tasks.filter((t) => t.assigned_to === effectiveEmployee.id);
   }, [tasks, effectiveEmployee.id]);
 
-  // Priority weight for sorting (Urgent > High > Medium > Low)
-  const getPriorityWeight = (priority: TaskPriority): number => {
-    switch (priority) {
-      case 'urgent': return 4;
-      case 'high': return 3;
-      case 'medium': return 2;
-      case 'low': return 1;
-      default: return 0;
-    }
-  };
-
   // Sorted employee tasks: Priority (Urgent first), then Due Date (closest first)
-  const sortedEmployeeTasks = useMemo(() => {
-    return [...employeeTasks].sort((a, b) => {
-      const weightDiff = getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
-      if (weightDiff !== 0) return weightDiff;
-      if (a.due_date && b.due_date) {
-        return a.due_date.localeCompare(b.due_date);
-      }
-      return 0;
-    });
-  }, [employeeTasks]);
+  const sortedEmployeeTasks = useMemo(() => sortTasksByPriorityThenDueDate(employeeTasks), [employeeTasks]);
 
   // Tasks completed on whichever date the Daily Log modal currently has
   // selected (not hardcoded to literal-today, so retroactively logging a

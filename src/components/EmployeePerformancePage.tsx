@@ -45,6 +45,11 @@ interface EmployeePerformancePageProps {
   extraNotes?: ExtraNoteRecord[];
   onGenerateKpiScore: (userId: string, periodType: PerformancePeriodType, referenceDate: Date) => Promise<void>;
   onClose: () => void;
+  // False for a self-view: kpi_scores_insert_rls only permits the employee's
+  // direct lead/HoT/Executive to write a score, never the employee themselves
+  // — so MyWorkHub's "My Performance" self-service modal hides the generation
+  // controls entirely rather than showing a button that would fail RLS.
+  canGenerate?: boolean;
 }
 
 // ----------------------------------------------------------------------------
@@ -191,6 +196,7 @@ export const EmployeePerformancePage: React.FC<EmployeePerformancePageProps> = (
   extraNotes = [],
   onGenerateKpiScore,
   onClose,
+  canGenerate = true,
 }) => {
   const roleInfo = getRoleInfo(employee.role);
   const isAm = employee.role === 'am_agent' || employee.role === 'am_team_lead';
@@ -325,7 +331,8 @@ export const EmployeePerformancePage: React.FC<EmployeePerformancePageProps> = (
             <h3 className="text-sm font-bold text-white">Performance Score</h3>
           </div>
 
-          {/* Generation controls */}
+          {/* Generation controls — self-view can't write kpi_scores (see canGenerate above) */}
+          {canGenerate && (
           <div className="flex flex-wrap items-end gap-2.5 p-3 rounded-xl bg-stone-900/60 border border-stone-800 mb-4">
             <div>
               <label className="text-[10px] font-semibold text-stone-400 block mb-1">Period Type</label>
@@ -400,6 +407,7 @@ export const EmployeePerformancePage: React.FC<EmployeePerformancePageProps> = (
               <span>{isGenerating ? 'Generating...' : 'Generate Score'}</span>
             </button>
           </div>
+          )}
 
           {latestScore ? (
             <div className="space-y-3">
