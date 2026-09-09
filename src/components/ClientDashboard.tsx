@@ -23,6 +23,7 @@ import {
   Lock,
   BarChart3,
   KeyRound,
+  Video,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -42,6 +43,7 @@ import {
   ClientComparisonRecord,
   SocialInsightRecord,
   ClientPortalUserRecord,
+  MeetingRecord,
 } from '../types/database';
 import { DynamicBriefForm } from './DynamicBriefForm';
 import {
@@ -53,11 +55,14 @@ import {
   getCampaignEndDate,
   getCampaignOwnerId,
 } from './CampaignManagementModule';
-import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
+import { ComparisonGranularity, DateRange, ReportMode, ReportScope, detectClientAnomalies } from '../lib/reportingEngine';
 import { PeriodSelector } from './reporting/PeriodSelector';
 import { ComparisonCard, FiledReportsList } from './reporting/ComparisonDisplay';
 import { CreateClientPortalLoginModal } from './clientPortal/CreateClientPortalLoginModal';
+import { MonthlyReportDraftView } from './reporting/MonthlyReportDraftView';
+import { ClientMeetingsPanel } from './ClientMeetingsPanel';
 import { canSeeContractValue } from '../lib/permissions';
+import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
 
 interface ClientDashboardProps {
   client: ClientRecord;
@@ -100,11 +105,19 @@ interface ClientDashboardProps {
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onGenerateMonthlyReportDraft?: (clientId: string) => Promise<void>;
+  onApproveReport?: (reportId: string) => Promise<void>;
   clientPortalUser?: ClientPortalUserRecord | null;
   onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
+  meetings?: MeetingRecord[];
+  onUploadMeetingRecording?: (clientId: string, meetingDate: string, file: File) => Promise<void>;
+  onSaveMeetingNotes?: (
+    meetingId: string,
+    updates: { transcript_text?: string; ai_summary_text?: string }
+  ) => Promise<void>;
 }
 
-type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports';
+type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports' | 'meetings';
 
 const CLIENT_STATUS_META: Record<ClientStatus, { label: string; bg: string; color: string; border: string }> = {
   lead: { label: 'Lead', bg: 'rgba(168, 155, 184, 0.15)', color: 'var(--lilac)', border: 'rgba(168, 155, 184, 0.3)' },
@@ -140,8 +153,13 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   onMarkClientViewed,
   onGenerateComparison,
   onGenerateReport,
+  onGenerateMonthlyReportDraft,
+  onApproveReport,
   clientPortalUser,
   onCreatePortalLogin,
+  meetings = [],
+  onUploadMeetingRecording,
+  onSaveMeetingNotes,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
@@ -149,6 +167,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   const [selectedAMId, setSelectedAMId] = useState(client.am_agent_id || '');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [showChurnConfirm, setShowChurnConfirm] = useState(false);
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [churnReasonInput, setChurnReasonInput] = useState('');
   const [isCreatePortalLoginOpen, setIsCreatePortalLoginOpen] = useState(false);
   const [reportMode, setReportMode] = useState<ReportMode>('comparison');
@@ -315,6 +334,11 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     [reports, client.id]
   );
 
+  const clientMeetingsForClient = useMemo(
+    () => meetings.filter((m) => m.client_id === client.id),
+    [meetings, client.id]
+  );
+
   const isSinglePeriodReport = reportMode === 'period_summary';
 
   const handleGenerateComparison = async () => {
@@ -346,6 +370,16 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
       await onGenerateReport(comparison.id, comparison.period_current);
     } finally {
       setGeneratingReportForComparisonId(null);
+    }
+  };
+
+  const handleGenerateMonthlyDraft = async () => {
+    if (!onGenerateMonthlyReportDraft) return;
+    setIsGeneratingDraft(true);
+    try {
+      await onGenerateMonthlyReportDraft(client.id);
+    } finally {
+      setIsGeneratingDraft(false);
     }
   };
 
@@ -531,6 +565,20 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
             >
               <BarChart3 className="w-3.5 h-3.5" />
               <span>Reports & Comparisons ({clientComparisonsForClient.length})</span>
+            </button>
+          )}
+
+          {hasReportsAccess && (
+            <button
+              onClick={() => setActiveTab('meetings')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === 'meetings'
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-stone-400 hover:text-stone-200 hover:bg-purple-950/30'
+              }`}
+            >
+              <Video className="w-3.5 h-3.5" />
+              <span>Meetings ({clientMeetingsForClient.length})</span>
             </button>
           )}
         </div>
@@ -1047,8 +1095,17 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   {/* Service Sub-tabs */}
                   <div className="flex items-center gap-2 border-b border-purple-900/30 pb-3">
                     {services.map((srv) => {
-                      const hasBrief = clientBriefs.some((b) => b.service_type === srv);
+                      const brief = clientBriefs.find((b) => b.service_type === srv);
                       const isSelected = selectedBriefService === srv;
+                      // Not submitted at all -> amber. Submitted but the review assistant found
+                      // issues -> amber (needs follow-up). Submitted and clean -> green.
+                      const issueCount = brief ? reviewBrief(brief, briefs).length : 0;
+                      const dotColor = !brief ? 'bg-amber-400' : issueCount > 0 ? 'bg-amber-400' : 'bg-emerald-400';
+                      const dotTitle = !brief
+                        ? 'Pending'
+                        : issueCount > 0
+                        ? `Submitted — ${issueCount} review issue${issueCount === 1 ? '' : 's'} (${briefCompletenessScore(brief)}% complete)`
+                        : 'Submitted — no review issues';
                       return (
                         <button
                           key={srv}
@@ -1060,11 +1117,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                           }`}
                         >
                           <span>{srv.replace('_', ' ').toUpperCase()} Brief</span>
-                          {hasBrief ? (
-                            <span className="w-2 h-2 rounded-full bg-emerald-400" title="Submitted" />
-                          ) : (
-                            <span className="w-2 h-2 rounded-full bg-amber-400" title="Pending" />
-                          )}
+                          <span className={`w-2 h-2 rounded-full ${dotColor}`} title={dotTitle} />
                         </button>
                       );
                     })}
@@ -1077,6 +1130,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                         clientName={client.name}
                         serviceType={selectedBriefService}
                         existingBrief={clientBriefs.find((b) => b.service_type === selectedBriefService)}
+                        allBriefs={briefs}
                         revisions={briefRevisions.filter(
                           (r) =>
                             r.client_id === client.id && r.service_type === selectedBriefService
@@ -1306,7 +1360,10 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
           {/* 7. REPORTS & COMPARISONS */}
           {activeTab === 'reports' && (
             <ReportsAndComparisonsTab
+              client={client}
               users={users}
+              briefs={clientBriefs}
+              tasks={clientTasks}
               comparisons={clientComparisonsForClient}
               reports={clientReportsForClient}
               reportMode={reportMode}
@@ -1323,6 +1380,23 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               canGenerateReport={!!onGenerateReport}
               generatingReportForComparisonId={generatingReportForComparisonId}
               onGenerateReport={handleGenerateReport}
+              canGenerateMonthlyDraft={hasReportsAccess && !!onGenerateMonthlyReportDraft}
+              isGeneratingDraft={isGeneratingDraft}
+              onGenerateMonthlyDraft={handleGenerateMonthlyDraft}
+              canApproveReport={hasReportsAccess && !!onApproveReport}
+              onApproveReport={onApproveReport || (async () => {})}
+            />
+          )}
+
+          {/* 8. MEETINGS (Module 9 scaffolding) */}
+          {activeTab === 'meetings' && (
+            <ClientMeetingsPanel
+              client={client}
+              meetings={clientMeetingsForClient}
+              users={users}
+              canUpload={hasReportsAccess && !!onUploadMeetingRecording}
+              onUploadRecording={onUploadMeetingRecording || (async () => {})}
+              onSaveMeetingNotes={onSaveMeetingNotes || (async () => {})}
             />
           )}
         </div>
@@ -1350,7 +1424,10 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
 // role-agnostic entry point) via src/components/reporting/ — this tab only adds the
 // single-client framing around them.
 interface ReportsAndComparisonsTabProps {
+  client: ClientRecord;
   users: UserRecord[];
+  briefs: BriefRecord[];
+  tasks: TaskRecord[];
   comparisons: ClientComparisonRecord[];
   reports: ReportRecord[];
   reportMode: ReportMode;
@@ -1367,10 +1444,18 @@ interface ReportsAndComparisonsTabProps {
   canGenerateReport: boolean;
   generatingReportForComparisonId: string | null;
   onGenerateReport: (comparison: ClientComparisonRecord) => void;
+  canGenerateMonthlyDraft: boolean;
+  isGeneratingDraft: boolean;
+  onGenerateMonthlyDraft: () => void;
+  canApproveReport: boolean;
+  onApproveReport: (reportId: string) => Promise<void>;
 }
 
 const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
+  client,
   users,
+  briefs,
+  tasks,
   comparisons,
   reports,
   reportMode,
@@ -1387,7 +1472,18 @@ const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
   canGenerateReport,
   generatingReportForComparisonId,
   onGenerateReport,
+  canGenerateMonthlyDraft,
+  isGeneratingDraft,
+  onGenerateMonthlyDraft,
+  canApproveReport,
+  onApproveReport,
 }) => {
+  const [selectedDraftReport, setSelectedDraftReport] = useState<ReportRecord | null>(null);
+
+  // Same rolling-baseline check ReportsHub.tsx runs — this tab is single-client, so there's only
+  // ever one result to compute, applied only to that client's latest comparison row.
+  const anomalyResult = useMemo(() => detectClientAnomalies(client.id, comparisons), [client.id, comparisons]);
+
   return (
     <div className="space-y-6">
       <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
@@ -1450,10 +1546,38 @@ const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
               canGenerateReport={canGenerateReport}
               isGeneratingReport={generatingReportForComparisonId === cmp.id}
               onGenerateReport={() => onGenerateReport(cmp)}
+              anomalyFlags={anomalyResult?.latestComparisonId === cmp.id ? anomalyResult.flags : undefined}
             />
           ))
         )}
       </div>
+
+      {/* Monthly report draft (Module 9): auto-compiled from this client's period summary +
+          briefs + task completion, requiring explicit approval before it counts as final. */}
+      {canGenerateMonthlyDraft && (
+        <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-400" />
+                <span>Monthly Report Draft</span>
+              </h3>
+              <p className="text-[11px] text-stone-400 mt-0.5">
+                Auto-compiles this month's performance, briefs, and task delivery into one document. Requires
+                approval before it's final.
+              </p>
+            </div>
+            <button
+              onClick={onGenerateMonthlyDraft}
+              disabled={isGeneratingDraft}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white shadow-md hover:opacity-90 disabled:opacity-50 transition-all shrink-0"
+              style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+            >
+              {isGeneratingDraft ? 'Generating...' : 'Generate Monthly Draft'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filed reports */}
       <div className="space-y-3">
@@ -1461,8 +1585,30 @@ const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
           <FileText className="w-4 h-4 text-purple-400" />
           <span>Filed Reports ({reports.length})</span>
         </h3>
-        <FiledReportsList reports={reports} comparisons={comparisons} clients={[]} users={users} />
+        <FiledReportsList
+          reports={reports}
+          comparisons={comparisons}
+          clients={[]}
+          users={users}
+          onSelectReport={(r) => (r.type === 'client' && r.comparison_id ? setSelectedDraftReport(r) : undefined)}
+        />
       </div>
+
+      {selectedDraftReport && (
+        <MonthlyReportDraftView
+          client={client}
+          report={selectedDraftReport}
+          comparison={comparisons.find((c) => c.id === selectedDraftReport.comparison_id) || null}
+          briefs={briefs}
+          tasks={tasks}
+          canApprove={canApproveReport}
+          onApprove={async () => {
+            await onApproveReport(selectedDraftReport.id);
+            setSelectedDraftReport(null);
+          }}
+          onClose={() => setSelectedDraftReport(null)}
+        />
+      )}
     </div>
   );
 };

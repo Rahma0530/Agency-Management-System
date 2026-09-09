@@ -39,6 +39,7 @@ import {
   ClientComparisonRecord,
   SocialInsightRecord,
   ClientPortalUserRecord,
+  MeetingRecord,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
@@ -85,7 +86,15 @@ interface AMQueueProps {
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onGenerateMonthlyReportDraft?: (clientId: string) => Promise<void>;
+  onApproveReport?: (reportId: string) => Promise<void>;
   onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
+  meetings?: MeetingRecord[];
+  onUploadMeetingRecording?: (clientId: string, meetingDate: string, file: File) => Promise<void>;
+  onSaveMeetingNotes?: (
+    meetingId: string,
+    updates: { transcript_text?: string; ai_summary_text?: string }
+  ) => Promise<void>;
 }
 
 export const AMQueue: React.FC<AMQueueProps> = ({
@@ -113,7 +122,12 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   onNavigateToModule,
   onGenerateComparison,
   onGenerateReport,
+  onGenerateMonthlyReportDraft,
+  onApproveReport,
   onCreatePortalLogin,
+  meetings = [],
+  onUploadMeetingRecording,
+  onSaveMeetingNotes,
 }) => {
   const resolvedUser = currentUser || users.find((u) => u.id === currentUserId) || users[0];
   const effectiveUserId = resolvedUser?.id || currentUserId || '';
@@ -553,6 +567,11 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           onMarkClientViewed={onMarkClientViewed}
           onGenerateComparison={onGenerateComparison}
           onGenerateReport={onGenerateReport}
+          onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}
+          onApproveReport={onApproveReport}
+          meetings={meetings}
+          onUploadMeetingRecording={onUploadMeetingRecording}
+          onSaveMeetingNotes={onSaveMeetingNotes}
           onCreatePortalLogin={onCreatePortalLogin}
         />
       )}

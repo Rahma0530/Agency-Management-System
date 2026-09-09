@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BarChart3, TrendingUp, FileText, Users } from 'lucide-react';
+import { BarChart3, TrendingUp, FileText, Users, AlertTriangle } from 'lucide-react';
 import {
   ClientRecord,
   PackageRecord,
@@ -14,6 +14,8 @@ import {
   ReportMode,
   ReportScope,
   resolveClientsForSubject,
+  detectClientAnomalies,
+  ClientAnomalyResult,
 } from '../lib/reportingEngine';
 import { PeriodSelector } from './reporting/PeriodSelector';
 import { ComparisonCard, FiledReportsList, describeComparisonScope } from './reporting/ComparisonDisplay';
@@ -156,6 +158,24 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
     [reports, visibleComparisons, currentUser.id]
   );
 
+  // Anomaly detection (Module 9): a client's own rolling baseline, not the single-period delta
+  // ComparisonCard's narrative already shows — computed here (not in App.tsx) since it's pure
+  // derived display, same as the narrative itself. Keyed by client_id so both the panel below and
+  // each ComparisonCard's badge (only on that client's latest row) can look it up directly.
+  const anomaliesByClientId = useMemo(() => {
+    const map = new Map<string, ClientAnomalyResult>();
+    myClients.forEach((client) => {
+      const result = detectClientAnomalies(client.id, clientComparisons);
+      if (result && result.flags.length > 0) map.set(client.id, result);
+    });
+    return map;
+  }, [myClients, clientComparisons]);
+
+  const flaggedClients = useMemo(
+    () => myClients.filter((c) => anomaliesByClientId.has(c.id)),
+    [myClients, anomaliesByClientId]
+  );
+
   return (
     <div className="space-y-6">
       <div
@@ -178,6 +198,34 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
           </div>
         </div>
       </div>
+
+      {flaggedClients.length > 0 && (
+        <div className="p-4 rounded-xl border border-red-800/40 bg-red-950/20 space-y-3">
+          <h3 className="text-sm font-bold text-red-300 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            <span>Anomalies — {flaggedClients.length} client{flaggedClients.length === 1 ? '' : 's'} below baseline</span>
+          </h3>
+          <div className="space-y-2">
+            {flaggedClients.map((client) => {
+              const result = anomaliesByClientId.get(client.id)!;
+              return (
+                <div key={client.id} className="p-3 rounded-lg bg-stone-900/60 border border-red-900/30">
+                  <p className="text-xs font-bold text-white mb-1">{client.name}</p>
+                  {result.flags.map((flag, i) => (
+                    <p key={i} className="text-[11px] text-stone-300">
+                      <span className="text-red-300 font-semibold">
+                        {flag.service.replace('_', ' ')} — {flag.metricLabel}:
+                      </span>{' '}
+                      {flag.pctBelowBaseline}% below baseline
+                      {flag.confidence === 'low' ? ' (low confidence)' : ''}
+                    </p>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-4">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -298,16 +346,21 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
         {visibleComparisons.length === 0 ? (
           <p className="text-xs text-stone-500 py-4 text-center">No comparisons generated yet.</p>
         ) : (
-          visibleComparisons.map((cmp) => (
-            <ComparisonCard
-              key={cmp.id}
-              comparison={cmp}
-              subtitle={describeComparisonScope(cmp, clients, users)}
-              canGenerateReport
-              isGeneratingReport={generatingReportForComparisonId === cmp.id}
-              onGenerateReport={() => handleGenerateReport(cmp)}
-            />
-          ))
+          visibleComparisons.map((cmp) => {
+            const anomalyResult = cmp.client_id ? anomaliesByClientId.get(cmp.client_id) : undefined;
+            const anomalyFlags = anomalyResult?.latestComparisonId === cmp.id ? anomalyResult.flags : undefined;
+            return (
+              <ComparisonCard
+                key={cmp.id}
+                comparison={cmp}
+                subtitle={describeComparisonScope(cmp, clients, users)}
+                canGenerateReport
+                isGeneratingReport={generatingReportForComparisonId === cmp.id}
+                onGenerateReport={() => handleGenerateReport(cmp)}
+                anomalyFlags={anomalyFlags}
+              />
+            );
+          })
         )}
       </div>
 

@@ -1,7 +1,21 @@
-import React, { useState } from 'react';
-import { Save, CheckCircle2, Layers, Table, Edit3, Globe, Share2, Target, AlertCircle, Lock, Palette } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  Save,
+  CheckCircle2,
+  Layers,
+  Table,
+  Edit3,
+  Globe,
+  Share2,
+  Target,
+  AlertCircle,
+  Lock,
+  Palette,
+  ClipboardCheck,
+} from 'lucide-react';
 import { BriefRecord, BriefRevisionRecord, ServiceType } from '../types/database';
 import { BRIEF_FIELD_SCHEMAS } from '../data/briefFieldSchemas';
+import { reviewBrief, BriefReviewSeverity } from '../lib/briefReview';
 import { BriefEditHistory } from './BriefEditHistory';
 
 interface DynamicBriefFormProps {
@@ -10,6 +24,10 @@ interface DynamicBriefFormProps {
   serviceType: ServiceType;
   existingBrief?: BriefRecord;
   revisions?: BriefRevisionRecord[];
+  // Every brief across every client/service, for the review assistant's cross-brief comparison
+  // (lib/briefReview.ts filters this down to the same service_type itself). Optional — omitting
+  // it just disables that one check, not the whole checklist.
+  allBriefs?: BriefRecord[];
   currentUserId: string;
   canEdit: boolean;
   onSaveBrief: (briefData: {
@@ -21,12 +39,19 @@ interface DynamicBriefFormProps {
   }) => Promise<void>;
 }
 
+const SEVERITY_STYLES: Record<BriefReviewSeverity, { bg: string; text: string; border: string }> = {
+  missing_required: { bg: 'rgba(245, 163, 163, 0.12)', text: 'var(--roas-bad)', border: 'var(--roas-bad)' },
+  too_short: { bg: 'rgba(245, 226, 154, 0.12)', text: 'var(--roas-mid)', border: 'rgba(245, 226, 154, 0.4)' },
+  unusual_gap: { bg: 'rgba(123, 47, 247, 0.12)', text: 'var(--purple-light)', border: 'var(--border-soft)' },
+};
+
 export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   clientId,
   clientName,
   serviceType,
   existingBrief,
   revisions = [],
+  allBriefs = [],
   currentUserId,
   canEdit,
   onSaveBrief,
@@ -38,6 +63,24 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
 
   const currentVersion = existingBrief?.version || 1;
+
+  // Review assistant (Module 9, point 1): recomputed live off formData as the author types, not
+  // just the last-saved existingBrief — advisory only, never blocks handleSave below.
+  const reviewIssues = useMemo(
+    () =>
+      reviewBrief(
+        {
+          id: existingBrief?.id || 'draft',
+          client_id: clientId,
+          service_type: serviceType,
+          fields: formData,
+          version: currentVersion,
+          submitted_by: currentUserId,
+        },
+        allBriefs
+      ),
+    [existingBrief?.id, clientId, serviceType, formData, currentVersion, currentUserId, allBriefs]
+  );
 
   const handleFieldChange = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -197,6 +240,30 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
           )}
         </div>
       </div>
+
+      {reviewIssues.length > 0 && (
+        <div
+          className="p-3 mb-4 rounded-xl space-y-1.5"
+          style={{ background: 'rgba(123, 47, 247, 0.06)', border: '1px solid var(--border-soft)' }}
+        >
+          <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: 'var(--lilac)' }}>
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            Review Checklist ({reviewIssues.length}) — advisory only, does not block saving
+          </p>
+          {reviewIssues.map((issue, i) => {
+            const style = SEVERITY_STYLES[issue.severity];
+            return (
+              <p
+                key={i}
+                className="text-[11px] px-2.5 py-1.5 rounded-lg"
+                style={{ background: style.bg, color: style.text, border: `1px solid ${style.border}` }}
+              >
+                {issue.message}
+              </p>
+            );
+          })}
+        </div>
+      )}
 
       <div className="mb-4">
         <BriefEditHistory revisions={revisions} serviceType={serviceType} />

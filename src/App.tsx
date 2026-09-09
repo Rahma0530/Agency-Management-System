@@ -26,6 +26,7 @@ import {
   isSupabaseConfigured,
   setSupabaseSessionUser,
   buildAttachmentStoragePath,
+  buildMeetingRecordingStoragePath,
 } from './lib/supabase';
 import { resolvePeriodRange, generateKpiScoreMetrics, suggestClassification } from './lib/performanceScore';
 import {
@@ -68,6 +69,7 @@ import {
   ReportRecord,
   ClientComparisonRecord,
   ClientPortalUserRecord,
+  MeetingRecord,
 } from './types/database';
 import {
   INITIAL_PACKAGES,
@@ -140,6 +142,7 @@ export default function App() {
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [clientComparisons, setClientComparisons] = useState<ClientComparisonRecord[]>([]);
   const [clientPortalUsers, setClientPortalUsers] = useState<ClientPortalUserRecord[]>([]);
+  const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
 
   // Authenticated user state initialized from localStorage
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRecord | null>(() => {
@@ -469,6 +472,12 @@ export default function App() {
           .select('*');
         if (!portalUserErr && portalUserData && portalUserData.length > 0) {
           setClientPortalUsers(portalUserData as ClientPortalUserRecord[]);
+        }
+
+        // Fetch meetings (Module 9 scaffolding: AM meeting recordings/manual transcript notes)
+        const { data: meetingData, error: meetingErr } = await supabase.from('meetings').select('*');
+        if (!meetingErr && meetingData && meetingData.length > 0) {
+          setMeetings(meetingData as MeetingRecord[]);
         }
       } catch (err) {
         console.warn('Supabase query error, relying on local cached state:', err);
@@ -1353,6 +1362,7 @@ export default function App() {
       period,
       generated_by: currentUser.id,
       comparison_id: comparisonId,
+      status: 'final',
       created_at: new Date().toISOString(),
     };
 
@@ -1372,6 +1382,178 @@ export default function App() {
     }
 
     showNotification(`Report filed for ${period}.`);
+  };
+
+  // 8d. Generate (or regenerate) a client's monthly report draft (Module 9, point 4): a period
+  // summary comparison plus a `reports` row in 'draft' status pointing at it. Deliberately not
+  // routed through handleGenerateComparison — that function's upsert/agent-scope branching
+  // doesn't apply here (this is always client-scoped, always a period_summary), so the always-
+  // single-client case is simpler to write directly. type is 'client' (not 'internal', like every
+  // other report filed today) since a monthly report draft is, by nature, meant to become a
+  // client-facing document once approved.
+  const handleGenerateMonthlyReportDraft = async (clientId: string) => {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    const period = resolveComparisonPeriods('monthly').current;
+    const result = generatePeriodSummary([client], packages, period, campaigns, tasks, socialInsights);
+
+    const localExistingComparison = clientComparisons.find(
+      (c) => c.client_id === clientId && c.row_kind === 'period_summary' && c.period_current === result.period_current
+    );
+    const comparisonPayload: ClientComparisonRecord = {
+      id: localExistingComparison?.id || `cmp-${Date.now().toString().slice(-4)}`,
+      ...result,
+      client_id: clientId,
+      agent_id: null,
+      covered_client_ids: null,
+      created_at: localExistingComparison?.created_at || new Date().toISOString(),
+    };
+
+    let savedComparison: ClientComparisonRecord = comparisonPayload;
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = localExistingComparison
+          ? await supabase.from('client_comparisons').update(comparisonPayload).eq('id', localExistingComparison.id).select()
+          : await supabase.from('client_comparisons').insert([comparisonPayload]).select();
+        if (error) throw error;
+        savedComparison = (data?.[0] as ClientComparisonRecord) || comparisonPayload;
+        setClientComparisons((prev) => [...prev.filter((c) => c.id !== savedComparison.id), savedComparison]);
+      } catch (err) {
+        console.error('Supabase client_comparisons write error:', err);
+        showNotification('Unable to generate the monthly report draft.', 'info');
+        return;
+      }
+    } else {
+      setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
+    }
+
+    // Reuse an existing draft report for this exact comparison if one already exists (so
+    // regenerating a draft updates it in place rather than accumulating duplicate report rows).
+    const existingDraftReport = reports.find((r) => r.comparison_id === savedComparison.id && r.status === 'draft');
+
+    const reportPayload: ReportRecord = {
+      id: existingDraftReport?.id || `rpt-${Date.now().toString().slice(-4)}`,
+      client_id: clientId,
+      type: 'client',
+      period: result.period_current,
+      generated_by: currentUser.id,
+      comparison_id: savedComparison.id,
+      status: 'draft',
+      created_at: existingDraftReport?.created_at || new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = existingDraftReport
+          ? await supabase.from('reports').update(reportPayload).eq('id', existingDraftReport.id).select()
+          : await supabase.from('reports').insert([reportPayload]).select();
+        if (error) throw error;
+        const saved = (data?.[0] as ReportRecord) || reportPayload;
+        setReports((prev) => [...prev.filter((r) => r.id !== saved.id), saved]);
+      } catch (err) {
+        console.error('Supabase reports insert error:', err);
+        showNotification('Unable to save the monthly report draft.', 'info');
+        return;
+      }
+    } else {
+      setReports((prev) => [...prev.filter((r) => r.id !== reportPayload.id), reportPayload]);
+    }
+
+    showNotification(`Monthly report draft generated for ${client.name} (${result.period_current}).`);
+  };
+
+  // 8e. Approve a draft report, marking it final and attributing the approval.
+  const handleApproveReport = async (reportId: string) => {
+    const updates: Partial<ReportRecord> = {
+      status: 'final',
+      approved_by: currentUser.id,
+      approved_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('reports').update(updates).eq('id', reportId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase report approve error:', err);
+        showNotification('Unable to approve the report.', 'info');
+        return;
+      }
+    }
+
+    setReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, ...updates } : r)));
+    showNotification('Report approved and marked final.');
+  };
+
+  // 8f. Upload a meeting recording (Module 9 scaffolding, point 5). Unlike every other entity in
+  // this app, there is no local/demo-mode fallback for the file itself — same reasoning as
+  // handleUploadTaskAttachment: file bytes can't be represented in the in-memory mock-data
+  // system, only a real Supabase Storage bucket can hold them. transcript_text/ai_summary_text
+  // start empty — there is no real transcription/summarization yet, they're filled in manually
+  // afterward via handleSaveMeetingNotes.
+  const handleUploadMeetingRecording = async (clientId: string, meetingDate: string, file: File) => {
+    if (!supabaseActive) {
+      showNotification('Meeting recordings require a connected Supabase backend.', 'info');
+      return;
+    }
+
+    const client = clients.find((c) => c.id === clientId);
+    const meetingId = `mtg-${Date.now().toString().slice(-4)}`;
+    const storagePath = buildMeetingRecordingStoragePath(clientId, meetingId, file.name);
+
+    const { error: uploadError } = await supabase.storage
+      .from('meeting-recordings')
+      .upload(storagePath, file, { contentType: file.type });
+    if (uploadError) {
+      console.error('Supabase meeting recording upload error:', uploadError);
+      throw uploadError;
+    }
+
+    const newMeetingPayload: MeetingRecord = {
+      id: meetingId,
+      client_id: clientId,
+      am_agent_id: client?.am_agent_id || currentUser.id,
+      meeting_date: meetingDate,
+      recording_url: storagePath,
+      transcript_text: null,
+      ai_summary_text: null,
+      created_at: new Date().toISOString(),
+    };
+
+    const { data, error: insertError } = await supabase.from('meetings').insert([newMeetingPayload]).select();
+    if (insertError) {
+      console.error('Supabase meetings insert error:', insertError);
+      // The file itself uploaded successfully — clean it up rather than leaving an orphaned
+      // Storage object with no matching metadata row.
+      await supabase.storage.from('meeting-recordings').remove([storagePath]);
+      throw insertError;
+    }
+
+    setMeetings((prev) => [...prev, (data?.[0] as MeetingRecord) || newMeetingPayload]);
+    showNotification('Meeting recording uploaded successfully.');
+  };
+
+  // 8g. Save manually-entered transcript/summary notes for a meeting (Module 9 scaffolding) —
+  // plain text today, not a model call.
+  const handleSaveMeetingNotes = async (
+    meetingId: string,
+    updates: { transcript_text?: string; ai_summary_text?: string }
+  ) => {
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('meetings').update(updates).eq('id', meetingId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase meeting notes update error:', err);
+        showNotification('Unable to save meeting notes.', 'info');
+        return;
+      }
+    }
+
+    setMeetings((prev) => prev.map((m) => (m.id === meetingId ? { ...m, ...updates } : m)));
+    showNotification('Meeting notes saved.');
   };
 
   // 9. Create and update ad campaigns (Campaign Management)
@@ -1965,7 +2147,12 @@ export default function App() {
                     onNavigateToModule={handleNavigateToModule}
                     onGenerateComparison={handleGenerateComparison}
                     onGenerateReport={handleGenerateReport}
+                    onGenerateMonthlyReportDraft={handleGenerateMonthlyReportDraft}
+                    onApproveReport={handleApproveReport}
                     onCreatePortalLogin={handleCreatePortalLogin}
+                    meetings={meetings}
+                    onUploadMeetingRecording={handleUploadMeetingRecording}
+                    onSaveMeetingNotes={handleSaveMeetingNotes}
                   />
                 )}
               </div>
@@ -1995,6 +2182,8 @@ export default function App() {
                   onNavigateToModule={handleNavigateToModule}
                   onGenerateComparison={handleGenerateComparison}
                   onGenerateReport={handleGenerateReport}
+                  onGenerateMonthlyReportDraft={handleGenerateMonthlyReportDraft}
+                  onApproveReport={handleApproveReport}
                   onCreatePortalLogin={handleCreatePortalLogin}
                 />
               </div>
@@ -2085,6 +2274,8 @@ export default function App() {
                   onUpdateCampaign={handleUpdateCampaign}
                   onGenerateComparison={handleGenerateComparison}
                   onGenerateReport={handleGenerateReport}
+                  onGenerateMonthlyReportDraft={handleGenerateMonthlyReportDraft}
+                  onApproveReport={handleApproveReport}
                   onCreatePortalLogin={handleCreatePortalLogin}
                   isLoading={loading}
                 />

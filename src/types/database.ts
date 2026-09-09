@@ -229,6 +229,14 @@ export interface ReportRecord {
   // report is, content-wise, a current-vs-previous-period comparison. Null only for reports
   // created before this link existed.
   comparison_id?: string | null;
+  // 'final' for every report created before this column existed (see migration default) and for
+  // the existing "Generate Report" flow, which is already a deliberate, reviewed action. 'draft'
+  // is used only by the new auto-compiled monthly report draft (Module 9) — a richer document
+  // (period summary + brief snapshot + task completion) that a human must explicitly approve
+  // before it's treated as final.
+  status?: 'draft' | 'final';
+  approved_by?: string | null;
+  approved_at?: string | null;
   created_at?: string;
 }
 

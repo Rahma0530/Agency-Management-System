@@ -47,6 +47,7 @@ import { BriefEditHistory } from './BriefEditHistory';
 import { BriefRepositoryView } from './BriefRepositoryView';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 import { canSeeContractValue } from '../lib/permissions';
+import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
 
 interface ServiceBriefsRoutingViewProps {
   currentUser: UserRecord;
@@ -79,6 +80,8 @@ interface ServiceBriefsRoutingViewProps {
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onGenerateMonthlyReportDraft?: (clientId: string) => Promise<void>;
+  onApproveReport?: (reportId: string) => Promise<void>;
   onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
 }
 
@@ -110,6 +113,8 @@ const AMServiceBriefsPanel: React.FC<{
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onGenerateMonthlyReportDraft?: (clientId: string) => Promise<void>;
+  onApproveReport?: (reportId: string) => Promise<void>;
   onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
 }> = ({
   currentUser,
@@ -129,6 +134,8 @@ const AMServiceBriefsPanel: React.FC<{
   clientPortalUsers,
   onGenerateComparison,
   onGenerateReport,
+  onGenerateMonthlyReportDraft,
+  onApproveReport,
   onCreatePortalLogin,
 }) => {
   const isTeamLead = currentUser.role === 'am_team_lead';
@@ -254,6 +261,8 @@ const AMServiceBriefsPanel: React.FC<{
           onClose={() => setDashboardClientId(null)}
           onGenerateComparison={onGenerateComparison}
           onGenerateReport={onGenerateReport}
+          onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}
+          onApproveReport={onApproveReport}
           onCreatePortalLogin={onCreatePortalLogin}
         />
       )}
@@ -282,6 +291,8 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   onNavigateToModule,
   onGenerateComparison,
   onGenerateReport,
+  onGenerateMonthlyReportDraft,
+  onApproveReport,
   onCreatePortalLogin,
 }) => {
   // AM roles get a dedicated cross-service overview instead of the single-service specialist
@@ -306,6 +317,8 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
         clientPortalUsers={clientPortalUsers}
         onGenerateComparison={onGenerateComparison}
         onGenerateReport={onGenerateReport}
+        onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}
+        onApproveReport={onApproveReport}
         onCreatePortalLogin={onCreatePortalLogin}
       />
     );
@@ -710,6 +723,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                 const assignedPerson = users.find((u) => u.id === asg?.agent_id);
                 const clientBrief = briefs.find((b) => b.client_id === client.id && b.service_type === serviceType);
                 const isNewBrief = isTeamLead && !!clientBrief && !clientBrief.team_lead_viewed_at;
+                const briefIssueCount = clientBrief ? reviewBrief(clientBrief, briefs).length : 0;
 
                 return (
                   <div
@@ -741,6 +755,19 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                             {isNewBrief && (
                               <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase bg-purple-600 text-white">
                                 New
+                              </span>
+                            )}
+                            {clientBrief && (
+                              <span
+                                className="px-1.5 py-0.2 rounded-full text-[9px] font-bold"
+                                style={
+                                  briefIssueCount > 0
+                                    ? { background: 'rgba(245, 226, 154, 0.15)', color: 'var(--roas-mid)' }
+                                    : { background: 'rgba(169, 245, 193, 0.15)', color: 'var(--roas-good)' }
+                                }
+                                title={briefIssueCount > 0 ? `${briefIssueCount} review issue(s)` : 'No review issues'}
+                              >
+                                {briefCompletenessScore(clientBrief)}%
                               </span>
                             )}
                           </h4>

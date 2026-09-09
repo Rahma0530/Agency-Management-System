@@ -3,6 +3,7 @@ import {
   CampaignRecord,
   ClientComparisonDelta,
   ClientComparisonMetrics,
+  ClientComparisonRecord,
   ClientRecord,
   ComparisonMediaBuyingMetrics,
   ComparisonSeoMetrics,
@@ -39,6 +40,19 @@ function monthPeriod(year: number, month0: number): ComparisonPeriod {
   const start = new Date(year, month0, 1);
   const end = new Date(year, month0 + 1, 0);
   return { label: `${year}-${pad2(month0 + 1)}`, range: { start: iso(start), end: iso(end) } };
+}
+
+// Reverses monthPeriod's label format ("YYYY-MM") back into a DateRange — only every actually
+// correct for a label this function itself (transitively, via resolveComparisonPeriods) produced.
+// Used by MonthlyReportDraftView.tsx, since a persisted client_comparisons row stores only the
+// period label, not the DateRange that generated it — the monthly report draft always generates
+// with monthly granularity, so this exact reverse mapping is safe for that one caller.
+export function monthLabelToRange(label: string): DateRange | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(label);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const month0 = parseInt(match[2], 10) - 1;
+  return monthPeriod(year, month0).range;
 }
 
 function quarterPeriod(year: number, quarter: number): ComparisonPeriod {
@@ -550,5 +564,151 @@ export function generatePeriodSummary(
     delta: {},
     ai_recommendations_text: null,
     covered_client_ids: clients.map((c) => c.id),
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Anomaly detection (Module 9, point 3): pure statistics, no model call. Answers a genuinely
+// different question from computeComparisonDelta above — that's "did this period get worse than
+// the one immediately before it"; this is "is this period well below what's normal for this
+// client", using a rolling baseline over several prior periods rather than just one. Every time a
+// comparison/period-summary is generated for a client, a new client_comparisons row accumulates
+// (the unique constraint is per (client_id, period_current, period_previous) triple, not one row
+// per client) — metrics_current across a client's historical rows, ordered by period_current, is
+// the time series this baseline is drawn from.
+// ----------------------------------------------------------------------------
+export interface AnomalyFlag {
+  service: ServiceType;
+  metricLabel: string;
+  currentValue: number;
+  baselineValue: number;
+  pctBelowBaseline: number; // positive, e.g. 32.4 = 32.4% below baseline
+  // 'low' when the baseline was drawn from only 1 prior period — still shown (better than
+  // nothing), but callers should visually distinguish it from a baseline backed by real history.
+  confidence: 'low' | 'normal';
+}
+
+export interface ClientAnomalyResult {
+  latestComparisonId: string;
+  flags: AnomalyFlag[];
+}
+
+const ANOMALY_DROP_THRESHOLD_PCT = 25;
+const ANOMALY_BASELINE_WINDOW = 3;
+
+// Direction-aware by construction: only ever called with metrics where a lower value is bad
+// (never spend, reach, or cpa, where "lower" isn't inherently a problem).
+function flagIfBelowBaseline(
+  service: ServiceType,
+  metricLabel: string,
+  currentValue: number | null | undefined,
+  priorValues: (number | null | undefined)[]
+): AnomalyFlag | null {
+  if (typeof currentValue !== 'number') return null;
+  const usable = priorValues.filter((v): v is number => typeof v === 'number');
+  if (usable.length === 0) return null;
+
+  const baseline = usable.reduce((sum, v) => sum + v, 0) / usable.length;
+  if (baseline <= 0) return null; // nothing meaningful to compare a drop against
+
+  const pctBelow = ((baseline - currentValue) / baseline) * 100;
+  if (pctBelow < ANOMALY_DROP_THRESHOLD_PCT) return null;
+
+  return {
+    service,
+    metricLabel,
+    currentValue,
+    baselineValue: Math.round(baseline * 100) / 100,
+    pctBelowBaseline: Math.round(pctBelow * 10) / 10,
+    confidence: usable.length < ANOMALY_BASELINE_WINDOW ? 'low' : 'normal',
+  };
+}
+
+// `allComparisons` is every comparison/period-summary row visible to the caller, any scope, any
+// order — this filters to the one client's own client-scoped rows (never agent-pooled rows, which
+// carry client_id: null and are excluded by the equality filter) and sorts them itself. Returns
+// null when there's no prior period to baseline against yet (0 or 1 total rows for this client).
+export function detectClientAnomalies(
+  clientId: string,
+  allComparisons: ClientComparisonRecord[]
+): ClientAnomalyResult | null {
+  const rows = allComparisons
+    .filter((r) => r.client_id === clientId)
+    .slice()
+    .sort((a, b) => a.period_current.localeCompare(b.period_current));
+  if (rows.length < 2) return null;
+
+  const latest = rows[rows.length - 1];
+  const priorRows = rows.slice(0, -1).slice(-ANOMALY_BASELINE_WINDOW);
+
+  const flags: AnomalyFlag[] = [];
+
+  const mb = latest.metrics_current.media_buying;
+  const mbPrior = priorRows.map((r) => r.metrics_current.media_buying);
+  const roasFlag = flagIfBelowBaseline('media_buying', 'ROAS', mb?.roas, mbPrior.map((p) => p?.roas));
+  if (roasFlag) flags.push(roasFlag);
+  const conversionsFlag = flagIfBelowBaseline(
+    'media_buying',
+    'Conversions',
+    mb?.conversions,
+    mbPrior.map((p) => p?.conversions)
+  );
+  if (conversionsFlag) flags.push(conversionsFlag);
+
+  const sm = latest.metrics_current.social_media;
+  const smPrior = priorRows.map((r) => r.metrics_current.social_media);
+  const engagementFlag = flagIfBelowBaseline(
+    'social_media',
+    'Engagement Rate',
+    sm?.engagement_rate,
+    smPrior.map((p) => p?.engagement_rate)
+  );
+  if (engagementFlag) flags.push(engagementFlag);
+  const followerFlag = flagIfBelowBaseline(
+    'social_media',
+    'Follower Growth',
+    sm?.follower_growth,
+    smPrior.map((p) => p?.follower_growth)
+  );
+  if (followerFlag) flags.push(followerFlag);
+
+  const seo = latest.metrics_current.seo;
+  const seoPrior = priorRows.map((r) => r.metrics_current.seo);
+  const onTimeFlag = flagIfBelowBaseline('seo', 'On-Time Rate', seo?.on_time_rate, seoPrior.map((p) => p?.on_time_rate));
+  if (onTimeFlag) flags.push(onTimeFlag);
+
+  return { latestComparisonId: latest.id, flags };
+}
+
+// ----------------------------------------------------------------------------
+// Task completion stats for one client over a period — the delivery half of a monthly report
+// draft (generatePeriodSummary above covers the analytics half). Deliberately client-scoped: the
+// one existing similar function, performanceScore.ts's computeOnTimeCompletionRate, is
+// employee-scoped (filters by assigned_to) and has no client-scoped equivalent today.
+// ----------------------------------------------------------------------------
+export interface ClientTaskCompletionStats {
+  totalTasks: number;
+  completedTasks: number;
+  onTimeRate: number | null; // null when completedTasks is 0
+}
+
+export function computeClientTaskCompletionStats(
+  tasks: TaskRecord[],
+  clientId: string,
+  range: DateRange
+): ClientTaskCompletionStats {
+  const clientTasks = tasks.filter((t) => t.client_id === clientId);
+  const completed = clientTasks.filter(
+    (t) => t.status === 'completed' && t.completed_at && inRange(t.completed_at.split('T')[0], range)
+  );
+  const onTimeRate =
+    completed.length === 0
+      ? null
+      : Math.round((completed.filter((t) => t.completed_at!.split('T')[0] <= t.due_date).length / completed.length) * 100);
+
+  return {
+    totalTasks: clientTasks.length,
+    completedTasks: completed.length,
+    onTimeRate,
   };
 }

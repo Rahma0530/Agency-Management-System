@@ -22,6 +22,12 @@ export interface BriefFieldDef {
   valueClassName?: string;
   /** Read-only chip styling (tag-list fields only). */
   chipClassName?: string;
+  /**
+   * Flags this field as foundational to actually starting work on this service — checked by
+   * lib/briefReview.ts's rule-based review assistant (Module 9). No behavioral effect on the
+   * form itself: saving with a required field empty is still allowed, only flagged.
+   */
+  required?: boolean;
 }
 
 export const BRIEF_FIELD_SCHEMAS: Record<ServiceType, BriefFieldDef[]> = {
@@ -33,6 +39,7 @@ export const BRIEF_FIELD_SCHEMAS: Record<ServiceType, BriefFieldDef[]> = {
       placeholder: 'https://example.com',
       span: 'half',
       valueClassName: 'text-xs font-bold text-emerald-300',
+      required: true,
     },
     {
       key: 'cms_platform',
@@ -49,6 +56,7 @@ export const BRIEF_FIELD_SCHEMAS: Record<ServiceType, BriefFieldDef[]> = {
       placeholder: 'Enter keywords separated by commas or new lines...',
       span: 'full',
       valueClassName: 'text-xs text-stone-200 font-mono whitespace-pre-line',
+      required: true,
     },
     {
       key: 'target_locations',
@@ -92,6 +100,7 @@ export const BRIEF_FIELD_SCHEMAS: Record<ServiceType, BriefFieldDef[]> = {
       placeholder: 'Example: Instagram, TikTok, LinkedIn, X',
       span: 'full',
       chipClassName: 'bg-pink-950/60 text-pink-300 border-pink-800/40',
+      required: true,
     },
     {
       key: 'brand_tone',
@@ -143,6 +152,7 @@ export const BRIEF_FIELD_SCHEMAS: Record<ServiceType, BriefFieldDef[]> = {
       placeholder: 'Example: Meta Ads, Google Ads, TikTok, Snapchat',
       span: 'full',
       chipClassName: 'bg-sky-950/60 text-sky-300 border-sky-800/40',
+      required: true,
     },
     {
       key: 'monthly_ad_budget',
@@ -152,6 +162,7 @@ export const BRIEF_FIELD_SCHEMAS: Record<ServiceType, BriefFieldDef[]> = {
       span: 'half',
       fallback: 'Custom',
       valueClassName: 'text-sm font-bold text-sky-400 font-mono',
+      required: true,
     },
     {
       key: 'target_roas',
@@ -195,6 +206,7 @@ export const BRIEF_FIELD_SCHEMAS: Record<ServiceType, BriefFieldDef[]> = {
       placeholder: 'e.g. Social static posts, Instagram Reels, brand logo, banner ads',
       span: 'half',
       valueClassName: 'text-xs font-bold text-white',
+      required: true,
     },
     {
       key: 'formats_dimensions',

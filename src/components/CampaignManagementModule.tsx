@@ -73,6 +73,8 @@ interface CampaignManagementModuleProps {
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onGenerateMonthlyReportDraft?: (clientId: string) => Promise<void>;
+  onApproveReport?: (reportId: string) => Promise<void>;
   onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
   isLoading?: boolean;
 }
@@ -218,6 +220,8 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   onUpdateCampaign,
   onGenerateComparison,
   onGenerateReport,
+  onGenerateMonthlyReportDraft,
+  onApproveReport,
   onCreatePortalLogin,
   isLoading = false,
 }) => {
@@ -1799,6 +1803,8 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           onClose={() => setDashboardClientId(null)}
           onGenerateComparison={onGenerateComparison}
           onGenerateReport={onGenerateReport}
+          onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}
+          onApproveReport={onApproveReport}
           onCreatePortalLogin={onCreatePortalLogin}
         />
       )}

@@ -1,7 +1,7 @@
 import React from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { ClientComparisonRecord, ClientRecord, ReportRecord, UserRecord } from '../../types/database';
-import { generateComparisonNarrative } from '../../lib/reportingEngine';
+import { generateComparisonNarrative, AnomalyFlag } from '../../lib/reportingEngine';
 
 // ----------------------------------------------------------------------------
 // Shared presentation pieces for a generated ClientComparisonRecord and the ReportRecords filed
@@ -85,13 +85,17 @@ export const ServiceMetricsCard: React.FC<{
 // cards (whichever are present), and — for a 'comparison' row only — the rule-generated
 // narrative. Dispatches on row_kind directly rather than inferring the shape from
 // period_previous, so a row's displayed shape can never disagree with how it was generated.
+// Staff-only: pass anomalyFlags from ClientDashboard.tsx/ReportsHub.tsx, never from
+// ClientPortalView.tsx — this is an internal early-warning signal (rolling-baseline drops), not
+// something to alarm the client with alongside their own comparison narrative.
 export const ComparisonCard: React.FC<{
   comparison: ClientComparisonRecord;
   subtitle?: string;
   canGenerateReport?: boolean;
   isGeneratingReport?: boolean;
   onGenerateReport?: () => void;
-}> = ({ comparison, subtitle, canGenerateReport, isGeneratingReport, onGenerateReport }) => {
+  anomalyFlags?: AnomalyFlag[];
+}> = ({ comparison, subtitle, canGenerateReport, isGeneratingReport, onGenerateReport, anomalyFlags }) => {
   const isSummary = comparison.row_kind === 'period_summary';
   const narrative = isSummary
     ? null
@@ -149,6 +153,25 @@ export const ComparisonCard: React.FC<{
         />
       </div>
 
+      {anomalyFlags && anomalyFlags.length > 0 && (
+        <div className="p-3 rounded-lg bg-red-950/20 border border-red-800/40 space-y-1.5">
+          <p className="text-xs font-bold text-red-300 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Anomaly detected — below this client's own rolling baseline</span>
+          </p>
+          {anomalyFlags.map((flag, i) => (
+            <p key={i} className="text-[11px] text-stone-300 leading-relaxed pl-5">
+              <strong className="text-red-300">
+                {flag.service.replace('_', ' ')} — {flag.metricLabel}:
+              </strong>{' '}
+              {flag.currentValue.toLocaleString()} is {flag.pctBelowBaseline}% below the baseline of{' '}
+              {flag.baselineValue.toLocaleString()}
+              {flag.confidence === 'low' ? ' (baseline from only 1 prior period — low confidence)' : ''}.
+            </p>
+          ))}
+        </div>
+      )}
+
       {narrative && (
         <div className="p-3 rounded-lg bg-purple-950/20 border border-purple-900/20 space-y-1.5">
           <p className="text-xs text-stone-200 leading-relaxed">
@@ -191,7 +214,10 @@ export const FiledReportsList: React.FC<{
   clients: ClientRecord[];
   users: UserRecord[];
   showScope?: boolean;
-}> = ({ reports, comparisons, clients, users, showScope }) => {
+  // When provided, a report row becomes clickable (used to open MonthlyReportDraftView.tsx for a
+  // monthly draft) — omitted, rows stay static exactly as before.
+  onSelectReport?: (report: ReportRecord) => void;
+}> = ({ reports, comparisons, clients, users, showScope, onSelectReport }) => {
   if (reports.length === 0) {
     return <p className="text-xs text-stone-500 py-4 text-center">No reports filed yet.</p>;
   }
@@ -201,10 +227,14 @@ export const FiledReportsList: React.FC<{
         const author = users.find((u) => u.id === r.generated_by);
         const comparison = comparisons.find((c) => c.id === r.comparison_id);
         const scopeLabel = showScope && comparison ? describeComparisonScope(comparison, clients, users) : null;
+        const clickable = !!onSelectReport;
         return (
           <div
             key={r.id}
-            className="p-3 rounded-xl border border-purple-900/30 bg-[#161224]/80 flex items-center justify-between gap-3"
+            onClick={clickable ? () => onSelectReport!(r) : undefined}
+            className={`p-3 rounded-xl border border-purple-900/30 bg-[#161224]/80 flex items-center justify-between gap-3 ${
+              clickable ? 'cursor-pointer hover:border-purple-500/50 transition-colors' : ''
+            }`}
           >
             <div>
               <p className="text-xs font-bold text-white font-mono">{r.period}</p>
@@ -214,9 +244,16 @@ export const FiledReportsList: React.FC<{
                 {r.created_at ? ` • ${new Date(r.created_at).toLocaleDateString()}` : ''}
               </p>
             </div>
-            <span className="text-[10px] px-2 py-0.5 rounded font-semibold text-purple-200 bg-purple-900/50 uppercase">
-              {r.type}
-            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {r.status === 'draft' && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-semibold text-amber-200 bg-amber-900/50 uppercase">
+                  Draft
+                </span>
+              )}
+              <span className="text-[10px] px-2 py-0.5 rounded font-semibold text-purple-200 bg-purple-900/50 uppercase">
+                {r.type}
+              </span>
+            </div>
           </div>
         );
       })}

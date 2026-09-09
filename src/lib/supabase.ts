@@ -455,6 +455,17 @@ export function buildAttachmentStoragePath(
   return `${taskId}/${attachmentId}-${sanitizeAttachmentFilename(rawFilename)}`;
 }
 
+// Same convention as buildAttachmentStoragePath, for the 'meeting-recordings' bucket — keyed by
+// client_id (not meeting_id) as the first path segment, since that's what the storage.objects
+// RLS policies join against (see 20260914110000_meetings_write_and_recordings.sql).
+export function buildMeetingRecordingStoragePath(
+  clientId: string,
+  meetingId: string,
+  rawFilename: string
+): string {
+  return `${clientId}/${meetingId}-${sanitizeAttachmentFilename(rawFilename)}`;
+}
+
 let rawClientInstance: SupabaseClient | null = null;
 
 /**
