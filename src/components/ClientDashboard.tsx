@@ -51,7 +51,7 @@ import {
   getCampaignEndDate,
   getCampaignOwnerId,
 } from './CampaignManagementModule';
-import { ComparisonGranularity, DateRange, ReportScope } from '../lib/reportingEngine';
+import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 import { PeriodSelector } from './reporting/PeriodSelector';
 import { ComparisonCard, FiledReportsList } from './reporting/ComparisonDisplay';
 
@@ -91,8 +91,9 @@ interface ClientDashboardProps {
   onMarkClientViewed?: (clientId: string) => Promise<void> | void;
   onGenerateComparison?: (
     scope: ReportScope,
+    mode: ReportMode,
     granularity: ComparisonGranularity | 'custom',
-    custom?: { currentRange: DateRange; previousRange: DateRange }
+    custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
 }
@@ -141,6 +142,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [showChurnConfirm, setShowChurnConfirm] = useState(false);
   const [churnReasonInput, setChurnReasonInput] = useState('');
+  const [reportMode, setReportMode] = useState<ReportMode>('comparison');
   const [reportGranularity, setReportGranularity] = useState<ComparisonGranularity | 'custom'>('monthly');
   const [customCurrentRange, setCustomCurrentRange] = useState<DateRange>({ start: '', end: '' });
   const [customPreviousRange, setCustomPreviousRange] = useState<DateRange>({ start: '', end: '' });
@@ -302,18 +304,23 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     [reports, client.id]
   );
 
+  const isSinglePeriodReport = reportMode === 'period_summary';
+
   const handleGenerateComparison = async () => {
     if (!onGenerateComparison) return;
-    if (reportGranularity === 'custom' && (!customCurrentRange.start || !customCurrentRange.end || !customPreviousRange.start || !customPreviousRange.end)) {
-      return;
+    if (reportGranularity === 'custom') {
+      const missingCurrent = !customCurrentRange.start || !customCurrentRange.end;
+      const missingPrevious = !isSinglePeriodReport && (!customPreviousRange.start || !customPreviousRange.end);
+      if (missingCurrent || missingPrevious) return;
     }
     setIsGeneratingComparison(true);
     try {
       await onGenerateComparison(
         { type: 'client', clientId: client.id },
+        reportMode,
         reportGranularity,
         reportGranularity === 'custom'
-          ? { currentRange: customCurrentRange, previousRange: customPreviousRange }
+          ? { currentRange: customCurrentRange, previousRange: isSinglePeriodReport ? undefined : customPreviousRange }
           : undefined
       );
     } finally {
@@ -1239,6 +1246,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               users={users}
               comparisons={clientComparisonsForClient}
               reports={clientReportsForClient}
+              reportMode={reportMode}
+              onReportModeChange={setReportMode}
               granularity={reportGranularity}
               onGranularityChange={setReportGranularity}
               customCurrentRange={customCurrentRange}
@@ -1273,6 +1282,8 @@ interface ReportsAndComparisonsTabProps {
   users: UserRecord[];
   comparisons: ClientComparisonRecord[];
   reports: ReportRecord[];
+  reportMode: ReportMode;
+  onReportModeChange: (m: ReportMode) => void;
   granularity: ComparisonGranularity | 'custom';
   onGranularityChange: (g: ComparisonGranularity | 'custom') => void;
   customCurrentRange: DateRange;
@@ -1291,6 +1302,8 @@ const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
   users,
   comparisons,
   reports,
+  reportMode,
+  onReportModeChange,
   granularity,
   onGranularityChange,
   customCurrentRange,
@@ -1306,6 +1319,36 @@ const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
 }) => {
   return (
     <div className="space-y-6">
+      <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-purple-400" />
+          <span>Report Type</span>
+        </h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => onReportModeChange('comparison')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              reportMode === 'comparison' ? 'bg-purple-600 text-white shadow' : 'bg-stone-900/60 text-stone-400 hover:text-white border border-stone-800'
+            }`}
+          >
+            Comparison Report
+          </button>
+          <button
+            onClick={() => onReportModeChange('period_summary')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              reportMode === 'period_summary' ? 'bg-purple-600 text-white shadow' : 'bg-stone-900/60 text-stone-400 hover:text-white border border-stone-800'
+            }`}
+          >
+            Period Report
+          </button>
+        </div>
+        <p className="text-[11px] text-stone-400">
+          {reportMode === 'period_summary'
+            ? 'A general activity summary for one period — totals only, no prior-period comparison.'
+            : 'Current period vs. a prior period, with deltas and a rule-generated recommendation.'}
+        </p>
+      </div>
+
       <PeriodSelector
         granularity={granularity}
         onGranularityChange={onGranularityChange}
@@ -1316,6 +1359,7 @@ const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
         canGenerate={canGenerate}
         isGenerating={isGeneratingComparison}
         onGenerate={onGenerateComparison}
+        singlePeriod={reportMode === 'period_summary'}
       />
 
       {/* Past comparisons */}

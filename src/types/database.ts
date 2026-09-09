@@ -350,8 +350,17 @@ export interface ClientComparisonRecord {
   // for audit/drill-down display — RLS cannot re-verify this against current assignments (they
   // may have changed since generation), so it is not part of the access-control model.
   covered_client_ids?: string[] | null;
+  // Explicit discriminant for which shape this row is, set directly at generation time (the
+  // generator always knows which mode it's running) rather than inferred from period_previous:
+  //  - 'comparison': the original shape — period_previous/metrics_previous/delta all populated.
+  //  - 'period_summary': a single-period snapshot, no prior period to compare against —
+  //    period_previous is null, metrics_previous/delta are {} (already valid: every field on
+  //    those two types is optional), and ai_recommendations_text is null (no threshold rules run
+  //    with nothing to compare).
+  row_kind: 'comparison' | 'period_summary';
   period_current: string;
-  period_previous: string;
+  // Null only for a 'period_summary' row.
+  period_previous: string | null;
   metrics_current: ClientComparisonMetrics;
   metrics_previous: ClientComparisonMetrics;
   delta: ClientComparisonDelta;

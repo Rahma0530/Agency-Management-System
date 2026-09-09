@@ -99,6 +99,11 @@ export function customPeriod(range: DateRange): ComparisonPeriod {
 // direct report's id when a team lead generates one for a specific agent under them).
 export type ReportScope = { type: 'client'; clientId: string } | { type: 'agent'; agentId: string };
 
+// Which of the two independent report shapes to generate — shares its literal values with
+// ClientComparisonRecord.row_kind (the DB discriminant) so UI state, the App.tsx handler
+// parameter, and the persisted row all agree with no translation step between them.
+export type ReportMode = 'comparison' | 'period_summary';
+
 export function resolveClientsForSubject(
   subject: { id: string; role: UserRole },
   clients: ClientRecord[],
@@ -445,6 +450,7 @@ export function generateClientComparison(
   socialInsights: SocialInsightRecord[],
   serviceFilter?: ServiceType[]
 ): {
+  row_kind: 'comparison';
   period_current: string;
   period_previous: string;
   metrics_current: ClientComparisonMetrics;
@@ -475,12 +481,59 @@ export function generateClientComparison(
   const { recommendations } = generateComparisonNarrative(metrics_current, metrics_previous, delta);
 
   return {
+    row_kind: 'comparison',
     period_current: currentPeriod.label,
     period_previous: previousPeriod.label,
     metrics_current,
     metrics_previous,
     delta,
     ai_recommendations_text: recommendations,
+    covered_client_ids: clients.map((c) => c.id),
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Single-period snapshot: the same per-service metrics as above, for one period alone, with no
+// prior-period comparison. metrics_previous/delta are {} (every field on those two types is
+// optional, so an empty object is already a valid "nothing here" value) and there's no
+// recommendation text — the threshold rules all key off a delta that doesn't exist here.
+// ----------------------------------------------------------------------------
+export function generatePeriodSummary(
+  clients: ClientRecord[],
+  packages: PackageRecord[],
+  period: ComparisonPeriod,
+  campaigns: CampaignRecord[],
+  tasks: TaskRecord[],
+  socialInsights: SocialInsightRecord[],
+  serviceFilter?: ServiceType[]
+): {
+  row_kind: 'period_summary';
+  period_current: string;
+  period_previous: null;
+  metrics_current: ClientComparisonMetrics;
+  metrics_previous: ClientComparisonMetrics;
+  delta: ClientComparisonDelta;
+  ai_recommendations_text: null;
+  covered_client_ids: string[];
+} {
+  const metrics_current = generateClientComparisonMetrics(
+    clients,
+    packages,
+    period.range,
+    campaigns,
+    tasks,
+    socialInsights,
+    serviceFilter
+  );
+
+  return {
+    row_kind: 'period_summary',
+    period_current: period.label,
+    period_previous: null,
+    metrics_current,
+    metrics_previous: {},
+    delta: {},
+    ai_recommendations_text: null,
     covered_client_ids: clients.map((c) => c.id),
   };
 }

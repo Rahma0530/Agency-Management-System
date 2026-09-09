@@ -11,6 +11,7 @@ import {
 import {
   ComparisonGranularity,
   DateRange,
+  ReportMode,
   ReportScope,
   resolveClientsForSubject,
 } from '../lib/reportingEngine';
@@ -36,8 +37,9 @@ interface ReportsHubProps {
   clientComparisons: ClientComparisonRecord[];
   onGenerateComparison: (
     scope: ReportScope,
+    mode: ReportMode,
     granularity: ComparisonGranularity | 'custom',
-    custom?: { currentRange: DateRange; previousRange: DateRange }
+    custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport: (comparisonId: string, period: string) => Promise<void>;
 }
@@ -76,11 +78,14 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
   const [scope, setScope] = useState<ReportsHubScope>('own');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState('');
+  const [reportMode, setReportMode] = useState<ReportMode>('comparison');
   const [granularity, setGranularity] = useState<ComparisonGranularity | 'custom'>('monthly');
   const [customCurrentRange, setCustomCurrentRange] = useState<DateRange>({ start: '', end: '' });
   const [customPreviousRange, setCustomPreviousRange] = useState<DateRange>({ start: '', end: '' });
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingReportForComparisonId, setGeneratingReportForComparisonId] = useState<string | null>(null);
+
+  const isSinglePeriod = reportMode === 'period_summary';
 
   const resolvedScope: ReportScope | null =
     scope === 'client'
@@ -95,15 +100,20 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
 
   const handleGenerate = async () => {
     if (!resolvedScope) return;
-    if (granularity === 'custom' && (!customCurrentRange.start || !customCurrentRange.end || !customPreviousRange.start || !customPreviousRange.end)) {
-      return;
+    if (granularity === 'custom') {
+      const missingCurrent = !customCurrentRange.start || !customCurrentRange.end;
+      const missingPrevious = !isSinglePeriod && (!customPreviousRange.start || !customPreviousRange.end);
+      if (missingCurrent || missingPrevious) return;
     }
     setIsGenerating(true);
     try {
       await onGenerateComparison(
         resolvedScope,
+        reportMode,
         granularity,
-        granularity === 'custom' ? { currentRange: customCurrentRange, previousRange: customPreviousRange } : undefined
+        granularity === 'custom'
+          ? { currentRange: customCurrentRange, previousRange: isSinglePeriod ? undefined : customPreviousRange }
+          : undefined
       );
     } finally {
       setIsGenerating(false);
@@ -235,6 +245,36 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
         )}
       </div>
 
+      <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-purple-400" />
+          <span>Report Type</span>
+        </h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setReportMode('comparison')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              reportMode === 'comparison' ? 'bg-purple-600 text-white shadow' : 'bg-stone-900/60 text-stone-400 hover:text-white border border-stone-800'
+            }`}
+          >
+            Comparison Report
+          </button>
+          <button
+            onClick={() => setReportMode('period_summary')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              reportMode === 'period_summary' ? 'bg-purple-600 text-white shadow' : 'bg-stone-900/60 text-stone-400 hover:text-white border border-stone-800'
+            }`}
+          >
+            Period Report
+          </button>
+        </div>
+        <p className="text-[11px] text-stone-400">
+          {isSinglePeriod
+            ? 'A general activity summary for one period — totals only, no prior-period comparison.'
+            : 'Current period vs. a prior period, with deltas and a rule-generated recommendation.'}
+        </p>
+      </div>
+
       <PeriodSelector
         granularity={granularity}
         onGranularityChange={setGranularity}
@@ -245,7 +285,8 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
         canGenerate={!!resolvedScope}
         isGenerating={isGenerating}
         onGenerate={handleGenerate}
-        disabledReason="Select a scope above to generate a comparison."
+        disabledReason="Select a scope above to generate a report."
+        singlePeriod={isSinglePeriod}
       />
 
       <div className="space-y-3">

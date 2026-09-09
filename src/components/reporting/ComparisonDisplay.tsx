@@ -51,7 +51,9 @@ export const ServiceMetricsCard: React.FC<{
   current?: Record<string, any>;
   previous?: Record<string, any>;
   delta?: Partial<Record<string, number | null>>;
-}> = ({ serviceKey, title, current, previous, delta }) => {
+  // Period-summary rows have no previous/delta to show — just the current period's totals.
+  flat?: boolean;
+}> = ({ serviceKey, title, current, previous, delta, flat }) => {
   if (!current && !previous) return null;
   const labels = SERVICE_METRIC_LABELS[serviceKey];
   const units = SERVICE_METRIC_UNITS[serviceKey];
@@ -62,12 +64,16 @@ export const ServiceMetricsCard: React.FC<{
         {Object.keys(labels).map((key) => (
           <div key={key} className="flex items-center justify-between text-[11px]">
             <span className="text-stone-400">{labels[key]}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-stone-300 font-mono">
-                {formatMetricValue(previous?.[key], units[key])} → {formatMetricValue(current?.[key], units[key])}
-              </span>
-              <DeltaBadge value={delta?.[key]} />
-            </div>
+            {flat ? (
+              <span className="text-stone-300 font-mono">{formatMetricValue(current?.[key], units[key])}</span>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-stone-300 font-mono">
+                  {formatMetricValue(previous?.[key], units[key])} → {formatMetricValue(current?.[key], units[key])}
+                </span>
+                <DeltaBadge value={delta?.[key]} />
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -75,8 +81,10 @@ export const ServiceMetricsCard: React.FC<{
   );
 };
 
-// A single generated comparison: period label, the three service metric cards (whichever are
-// present), the rule-generated narrative, and an optional "Generate Report" action.
+// A single generated comparison or period summary: period label, the three service metric
+// cards (whichever are present), and — for a 'comparison' row only — the rule-generated
+// narrative. Dispatches on row_kind directly rather than inferring the shape from
+// period_previous, so a row's displayed shape can never disagree with how it was generated.
 export const ComparisonCard: React.FC<{
   comparison: ClientComparisonRecord;
   subtitle?: string;
@@ -84,15 +92,23 @@ export const ComparisonCard: React.FC<{
   isGeneratingReport?: boolean;
   onGenerateReport?: () => void;
 }> = ({ comparison, subtitle, canGenerateReport, isGeneratingReport, onGenerateReport }) => {
-  const narrative = generateComparisonNarrative(comparison.metrics_current, comparison.metrics_previous, comparison.delta);
+  const isSummary = comparison.row_kind === 'period_summary';
+  const narrative = isSummary
+    ? null
+    : generateComparisonNarrative(comparison.metrics_current, comparison.metrics_previous, comparison.delta);
 
   return (
     <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <span className="text-xs font-bold text-white font-mono">
-            {comparison.period_current} vs {comparison.period_previous}
+            {isSummary ? comparison.period_current : `${comparison.period_current} vs ${comparison.period_previous}`}
           </span>
+          {isSummary && (
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-semibold text-purple-200 bg-purple-900/50 uppercase align-middle">
+              Period Report
+            </span>
+          )}
           {subtitle && <span className="text-[11px] text-stone-400 block">{subtitle}</span>}
         </div>
         {canGenerateReport && onGenerateReport && (
@@ -113,6 +129,7 @@ export const ComparisonCard: React.FC<{
           current={comparison.metrics_current.media_buying}
           previous={comparison.metrics_previous.media_buying}
           delta={comparison.delta.media_buying}
+          flat={isSummary}
         />
         <ServiceMetricsCard
           serviceKey="social_media"
@@ -120,6 +137,7 @@ export const ComparisonCard: React.FC<{
           current={comparison.metrics_current.social_media}
           previous={comparison.metrics_previous.social_media}
           delta={comparison.delta.social_media}
+          flat={isSummary}
         />
         <ServiceMetricsCard
           serviceKey="seo"
@@ -127,19 +145,22 @@ export const ComparisonCard: React.FC<{
           current={comparison.metrics_current.seo}
           previous={comparison.metrics_previous.seo}
           delta={comparison.delta.seo}
+          flat={isSummary}
         />
       </div>
 
-      <div className="p-3 rounded-lg bg-purple-950/20 border border-purple-900/20 space-y-1.5">
-        <p className="text-xs text-stone-200 leading-relaxed">
-          <strong className="text-purple-300">Summary: </strong>
-          {narrative.summary}
-        </p>
-        <p className="text-xs text-stone-200 leading-relaxed">
-          <strong className="text-purple-300">Recommendation: </strong>
-          {comparison.ai_recommendations_text || narrative.recommendations}
-        </p>
-      </div>
+      {narrative && (
+        <div className="p-3 rounded-lg bg-purple-950/20 border border-purple-900/20 space-y-1.5">
+          <p className="text-xs text-stone-200 leading-relaxed">
+            <strong className="text-purple-300">Summary: </strong>
+            {narrative.summary}
+          </p>
+          <p className="text-xs text-stone-200 leading-relaxed">
+            <strong className="text-purple-300">Recommendation: </strong>
+            {comparison.ai_recommendations_text || narrative.recommendations}
+          </p>
+        </div>
+      )}
     </div>
   );
 };

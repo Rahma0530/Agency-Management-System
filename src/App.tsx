@@ -29,11 +29,14 @@ import {
 import { resolvePeriodRange, generateKpiScoreMetrics } from './lib/performanceScore';
 import {
   ComparisonGranularity,
+  ComparisonPeriod,
   DateRange,
+  ReportMode,
   ReportScope,
   resolveComparisonPeriods,
   customPeriod,
   generateClientComparison,
+  generatePeriodSummary,
   resolveClientsForSubject,
   serviceFilterForRole,
 } from './lib/reportingEngine';
@@ -1176,13 +1179,23 @@ export default function App() {
   // generating one for a specific direct report).
   const handleGenerateComparison = async (
     scope: ReportScope,
+    mode: ReportMode,
     granularity: ComparisonGranularity | 'custom',
-    custom?: { currentRange: DateRange; previousRange: DateRange }
+    custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => {
-    const { current, previous } =
-      granularity === 'custom' && custom
-        ? { current: customPeriod(custom.currentRange), previous: customPeriod(custom.previousRange) }
-        : resolveComparisonPeriods(granularity as ComparisonGranularity);
+    let current: ComparisonPeriod;
+    let previous: ComparisonPeriod | undefined;
+
+    if (granularity === 'custom' && custom) {
+      current = customPeriod(custom.currentRange);
+      previous = custom.previousRange ? customPeriod(custom.previousRange) : undefined;
+    } else {
+      const resolved = resolveComparisonPeriods(granularity as ComparisonGranularity);
+      current = resolved.current;
+      previous = resolved.previous;
+    }
+
+    if (mode === 'comparison' && !previous) return;
 
     let scopedClients: ClientRecord[];
     let serviceFilter: ServiceType[] | undefined;
@@ -1202,100 +1215,78 @@ export default function App() {
     }
 
     if (scopedClients.length === 0) {
-      showNotification('No clients found for this scope — nothing to compare.', 'info');
+      showNotification('No clients found for this scope — nothing to report on.', 'info');
       return;
     }
 
-    const result = generateClientComparison(scopedClients, packages, current, previous, campaigns, tasks, socialInsights, serviceFilter);
+    const result =
+      mode === 'comparison'
+        ? generateClientComparison(scopedClients, packages, current, previous!, campaigns, tasks, socialInsights, serviceFilter)
+        : generatePeriodSummary(scopedClients, packages, current, campaigns, tasks, socialInsights, serviceFilter);
 
-    if (scope.type === 'client') {
-      const existing = clientComparisons.find(
-        (c) => c.client_id === scope.clientId && c.period_current === result.period_current && c.period_previous === result.period_previous
-      );
-      const comparisonPayload: ClientComparisonRecord = {
-        id: existing?.id || `cmp-${Date.now().toString().slice(-4)}`,
-        ...result,
-        client_id: scope.clientId,
-        agent_id: null,
-        covered_client_ids: null,
-        created_at: existing?.created_at || new Date().toISOString(),
-      };
+    // created_at is preserved from whatever's already in local state (cheap, synchronous) for
+    // both write paths below; the network round trip only decides insert-vs-update targeting.
+    const localExisting = clientComparisons.find(
+      (c) =>
+        (scope.type === 'client' ? c.client_id === scope.clientId : c.agent_id === scope.agentId) &&
+        c.period_current === result.period_current &&
+        c.period_previous === result.period_previous
+    );
 
-      if (supabaseActive) {
-        try {
-          const { data, error } = await supabase
+    const comparisonPayload: ClientComparisonRecord = {
+      id: localExisting?.id || `cmp-${Date.now().toString().slice(-4)}`,
+      ...result,
+      client_id: scope.type === 'client' ? scope.clientId : null,
+      agent_id: scope.type === 'agent' ? scope.agentId : null,
+      covered_client_ids: scope.type === 'client' ? null : result.covered_client_ids,
+      created_at: localExisting?.created_at || new Date().toISOString(),
+    };
+
+    // Only the client-scoped comparison case sits behind the original, non-partial unique
+    // constraint (client_id, period_current, period_previous) — PostgREST's upsert(onConflict)
+    // can target that in one round trip. Every other combination (agent-scoped, or any
+    // period_summary row) sits behind a partial unique index instead (added across the last two
+    // migrations), which Postgres's ON CONFLICT arbiter inference generally won't match via a
+    // bare column list — those look up any existing row explicitly first, then update or insert.
+    const canOneShotUpsert = scope.type === 'client' && mode === 'comparison';
+
+    if (supabaseActive) {
+      try {
+        let data: ClientComparisonRecord[] | null;
+        let error: unknown;
+
+        if (canOneShotUpsert) {
+          ({ data, error } = await supabase
             .from('client_comparisons')
             .upsert([comparisonPayload], { onConflict: 'client_id,period_current,period_previous' })
-            .select();
-          if (error) throw error;
-          const saved = (data?.[0] as ClientComparisonRecord) || comparisonPayload;
-          setClientComparisons((prev) => [...prev.filter((c) => c.id !== saved.id), saved]);
-        } catch (err) {
-          console.error('Supabase client_comparisons upsert error:', err);
-          showNotification('Unable to save the comparison.', 'info');
-          return;
+            .select());
+        } else {
+          let lookup = supabase.from('client_comparisons').select('id').eq('period_current', result.period_current);
+          lookup = scope.type === 'client' ? lookup.eq('client_id', scope.clientId) : lookup.eq('agent_id', scope.agentId);
+          lookup = result.period_previous === null ? lookup.is('period_previous', null) : lookup.eq('period_previous', result.period_previous);
+          const { data: existingRow, error: lookupError } = await lookup.maybeSingle();
+          if (lookupError) throw lookupError;
+
+          ({ data, error } = existingRow
+            ? await supabase.from('client_comparisons').update(comparisonPayload).eq('id', existingRow.id).select()
+            : await supabase.from('client_comparisons').insert([comparisonPayload]).select());
         }
-      } else {
-        setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
+
+        if (error) throw error;
+        const saved = data?.[0] || comparisonPayload;
+        setClientComparisons((prev) => [...prev.filter((c) => c.id !== saved.id), saved]);
+      } catch (err) {
+        console.error('Supabase client_comparisons write error:', err);
+        showNotification('Unable to save the report.', 'info');
+        return;
       }
     } else {
-      // Agent-scoped rows sit behind a partial unique index (agent_id, period_current,
-      // period_previous) where agent_id is not null — PostgREST's upsert(onConflict) only takes
-      // a bare column list, and Postgres's ON CONFLICT arbiter inference generally won't match a
-      // partial index that way, so this looks up any existing row explicitly instead of
-      // upserting in one round trip.
-      const agentId = scope.agentId;
-      let existing: ClientComparisonRecord | undefined;
-
-      if (supabaseActive) {
-        try {
-          const { data, error } = await supabase
-            .from('client_comparisons')
-            .select('*')
-            .eq('agent_id', agentId)
-            .eq('period_current', result.period_current)
-            .eq('period_previous', result.period_previous)
-            .maybeSingle();
-          if (error) throw error;
-          existing = (data as ClientComparisonRecord) || undefined;
-        } catch (err) {
-          console.error('Supabase client_comparisons lookup error:', err);
-          showNotification('Unable to save the comparison.', 'info');
-          return;
-        }
-      } else {
-        existing = clientComparisons.find(
-          (c) => c.agent_id === agentId && c.period_current === result.period_current && c.period_previous === result.period_previous
-        );
-      }
-
-      const comparisonPayload: ClientComparisonRecord = {
-        id: existing?.id || `cmp-${Date.now().toString().slice(-4)}`,
-        ...result,
-        client_id: null,
-        agent_id: agentId,
-        created_at: existing?.created_at || new Date().toISOString(),
-      };
-
-      if (supabaseActive) {
-        try {
-          const { data, error } = existing
-            ? await supabase.from('client_comparisons').update(comparisonPayload).eq('id', existing.id).select()
-            : await supabase.from('client_comparisons').insert([comparisonPayload]).select();
-          if (error) throw error;
-          const saved = (data?.[0] as ClientComparisonRecord) || comparisonPayload;
-          setClientComparisons((prev) => [...prev.filter((c) => c.id !== saved.id), saved]);
-        } catch (err) {
-          console.error('Supabase client_comparisons write error:', err);
-          showNotification('Unable to save the comparison.', 'info');
-          return;
-        }
-      } else {
-        setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
-      }
+      setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
     }
 
-    showNotification(`Comparison generated for ${scopeLabel} (${result.period_current} vs ${result.period_previous}).`);
+    const periodLabel = mode === 'comparison' ? `${result.period_current} vs ${result.period_previous}` : result.period_current;
+    const kindLabel = mode === 'comparison' ? 'Comparison' : 'Period report';
+    showNotification(`${kindLabel} generated for ${scopeLabel} (${periodLabel}).`);
   };
 
   // 8c. File a monthly/period report against an existing comparison (Reporting Engine). The

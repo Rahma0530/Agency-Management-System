@@ -45,7 +45,7 @@ import {
 } from '../types/database';
 import { getRoleInfo } from '../data/roles';
 import { ClientDashboard } from './ClientDashboard';
-import { ComparisonGranularity, DateRange, ReportScope } from '../lib/reportingEngine';
+import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 
 interface CampaignManagementModuleProps {
   campaigns: CampaignRecord[];
@@ -66,8 +66,9 @@ interface CampaignManagementModuleProps {
   onUpdateCampaign: (id: string, updates: Partial<CampaignRecord>) => Promise<void> | void;
   onGenerateComparison?: (
     scope: ReportScope,
+    mode: ReportMode,
     granularity: ComparisonGranularity | 'custom',
-    custom?: { currentRange: DateRange; previousRange: DateRange }
+    custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
   isLoading?: boolean;

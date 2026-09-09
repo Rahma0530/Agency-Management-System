@@ -44,7 +44,7 @@ import { ClientDashboard } from './ClientDashboard';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
 import { BriefRepositoryView } from './BriefRepositoryView';
-import { ComparisonGranularity, DateRange, ReportScope } from '../lib/reportingEngine';
+import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 
 interface ServiceBriefsRoutingViewProps {
   currentUser: UserRecord;
@@ -71,8 +71,9 @@ interface ServiceBriefsRoutingViewProps {
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
   onGenerateComparison?: (
     scope: ReportScope,
+    mode: ReportMode,
     granularity: ComparisonGranularity | 'custom',
-    custom?: { currentRange: DateRange; previousRange: DateRange }
+    custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
 }
@@ -99,8 +100,9 @@ const AMServiceBriefsPanel: React.FC<{
   socialInsights: SocialInsightRecord[];
   onGenerateComparison?: (
     scope: ReportScope,
+    mode: ReportMode,
     granularity: ComparisonGranularity | 'custom',
-    custom?: { currentRange: DateRange; previousRange: DateRange }
+    custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
 }> = ({

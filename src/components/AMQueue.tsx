@@ -42,7 +42,7 @@ import {
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { ClientDashboard } from './ClientDashboard';
-import { ComparisonGranularity, DateRange, ReportScope } from '../lib/reportingEngine';
+import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 
 interface AMQueueProps {
   clients: ClientRecord[];
@@ -78,8 +78,9 @@ interface AMQueueProps {
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
   onGenerateComparison?: (
     scope: ReportScope,
+    mode: ReportMode,
     granularity: ComparisonGranularity | 'custom',
-    custom?: { currentRange: DateRange; previousRange: DateRange }
+    custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
 }
