@@ -1120,6 +1120,16 @@ export const getSupabase = (): SupabaseClient => {
 
 export const supabase = getSupabase();
 
+// Unwrapped client, bypassing the legacy client-side RLS-emulation proxy above (users/clients/
+// campaigns/tasks) for callers that aren't an employee session — that proxy is built entirely
+// around getSupabaseSessionUser() returning an employee-shaped UserRecord (via
+// setSupabaseSessionUser, called only from App.tsx's employee auth flow) and was superseded as
+// the actual security boundary by real Postgres RLS several migrations ago (see
+// 20260906120000_rls_policies.sql's header). The Client Portal (ClientPortalApp.tsx) never calls
+// setSupabaseSessionUser, so its `clients` table read goes through this instead, relying purely
+// on Postgres RLS (clients_select_portal_rls) the same way every unwrapped table already does.
+export const supabaseRaw: SupabaseClient = getRawSupabase();
+
 // Dev-only: expose supabase globally for browser verification and direct security testing
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as any).supabase = supabase;

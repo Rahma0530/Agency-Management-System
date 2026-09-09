@@ -37,6 +37,7 @@ import {
   ReportRecord,
   ClientComparisonRecord,
   SocialInsightRecord,
+  ClientPortalUserRecord,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
@@ -61,6 +62,7 @@ interface ServiceBriefsRoutingViewProps {
   reports?: ReportRecord[];
   clientComparisons?: ClientComparisonRecord[];
   socialInsights?: SocialInsightRecord[];
+  clientPortalUsers?: ClientPortalUserRecord[];
   onAssignServiceAgent: (
     clientId: string,
     serviceType: ServiceType,
@@ -76,6 +78,7 @@ interface ServiceBriefsRoutingViewProps {
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
 }
 
 // AM roles (am_team_lead, am_agent) don't work a single service — they need visibility into
@@ -98,6 +101,7 @@ const AMServiceBriefsPanel: React.FC<{
   reports: ReportRecord[];
   clientComparisons: ClientComparisonRecord[];
   socialInsights: SocialInsightRecord[];
+  clientPortalUsers: ClientPortalUserRecord[];
   onGenerateComparison?: (
     scope: ReportScope,
     mode: ReportMode,
@@ -105,6 +109,7 @@ const AMServiceBriefsPanel: React.FC<{
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
 }> = ({
   currentUser,
   clients,
@@ -120,8 +125,10 @@ const AMServiceBriefsPanel: React.FC<{
   reports,
   clientComparisons,
   socialInsights,
+  clientPortalUsers,
   onGenerateComparison,
   onGenerateReport,
+  onCreatePortalLogin,
 }) => {
   const isTeamLead = currentUser.role === 'am_team_lead';
 
@@ -241,10 +248,12 @@ const AMServiceBriefsPanel: React.FC<{
           reports={reports}
           clientComparisons={clientComparisons}
           socialInsights={socialInsights}
+          clientPortalUser={clientPortalUsers.find((cpu) => cpu.client_id === activeDashboardClient.id) || null}
           initialTab="briefs"
           onClose={() => setDashboardClientId(null)}
           onGenerateComparison={onGenerateComparison}
           onGenerateReport={onGenerateReport}
+          onCreatePortalLogin={onCreatePortalLogin}
         />
       )}
     </div>
@@ -266,11 +275,13 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   reports = [],
   clientComparisons = [],
   socialInsights = [],
+  clientPortalUsers = [],
   onAssignServiceAgent,
   onMarkBriefViewed,
   onNavigateToModule,
   onGenerateComparison,
   onGenerateReport,
+  onCreatePortalLogin,
 }) => {
   // AM roles get a dedicated cross-service overview instead of the single-service specialist
   // workflow below (they manage the overall client relationship, not one department's queue).
@@ -291,8 +302,10 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
         reports={reports}
         clientComparisons={clientComparisons}
         socialInsights={socialInsights}
+        clientPortalUsers={clientPortalUsers}
         onGenerateComparison={onGenerateComparison}
         onGenerateReport={onGenerateReport}
+        onCreatePortalLogin={onCreatePortalLogin}
       />
     );
   }

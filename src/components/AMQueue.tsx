@@ -38,6 +38,7 @@ import {
   ReportRecord,
   ClientComparisonRecord,
   SocialInsightRecord,
+  ClientPortalUserRecord,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
@@ -58,6 +59,7 @@ interface AMQueueProps {
   reports?: ReportRecord[];
   clientComparisons?: ClientComparisonRecord[];
   socialInsights?: SocialInsightRecord[];
+  clientPortalUsers?: ClientPortalUserRecord[];
   currentUser?: UserRecord;
   currentUserId?: string;
   onAssignAMAgent: (clientId: string, agentId: string) => Promise<void>;
@@ -83,6 +85,7 @@ interface AMQueueProps {
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
 }
 
 export const AMQueue: React.FC<AMQueueProps> = ({
@@ -99,6 +102,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   reports = [],
   clientComparisons = [],
   socialInsights = [],
+  clientPortalUsers = [],
   currentUser,
   currentUserId,
   onAssignAMAgent,
@@ -109,6 +113,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   onNavigateToModule,
   onGenerateComparison,
   onGenerateReport,
+  onCreatePortalLogin,
 }) => {
   const resolvedUser = currentUser || users.find((u) => u.id === currentUserId) || users[0];
   const effectiveUserId = resolvedUser?.id || currentUserId || '';
@@ -539,6 +544,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           reports={reports}
           clientComparisons={clientComparisons}
           socialInsights={socialInsights}
+          clientPortalUser={clientPortalUsers.find((cpu) => cpu.client_id === activeDashboardClient.id) || null}
           onClose={() => setDashboardClientId(null)}
           onSaveBrief={onSaveBrief}
           onAssignAMAgent={onAssignAMAgent}
@@ -547,6 +553,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           onMarkClientViewed={onMarkClientViewed}
           onGenerateComparison={onGenerateComparison}
           onGenerateReport={onGenerateReport}
+          onCreatePortalLogin={onCreatePortalLogin}
         />
       )}
     </div>

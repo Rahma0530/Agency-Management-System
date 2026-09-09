@@ -69,6 +69,23 @@ export interface ClientRecord {
   // period-scoped churn math must treat a null churned_at on a churned client as "unknown date",
   // not as "not churned" or "churned now".
   churned_at?: string | null;
+  // Dedicated, rotatable client-portal URL identifier — deliberately not the same as `id`, so a
+  // leaked or rotated portal link never touches the client's actual primary key. Null until a
+  // portal login is created for this client (ClientDashboard.tsx's "Create Portal Login" action).
+  portal_slug?: string | null;
+  created_at?: string;
+}
+
+// 3b. client_portal_users — the client-portal analog of `users`: one row per external client
+// login, parallel to (not merged with) the employee identity model. auth_id is null until the
+// client claims the row via self-signup (see ClientPortalLogin.tsx) — this app has no
+// service-role key to create another user's Supabase Auth account directly, so a login always
+// starts as a staff-created placeholder.
+export interface ClientPortalUserRecord {
+  id: string;
+  client_id: string;
+  auth_id?: string | null;
+  email: string;
   created_at?: string;
 }
 

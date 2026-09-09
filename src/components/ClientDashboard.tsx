@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   Lock,
   BarChart3,
+  KeyRound,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -40,6 +41,7 @@ import {
   ReportRecord,
   ClientComparisonRecord,
   SocialInsightRecord,
+  ClientPortalUserRecord,
 } from '../types/database';
 import { DynamicBriefForm } from './DynamicBriefForm';
 import {
@@ -54,6 +56,7 @@ import {
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 import { PeriodSelector } from './reporting/PeriodSelector';
 import { ComparisonCard, FiledReportsList } from './reporting/ComparisonDisplay';
+import { CreateClientPortalLoginModal } from './clientPortal/CreateClientPortalLoginModal';
 
 interface ClientDashboardProps {
   client: ClientRecord;
@@ -96,6 +99,8 @@ interface ClientDashboardProps {
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  clientPortalUser?: ClientPortalUserRecord | null;
+  onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
 }
 
 type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports';
@@ -134,6 +139,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   onMarkClientViewed,
   onGenerateComparison,
   onGenerateReport,
+  clientPortalUser,
+  onCreatePortalLogin,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
@@ -142,6 +149,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [showChurnConfirm, setShowChurnConfirm] = useState(false);
   const [churnReasonInput, setChurnReasonInput] = useState('');
+  const [isCreatePortalLoginOpen, setIsCreatePortalLoginOpen] = useState(false);
   const [reportMode, setReportMode] = useState<ReportMode>('comparison');
   const [reportGranularity, setReportGranularity] = useState<ComparisonGranularity | 'custom'>('monthly');
   const [customCurrentRange, setCustomCurrentRange] = useState<DateRange>({ start: '', end: '' });
@@ -944,6 +952,54 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Client Portal Access */}
+                <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">
+                      Client Portal Access
+                    </span>
+                    {canEditAM && onCreatePortalLogin && !clientPortalUser && (
+                      <button
+                        onClick={() => setIsCreatePortalLoginOpen(true)}
+                        className="text-xs px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white font-bold transition-all"
+                      >
+                        Create Portal Login
+                      </button>
+                    )}
+                  </div>
+                  {!clientPortalUser ? (
+                    <div className="flex items-center gap-3 mt-1">
+                      <div className="w-9 h-9 rounded-lg bg-stone-900/60 border border-stone-800 flex items-center justify-center">
+                        <KeyRound className="w-4 h-4 text-stone-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white">Not Set Up</p>
+                        <p className="text-xs text-stone-400">Client has no portal login yet</p>
+                      </div>
+                    </div>
+                  ) : clientPortalUser.auth_id ? (
+                    <div className="flex items-center gap-3 mt-1">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-900/20 border border-emerald-700/30 flex items-center justify-center">
+                        <KeyRound className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white">Active</p>
+                        <p className="text-xs text-stone-400">{clientPortalUser.email}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 mt-1">
+                      <div className="w-9 h-9 rounded-lg bg-amber-900/20 border border-amber-700/30 flex items-center justify-center">
+                        <KeyRound className="w-4 h-4 text-amber-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white">Pending Activation</p>
+                        <p className="text-xs text-stone-400">Invited: {clientPortalUser.email}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1264,6 +1320,14 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
           )}
         </div>
       </div>
+
+      {isCreatePortalLoginOpen && onCreatePortalLogin && (
+        <CreateClientPortalLoginModal
+          clientName={client.name}
+          onClose={() => setIsCreatePortalLoginOpen(false)}
+          onSubmit={(email) => onCreatePortalLogin(client.id, email)}
+        />
+      )}
     </div>
   );
 };

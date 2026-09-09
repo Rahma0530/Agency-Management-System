@@ -42,6 +42,7 @@ import {
   ReportRecord,
   ClientComparisonRecord,
   SocialInsightRecord,
+  ClientPortalUserRecord,
 } from '../types/database';
 import { getRoleInfo } from '../data/roles';
 import { ClientDashboard } from './ClientDashboard';
@@ -62,6 +63,7 @@ interface CampaignManagementModuleProps {
   reports?: ReportRecord[];
   clientComparisons?: ClientComparisonRecord[];
   socialInsights?: SocialInsightRecord[];
+  clientPortalUsers?: ClientPortalUserRecord[];
   onCreateCampaign: (campaignData: Partial<CampaignRecord>) => Promise<void> | void;
   onUpdateCampaign: (id: string, updates: Partial<CampaignRecord>) => Promise<void> | void;
   onGenerateComparison?: (
@@ -71,6 +73,7 @@ interface CampaignManagementModuleProps {
     custom?: { currentRange: DateRange; previousRange?: DateRange }
   ) => Promise<void>;
   onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
+  onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -210,10 +213,12 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   reports = [],
   clientComparisons = [],
   socialInsights = [],
+  clientPortalUsers = [],
   onCreateCampaign,
   onUpdateCampaign,
   onGenerateComparison,
   onGenerateReport,
+  onCreatePortalLogin,
   isLoading = false,
 }) => {
   const roleInfo = getRoleInfo(currentUser.role);
@@ -1789,10 +1794,12 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           reports={reports}
           clientComparisons={clientComparisons}
           socialInsights={socialInsights}
+          clientPortalUser={clientPortalUsers.find((cpu) => cpu.client_id === activeDashboardClient.id) || null}
           initialTab="campaigns"
           onClose={() => setDashboardClientId(null)}
           onGenerateComparison={onGenerateComparison}
           onGenerateReport={onGenerateReport}
+          onCreatePortalLogin={onCreatePortalLogin}
         />
       )}
     </div>

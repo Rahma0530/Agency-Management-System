@@ -66,6 +66,7 @@ import {
   SocialInsightRecord,
   ReportRecord,
   ClientComparisonRecord,
+  ClientPortalUserRecord,
 } from './types/database';
 import {
   INITIAL_PACKAGES,
@@ -136,6 +137,7 @@ export default function App() {
   const [socialInsights, setSocialInsights] = useState<SocialInsightRecord[]>([]);
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [clientComparisons, setClientComparisons] = useState<ClientComparisonRecord[]>([]);
+  const [clientPortalUsers, setClientPortalUsers] = useState<ClientPortalUserRecord[]>([]);
 
   // Authenticated user state initialized from localStorage
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRecord | null>(() => {
@@ -458,6 +460,14 @@ export default function App() {
         if (!comparisonErr && comparisonData && comparisonData.length > 0) {
           setClientComparisons(comparisonData as ClientComparisonRecord[]);
         }
+
+        // Fetch client_portal_users (Client Portal: invite/claim status for the AM-side UI)
+        const { data: portalUserData, error: portalUserErr } = await supabase
+          .from('client_portal_users')
+          .select('*');
+        if (!portalUserErr && portalUserData && portalUserData.length > 0) {
+          setClientPortalUsers(portalUserData as ClientPortalUserRecord[]);
+        }
       } catch (err) {
         console.warn('Supabase query error, relying on local cached state:', err);
       }
@@ -573,6 +583,34 @@ export default function App() {
 
     const client = clients.find((c) => c.id === clientId);
     showNotification(`Client "${client?.name || clientId}" status updated to ${newStatus}.`);
+  };
+
+  // 2b-2. Invite a client to the Client Portal: creates the placeholder client_portal_users row
+  // (auth_id null). The client finishes setup themselves via ClientPortalLogin.tsx's "First Time?"
+  // path, which claims this row by matching its own session email — see
+  // client_portal_users_claim_rls in the client_portal migration.
+  const handleCreatePortalLogin = async (clientId: string, email: string) => {
+    const newPortalUserPayload: ClientPortalUserRecord = {
+      id: `cpu-${Date.now().toString().slice(-6)}`,
+      client_id: clientId,
+      auth_id: null,
+      email,
+      created_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      const { data, error } = await supabase
+        .from('client_portal_users')
+        .insert([newPortalUserPayload])
+        .select();
+      if (error) throw error;
+      setClientPortalUsers((prev) => [...prev, (data?.[0] as ClientPortalUserRecord) || newPortalUserPayload]);
+    } else {
+      setClientPortalUsers((prev) => [...prev, newPortalUserPayload]);
+    }
+
+    const client = clients.find((c) => c.id === clientId);
+    showNotification(`Portal invite sent to ${email} for "${client?.name || clientId}".`);
   };
 
   // 2c. Mark a client as viewed by its assigned AM Team Lead (clears the "New" indicator)
@@ -1872,6 +1910,7 @@ export default function App() {
                     reports={reports}
                     clientComparisons={clientComparisons}
                     socialInsights={socialInsights}
+                    clientPortalUsers={clientPortalUsers}
                     currentUser={currentUser}
                     currentUserId={currentUser.id}
                     onAssignAMAgent={handleAssignAMAgent}
@@ -1881,6 +1920,7 @@ export default function App() {
                     onNavigateToModule={handleNavigateToModule}
                     onGenerateComparison={handleGenerateComparison}
                     onGenerateReport={handleGenerateReport}
+                    onCreatePortalLogin={handleCreatePortalLogin}
                   />
                 )}
               </div>
@@ -1904,11 +1944,13 @@ export default function App() {
                   reports={reports}
                   clientComparisons={clientComparisons}
                   socialInsights={socialInsights}
+                  clientPortalUsers={clientPortalUsers}
                   onAssignServiceAgent={handleAssignServiceAgent}
                   onMarkBriefViewed={handleMarkBriefViewedByTeamLead}
                   onNavigateToModule={handleNavigateToModule}
                   onGenerateComparison={handleGenerateComparison}
                   onGenerateReport={handleGenerateReport}
+                  onCreatePortalLogin={handleCreatePortalLogin}
                 />
               </div>
             )}
@@ -1993,10 +2035,12 @@ export default function App() {
                   reports={reports}
                   clientComparisons={clientComparisons}
                   socialInsights={socialInsights}
+                  clientPortalUsers={clientPortalUsers}
                   onCreateCampaign={handleCreateCampaign}
                   onUpdateCampaign={handleUpdateCampaign}
                   onGenerateComparison={handleGenerateComparison}
                   onGenerateReport={handleGenerateReport}
+                  onCreatePortalLogin={handleCreatePortalLogin}
                   isLoading={loading}
                 />
               </div>
