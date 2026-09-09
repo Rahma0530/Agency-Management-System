@@ -1915,6 +1915,8 @@ export default function App() {
                   currentUser={currentUser}
                   users={users}
                   clients={clients}
+                  packages={packages}
+                  assignments={assignments}
                   tasks={tasks}
                   dailyLogs={dailyLogs}
                   extraNotes={extraNotes}

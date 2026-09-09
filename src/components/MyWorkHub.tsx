@@ -16,6 +16,8 @@ import {
 import {
   UserRecord,
   ClientRecord,
+  PackageRecord,
+  AssignmentRecord,
   TaskRecord,
   DailyLogRecord,
   ExtraNoteRecord,
@@ -23,16 +25,21 @@ import {
   CapacityLogRecord,
   TaskStatus,
   UserRole,
+  ServiceType,
   PerformancePeriodType,
 } from '../types/database';
 import { getRoleInfo, AppModuleId } from '../data/roles';
 import { getTodayStr, isTaskOverdue, isTaskDueToday, getSortedEmployeeTasks } from '../lib/employeeWork';
+import { resolveDepartmentClients } from '../lib/reportingEngine';
+import { canSeeContractValue } from '../lib/permissions';
 import { EmployeePerformancePage } from './EmployeePerformancePage';
 
 interface MyWorkHubProps {
   currentUser: UserRecord;
   users: UserRecord[];
   clients: ClientRecord[];
+  packages: PackageRecord[];
+  assignments: AssignmentRecord[];
   tasks: TaskRecord[];
   dailyLogs: DailyLogRecord[];
   extraNotes: ExtraNoteRecord[];
@@ -55,16 +62,43 @@ interface MyWorkHubProps {
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
 }
 
-// Roles whose actual unit of work is clients they own, not tasks they're
-// assigned — same distinction lib/capacity.ts already draws for usedCapacity.
-// Mirrors AMQueue.tsx's visibleClients / SalesPortalView.tsx's client filter
-// exactly, rather than reinventing a third client-visibility rule.
-const CLIENT_FIRST_ROLES: UserRole[] = ['am_agent', 'am_team_lead', 'sales'];
+// Ordering only, not section presence: am_agent/am_team_lead/sales lead with
+// their client relationships (that's their actual unit of work — same
+// distinction lib/capacity.ts already draws for usedCapacity); every other
+// role leads with tasks. Every role except ai_engineer gets a My Clients
+// section either way (see myClients below) — this only decides which section
+// comes first.
+const CLIENT_FIRST_LAYOUT_ROLES: UserRole[] = ['am_agent', 'am_team_lead', 'sales'];
+
+// ai_engineer has no client relationship of any kind in this app's model —
+// not even the task-derived one graphic_designer/video_editor get — so it's
+// the one role with no My Clients section at all.
+const hasClientsSection = (role: UserRole) => role !== 'ai_engineer';
 
 // Sales has no TaskRecord assignments in this app's model — a task section
 // for them would always be empty, so it's simply omitted rather than shown
 // as a permanent "no tasks" placeholder.
 const hasTasksSection = (role: UserRole) => role !== 'sales';
+
+// The three pooled-client departments, keyed by their ServiceType — same
+// mapping serviceFilterForRole in lib/reportingEngine.ts uses.
+const SERVICE_BY_ROLE: Partial<Record<UserRole, ServiceType>> = {
+  media_buying_team_lead: 'media_buying',
+  media_buying_agent: 'media_buying',
+  seo_team_lead: 'seo',
+  seo_agent: 'seo',
+  social_media_team_lead: 'social_media',
+  social_media_agent: 'social_media',
+};
+const SERVICE_TEAM_LEAD_ROLES: UserRole[] = ['media_buying_team_lead', 'seo_team_lead', 'social_media_team_lead'];
+
+// graphic_designer/video_editor have no AssignmentRecord relationship (that
+// machinery only exists for the three departments above — 'creative' is a
+// valid ServiceType but no UI path ever creates an assignments row for it),
+// so "their" clients are derived from active task assignment instead: a
+// genuinely different, more transient signal than an owned relationship, but
+// the only one this app's data model actually gives these two roles.
+const TASK_DERIVED_CLIENT_ROLES: UserRole[] = ['graphic_designer', 'video_editor'];
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: 'To Do',
@@ -78,6 +112,8 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   currentUser,
   users,
   clients,
+  packages,
+  assignments,
   tasks,
   dailyLogs,
   extraNotes,
@@ -90,9 +126,10 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   onNavigateToModule,
 }) => {
   const roleInfo = getRoleInfo(currentUser.role);
-  const layout: 'client-first' | 'task-first' = CLIENT_FIRST_ROLES.includes(currentUser.role)
+  const layout: 'client-first' | 'task-first' = CLIENT_FIRST_LAYOUT_ROLES.includes(currentUser.role)
     ? 'client-first'
     : 'task-first';
+  const showClients = hasClientsSection(currentUser.role);
 
   const [notification, setNotification] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const showNotification = (text: string, type: 'success' | 'error' = 'success') => {
@@ -113,21 +150,44 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   const todayStr = useMemo(() => getTodayStr(), []);
 
   // ---------------------------------------------------------------------
-  // My Clients (client-first roles only)
+  // My Clients — every role except ai_engineer (see hasClientsSection),
+  // resolved differently per role's actual relationship to a client.
   // ---------------------------------------------------------------------
   const myClients = useMemo(() => {
-    if (layout !== 'client-first') return [];
-    if (currentUser.role === 'sales') {
+    if (!showClients) return [];
+    const role = currentUser.role;
+
+    if (role === 'sales') {
       return clients.filter((c) => c.sales_owner_id === currentUser.id);
     }
-    // am_agent / am_team_lead — mirrors AMQueue.tsx's visibleClients exactly:
-    // team lead sees every handed-off client, an agent only their own.
-    const handedOff = clients.filter((c) => c.status !== 'lead');
-    if (currentUser.role === 'am_agent') {
-      return handedOff.filter((c) => c.am_agent_id === currentUser.id);
+    // am_team_lead: sees a client from the moment it's created (they're
+    // responsible for receiving/routing it) — no status filter.
+    if (role === 'am_team_lead') {
+      return clients;
     }
-    return handedOff;
-  }, [layout, currentUser.role, currentUser.id, clients]);
+    // am_agent: a lead has no am_agent_id yet, so this already excludes
+    // pre-handoff clients without needing an explicit status filter.
+    if (role === 'am_agent') {
+      return clients.filter((c) => c.am_agent_id === currentUser.id);
+    }
+
+    const service = SERVICE_BY_ROLE[role];
+    if (service) {
+      const departmentClients = resolveDepartmentClients(service, clients, packages);
+      if (SERVICE_TEAM_LEAD_ROLES.includes(role)) return departmentClients;
+      // Agent: further narrowed to clients they're formally assigned to for
+      // this exact service — mirrors resolveClientsForSubject's agent branch.
+      return departmentClients.filter((c) =>
+        assignments.some((a) => a.client_id === c.id && a.service_type === service && a.agent_id === currentUser.id)
+      );
+    }
+
+    if (TASK_DERIVED_CLIENT_ROLES.includes(role)) {
+      return clients.filter((c) => tasks.some((t) => t.client_id === c.id && t.assigned_to === currentUser.id));
+    }
+
+    return [];
+  }, [showClients, currentUser.role, currentUser.id, clients, packages, assignments, tasks]);
 
   // ---------------------------------------------------------------------
   // My Tasks & Deadlines
@@ -147,6 +207,21 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
     ? 'daily_operations'
     : roleInfo.allowedModules.includes('tasks')
     ? 'tasks'
+    : null;
+
+  // Full-client-queue escape hatch: for AM/sales, 'onboarding' IS their
+  // client queue (AMQueue/SalesPortalView). For the department roles this
+  // section now also covers, 'onboarding' would route to AMQueue instead —
+  // not their client queue at all — so they get service_briefs (their own
+  // actual client-facing queue) if they have it, otherwise no escape hatch
+  // rather than a wrong one. graphic_designer/video_editor have neither, so
+  // this My Clients card is the only client view they get, full stop.
+  const clientEscapeModule: AppModuleId | null = CLIENT_FIRST_LAYOUT_ROLES.includes(currentUser.role)
+    ? roleInfo.allowedModules.includes('onboarding')
+      ? 'onboarding'
+      : null
+    : roleInfo.allowedModules.includes('service_briefs')
+    ? 'service_briefs'
     : null;
 
   const handleAdvanceStatus = async (task: TaskRecord) => {
@@ -226,7 +301,7 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   // ---------------------------------------------------------------------
   // Sections
   // ---------------------------------------------------------------------
-  const clientsSection = layout === 'client-first' && (
+  const clientsSection = showClients && (
     <div className="p-4 rounded-[18px] space-y-3" style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}>
       <div className="flex items-center justify-between pb-2 border-b border-stone-800">
         <div className="flex items-center gap-2">
@@ -239,25 +314,35 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
         <p className="text-xs text-stone-500 py-4 text-center">No clients currently assigned to you.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto">
-          {myClients.map((client) => (
-            <div
-              key={client.id}
-              className="p-3 rounded-xl border border-stone-800 bg-stone-900/60 flex items-center justify-between gap-2"
-            >
-              <div>
-                <p className="text-xs font-bold text-white">{client.name}</p>
-                <p className="text-[10px] text-stone-400 capitalize">{client.status}</p>
+          {myClients.map((client) => {
+            const showValue = canSeeContractValue(currentUser.role, client.sales_owner_id === currentUser.id);
+            return (
+              <div
+                key={client.id}
+                className="p-3 rounded-xl border border-stone-800 bg-stone-900/60 flex items-center justify-between gap-2"
+              >
+                <div>
+                  <p className="text-xs font-bold text-white">{client.name}</p>
+                  <p className="text-[10px] text-stone-400 capitalize">{client.status}</p>
+                </div>
+                <div className="text-right">
+                  {showValue && client.contract_value ? (
+                    <span className="text-[10px] font-mono text-emerald-400 block">
+                      {client.contract_value.toLocaleString()} SAR
+                    </span>
+                  ) : null}
+                  {client.renewal_date && (
+                    <span className="text-[10px] font-mono text-stone-500">Renews {client.renewal_date}</span>
+                  )}
+                </div>
               </div>
-              {client.renewal_date && (
-                <span className="text-[10px] font-mono text-stone-500">Renews {client.renewal_date}</span>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
-      {onNavigateToModule && roleInfo.allowedModules.includes('onboarding') && (
+      {onNavigateToModule && clientEscapeModule && (
         <button
-          onClick={() => onNavigateToModule('onboarding')}
+          onClick={() => onNavigateToModule(clientEscapeModule)}
           className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[11px] font-bold text-purple-200 bg-purple-900/20 hover:bg-purple-800/40 hover:text-white border border-purple-700/30 transition-all"
         >
           <span>Open full client queue</span>
@@ -482,7 +567,7 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   const orderedSections =
     layout === 'client-first'
       ? [clientsSection, tasksSection, dailyLogSection, extraEffortSection]
-      : [tasksSection, dailyLogSection, extraEffortSection];
+      : [tasksSection, clientsSection, dailyLogSection, extraEffortSection];
 
   return (
     <div className="space-y-6" id="my-work-hub">

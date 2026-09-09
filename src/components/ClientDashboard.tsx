@@ -57,6 +57,7 @@ import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../li
 import { PeriodSelector } from './reporting/PeriodSelector';
 import { ComparisonCard, FiledReportsList } from './reporting/ComparisonDisplay';
 import { CreateClientPortalLoginModal } from './clientPortal/CreateClientPortalLoginModal';
+import { canSeeContractValue } from '../lib/permissions';
 
 interface ClientDashboardProps {
   client: ClientRecord;
@@ -256,6 +257,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     currentUser.role === 'executive' ||
     currentUser.role === 'head_of_technical';
 
+  const showContractValue = canSeeContractValue(currentUser.role, client.sales_owner_id === currentUser.id);
+
   // Only the AM department can actually enter/edit brief data: am_agent is the primary author
   // (they run the client meeting), am_team_lead can edit as department oversight/fallback.
   // Everyone else who is allowed to see brief content at all (service teams, executive/HoT) is
@@ -425,7 +428,9 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               </div>
               <div className="flex items-center gap-4 text-xs text-stone-300 mt-1 flex-wrap">
                 <span>Industry: <strong className="text-white">{client.industry || 'General Business'}</strong></span>
-                <span>Contract: <strong className="text-emerald-400 font-mono">{client.contract_value ? `${client.contract_value.toLocaleString()} SAR/mo` : 'Custom'}</strong></span>
+                {showContractValue && (
+                  <span>Contract: <strong className="text-emerald-400 font-mono">{client.contract_value ? `${client.contract_value.toLocaleString()} SAR/mo` : 'Custom'}</strong></span>
+                )}
                 <span>Start Date: <strong className="text-stone-200">{client.start_date || 'Immediate'}</strong></span>
                 <span>Renewal Date: <strong className="text-stone-200">{client.renewal_date || 'Not set'}</strong></span>
               </div>
@@ -566,13 +571,15 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
-                  <span className="text-xs text-stone-400 block mb-1">Monthly Investment</span>
-                  <p className="text-2xl font-bold text-emerald-400 font-mono">
-                    {client.contract_value ? `${client.contract_value.toLocaleString()} SAR` : 'N/A'}
-                  </p>
-                  <span className="text-[11px] text-stone-400 mt-1 block">Retainer service fee per cycle</span>
-                </div>
+                {showContractValue && (
+                  <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
+                    <span className="text-xs text-stone-400 block mb-1">Monthly Investment</span>
+                    <p className="text-2xl font-bold text-emerald-400 font-mono">
+                      {client.contract_value ? `${client.contract_value.toLocaleString()} SAR` : 'N/A'}
+                    </p>
+                    <span className="text-[11px] text-stone-400 mt-1 block">Retainer service fee per cycle</span>
+                  </div>
+                )}
 
                 <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
                   <span className="text-xs text-stone-400 block mb-1">Onboarding Progress</span>

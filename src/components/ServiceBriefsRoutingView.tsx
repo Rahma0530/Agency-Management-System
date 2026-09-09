@@ -46,6 +46,7 @@ import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
 import { BriefRepositoryView } from './BriefRepositoryView';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
+import { canSeeContractValue } from '../lib/permissions';
 
 interface ServiceBriefsRoutingViewProps {
   currentUser: UserRecord;
@@ -744,7 +745,9 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                             )}
                           </h4>
                           <span className="text-[11px] text-stone-400">
-                            {client.industry || 'General'} • {client.contract_value?.toLocaleString()} SAR
+                            {client.industry || 'General'}
+                            {canSeeContractValue(currentUser.role, client.sales_owner_id === currentUser.id) &&
+                              ` • ${client.contract_value?.toLocaleString()} SAR`}
                           </span>
                         </div>
                       </div>
