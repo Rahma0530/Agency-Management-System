@@ -43,6 +43,9 @@ import {
   ClientComparisonRecord,
   SocialInsightRecord,
   ClientPortalUserRecord,
+  PlatformConnectionRecord,
+  PlatformConnectionStatus,
+  PlatformCategory,
 } from '../types/database';
 import { getRoleInfo } from '../data/roles';
 import { ClientDashboard } from './ClientDashboard';
@@ -76,6 +79,14 @@ interface CampaignManagementModuleProps {
   onGenerateMonthlyReportDraft?: (clientId: string) => Promise<void>;
   onApproveReport?: (reportId: string) => Promise<void>;
   onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
+  platformConnections?: PlatformConnectionRecord[];
+  onSetPlatformConnectionStatus?: (
+    clientId: string,
+    platformName: string,
+    platformCategory: PlatformCategory,
+    status: PlatformConnectionStatus,
+    notes: string
+  ) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -223,6 +234,8 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   onGenerateMonthlyReportDraft,
   onApproveReport,
   onCreatePortalLogin,
+  platformConnections = [],
+  onSetPlatformConnectionStatus,
   isLoading = false,
 }) => {
   const roleInfo = getRoleInfo(currentUser.role);
@@ -1806,6 +1819,8 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}
           onApproveReport={onApproveReport}
           onCreatePortalLogin={onCreatePortalLogin}
+          platformConnections={platformConnections}
+          onSetPlatformConnectionStatus={onSetPlatformConnectionStatus}
         />
       )}
     </div>

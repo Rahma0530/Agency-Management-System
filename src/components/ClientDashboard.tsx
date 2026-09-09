@@ -24,6 +24,7 @@ import {
   BarChart3,
   KeyRound,
   Video,
+  Plug,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -44,6 +45,9 @@ import {
   SocialInsightRecord,
   ClientPortalUserRecord,
   MeetingRecord,
+  PlatformConnectionRecord,
+  PlatformConnectionStatus,
+  PlatformCategory,
 } from '../types/database';
 import { DynamicBriefForm } from './DynamicBriefForm';
 import {
@@ -61,6 +65,7 @@ import { ComparisonCard, FiledReportsList } from './reporting/ComparisonDisplay'
 import { CreateClientPortalLoginModal } from './clientPortal/CreateClientPortalLoginModal';
 import { MonthlyReportDraftView } from './reporting/MonthlyReportDraftView';
 import { ClientMeetingsPanel } from './ClientMeetingsPanel';
+import { ClientIntegrationsPanel } from './ClientIntegrationsPanel';
 import { canSeeContractValue } from '../lib/permissions';
 import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
 
@@ -115,9 +120,17 @@ interface ClientDashboardProps {
     meetingId: string,
     updates: { transcript_text?: string; ai_summary_text?: string }
   ) => Promise<void>;
+  platformConnections?: PlatformConnectionRecord[];
+  onSetPlatformConnectionStatus?: (
+    clientId: string,
+    platformName: string,
+    platformCategory: PlatformCategory,
+    status: PlatformConnectionStatus,
+    notes: string
+  ) => Promise<void>;
 }
 
-type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports' | 'meetings';
+type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports' | 'meetings' | 'integrations';
 
 const CLIENT_STATUS_META: Record<ClientStatus, { label: string; bg: string; color: string; border: string }> = {
   lead: { label: 'Lead', bg: 'rgba(168, 155, 184, 0.15)', color: 'var(--lilac)', border: 'rgba(168, 155, 184, 0.3)' },
@@ -160,6 +173,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   meetings = [],
   onUploadMeetingRecording,
   onSaveMeetingNotes,
+  platformConnections = [],
+  onSetPlatformConnectionStatus,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
@@ -337,6 +352,11 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   const clientMeetingsForClient = useMemo(
     () => meetings.filter((m) => m.client_id === client.id),
     [meetings, client.id]
+  );
+
+  const clientPlatformConnectionsForClient = useMemo(
+    () => platformConnections.filter((p) => p.client_id === client.id),
+    [platformConnections, client.id]
   );
 
   const isSinglePeriodReport = reportMode === 'period_summary';
@@ -579,6 +599,20 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
             >
               <Video className="w-3.5 h-3.5" />
               <span>Meetings ({clientMeetingsForClient.length})</span>
+            </button>
+          )}
+
+          {hasReportsAccess && (
+            <button
+              onClick={() => setActiveTab('integrations')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === 'integrations'
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-stone-400 hover:text-stone-200 hover:bg-purple-950/30'
+              }`}
+            >
+              <Plug className="w-3.5 h-3.5" />
+              <span>Integrations</span>
             </button>
           )}
         </div>
@@ -1397,6 +1431,17 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               canUpload={hasReportsAccess && !!onUploadMeetingRecording}
               onUploadRecording={onUploadMeetingRecording || (async () => {})}
               onSaveMeetingNotes={onSaveMeetingNotes || (async () => {})}
+            />
+          )}
+
+          {/* 9. INTEGRATIONS (Module 6 scaffolding) */}
+          {activeTab === 'integrations' && (
+            <ClientIntegrationsPanel
+              client={client}
+              connections={clientPlatformConnectionsForClient}
+              users={users}
+              canManage={hasReportsAccess && !!onSetPlatformConnectionStatus}
+              onSetStatus={onSetPlatformConnectionStatus || (async () => {})}
             />
           )}
         </div>

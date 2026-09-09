@@ -70,6 +70,9 @@ import {
   ClientComparisonRecord,
   ClientPortalUserRecord,
   MeetingRecord,
+  PlatformConnectionRecord,
+  PlatformConnectionStatus,
+  PlatformCategory,
 } from './types/database';
 import {
   INITIAL_PACKAGES,
@@ -143,6 +146,7 @@ export default function App() {
   const [clientComparisons, setClientComparisons] = useState<ClientComparisonRecord[]>([]);
   const [clientPortalUsers, setClientPortalUsers] = useState<ClientPortalUserRecord[]>([]);
   const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
+  const [platformConnections, setPlatformConnections] = useState<PlatformConnectionRecord[]>([]);
 
   // Authenticated user state initialized from localStorage
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRecord | null>(() => {
@@ -478,6 +482,14 @@ export default function App() {
         const { data: meetingData, error: meetingErr } = await supabase.from('meetings').select('*');
         if (!meetingErr && meetingData && meetingData.length > 0) {
           setMeetings(meetingData as MeetingRecord[]);
+        }
+
+        // Fetch platform_connections (Module 6 scaffolding: manual integration status tracker)
+        const { data: platformConnectionData, error: platformConnectionErr } = await supabase
+          .from('platform_connections')
+          .select('*');
+        if (!platformConnectionErr && platformConnectionData && platformConnectionData.length > 0) {
+          setPlatformConnections(platformConnectionData as PlatformConnectionRecord[]);
         }
       } catch (err) {
         console.warn('Supabase query error, relying on local cached state:', err);
@@ -1556,6 +1568,47 @@ export default function App() {
     showNotification('Meeting notes saved.');
   };
 
+  // 8h. Manually set a platform's connection status (Module 6 scaffolding, point 1). This is a
+  // real tracker of the human process of getting API access from a client — never a live
+  // connection, never a real OAuth flow, and no credentials are read or written here at all.
+  const handleSetPlatformConnectionStatus = async (
+    clientId: string,
+    platformName: string,
+    platformCategory: PlatformCategory,
+    status: PlatformConnectionStatus,
+    notes: string
+  ) => {
+    const existing = platformConnections.find((p) => p.client_id === clientId && p.platform_name === platformName);
+    const now = new Date().toISOString();
+    const payload: PlatformConnectionRecord = {
+      id: existing?.id || `pc-${Date.now().toString().slice(-4)}`,
+      client_id: clientId,
+      platform_category: platformCategory,
+      platform_name: platformName,
+      status,
+      connected_by: currentUser.id,
+      connected_at: now,
+      last_synced_at: existing?.last_synced_at || null,
+      notes: notes || null,
+      created_at: existing?.created_at || now,
+      updated_at: now,
+    };
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('platform_connections').upsert([payload], { onConflict: 'client_id,platform_name' });
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase platform_connections upsert error:', err);
+        showNotification('Unable to update the connection status.', 'info');
+        return;
+      }
+    }
+
+    setPlatformConnections((prev) => [...prev.filter((p) => p.id !== payload.id), payload]);
+    showNotification(`${platformName.replace(/_/g, ' ')} marked as ${status.replace('_', ' ')}.`);
+  };
+
   // 9. Create and update ad campaigns (Campaign Management)
   const handleCreateCampaign = async (campaignData: Partial<CampaignRecord>) => {
     const newId = `cmp-${Date.now().toString().slice(-4)}`;
@@ -2153,6 +2206,8 @@ export default function App() {
                     meetings={meetings}
                     onUploadMeetingRecording={handleUploadMeetingRecording}
                     onSaveMeetingNotes={handleSaveMeetingNotes}
+                    platformConnections={platformConnections}
+                    onSetPlatformConnectionStatus={handleSetPlatformConnectionStatus}
                   />
                 )}
               </div>
@@ -2185,6 +2240,8 @@ export default function App() {
                   onGenerateMonthlyReportDraft={handleGenerateMonthlyReportDraft}
                   onApproveReport={handleApproveReport}
                   onCreatePortalLogin={handleCreatePortalLogin}
+                  platformConnections={platformConnections}
+                  onSetPlatformConnectionStatus={handleSetPlatformConnectionStatus}
                 />
               </div>
             )}
@@ -2277,6 +2334,8 @@ export default function App() {
                   onGenerateMonthlyReportDraft={handleGenerateMonthlyReportDraft}
                   onApproveReport={handleApproveReport}
                   onCreatePortalLogin={handleCreatePortalLogin}
+                  platformConnections={platformConnections}
+                  onSetPlatformConnectionStatus={handleSetPlatformConnectionStatus}
                   isLoading={loading}
                 />
               </div>

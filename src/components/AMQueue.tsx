@@ -40,6 +40,9 @@ import {
   SocialInsightRecord,
   ClientPortalUserRecord,
   MeetingRecord,
+  PlatformConnectionRecord,
+  PlatformConnectionStatus,
+  PlatformCategory,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
@@ -95,6 +98,14 @@ interface AMQueueProps {
     meetingId: string,
     updates: { transcript_text?: string; ai_summary_text?: string }
   ) => Promise<void>;
+  platformConnections?: PlatformConnectionRecord[];
+  onSetPlatformConnectionStatus?: (
+    clientId: string,
+    platformName: string,
+    platformCategory: PlatformCategory,
+    status: PlatformConnectionStatus,
+    notes: string
+  ) => Promise<void>;
 }
 
 export const AMQueue: React.FC<AMQueueProps> = ({
@@ -128,6 +139,8 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   meetings = [],
   onUploadMeetingRecording,
   onSaveMeetingNotes,
+  platformConnections = [],
+  onSetPlatformConnectionStatus,
 }) => {
   const resolvedUser = currentUser || users.find((u) => u.id === currentUserId) || users[0];
   const effectiveUserId = resolvedUser?.id || currentUserId || '';
@@ -572,6 +585,8 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           meetings={meetings}
           onUploadMeetingRecording={onUploadMeetingRecording}
           onSaveMeetingNotes={onSaveMeetingNotes}
+          platformConnections={platformConnections}
+          onSetPlatformConnectionStatus={onSetPlatformConnectionStatus}
           onCreatePortalLogin={onCreatePortalLogin}
         />
       )}

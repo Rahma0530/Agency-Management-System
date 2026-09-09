@@ -213,6 +213,38 @@ export interface SocialInsightRecord {
   date: string;
 }
 
+// Module 6 (External Integrations Hub) scaffolding — see
+// supabase/migrations/20260915100000_platform_connections.sql. No
+// credential/token field exists here on purpose; see that migration's
+// header comment for where real credentials would eventually live.
+export type PlatformCategory = 'media_buying' | 'analytics' | 'social_media';
+export type PlatformConnectionStatus = 'not_connected' | 'pending' | 'connected';
+
+export interface PlatformConnectionRecord {
+  id: string;
+  client_id: string;
+  platform_category: PlatformCategory;
+  platform_name: string;
+  status: PlatformConnectionStatus;
+  connected_by?: string | null;
+  connected_at?: string | null;
+  last_synced_at?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Destination table for performance/analytics/traffic data (e.g. GA4,
+// Search Console) — mirrors SocialInsightRecord exactly. Nothing writes to
+// this yet; it exists so the data model is complete ahead of a real pull.
+export interface AnalyticsInsightRecord {
+  id: string;
+  client_id: string;
+  platform: 'google_analytics' | 'google_search_console' | string;
+  metrics: Record<string, any>;
+  date: string;
+}
+
 // 9. reports
 export interface ReportRecord {
   id: string;

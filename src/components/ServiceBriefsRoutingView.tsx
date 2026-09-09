@@ -38,6 +38,9 @@ import {
   ClientComparisonRecord,
   SocialInsightRecord,
   ClientPortalUserRecord,
+  PlatformConnectionRecord,
+  PlatformConnectionStatus,
+  PlatformCategory,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
@@ -83,6 +86,14 @@ interface ServiceBriefsRoutingViewProps {
   onGenerateMonthlyReportDraft?: (clientId: string) => Promise<void>;
   onApproveReport?: (reportId: string) => Promise<void>;
   onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
+  platformConnections?: PlatformConnectionRecord[];
+  onSetPlatformConnectionStatus?: (
+    clientId: string,
+    platformName: string,
+    platformCategory: PlatformCategory,
+    status: PlatformConnectionStatus,
+    notes: string
+  ) => Promise<void>;
 }
 
 // AM roles (am_team_lead, am_agent) don't work a single service — they need visibility into
@@ -116,6 +127,14 @@ const AMServiceBriefsPanel: React.FC<{
   onGenerateMonthlyReportDraft?: (clientId: string) => Promise<void>;
   onApproveReport?: (reportId: string) => Promise<void>;
   onCreatePortalLogin?: (clientId: string, email: string) => Promise<void>;
+  platformConnections: PlatformConnectionRecord[];
+  onSetPlatformConnectionStatus?: (
+    clientId: string,
+    platformName: string,
+    platformCategory: PlatformCategory,
+    status: PlatformConnectionStatus,
+    notes: string
+  ) => Promise<void>;
 }> = ({
   currentUser,
   clients,
@@ -137,6 +156,8 @@ const AMServiceBriefsPanel: React.FC<{
   onGenerateMonthlyReportDraft,
   onApproveReport,
   onCreatePortalLogin,
+  platformConnections,
+  onSetPlatformConnectionStatus,
 }) => {
   const isTeamLead = currentUser.role === 'am_team_lead';
 
@@ -264,6 +285,8 @@ const AMServiceBriefsPanel: React.FC<{
           onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}
           onApproveReport={onApproveReport}
           onCreatePortalLogin={onCreatePortalLogin}
+          platformConnections={platformConnections}
+          onSetPlatformConnectionStatus={onSetPlatformConnectionStatus}
         />
       )}
     </div>
@@ -294,6 +317,8 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   onGenerateMonthlyReportDraft,
   onApproveReport,
   onCreatePortalLogin,
+  platformConnections = [],
+  onSetPlatformConnectionStatus,
 }) => {
   // AM roles get a dedicated cross-service overview instead of the single-service specialist
   // workflow below (they manage the overall client relationship, not one department's queue).
@@ -320,6 +345,8 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
         onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}
         onApproveReport={onApproveReport}
         onCreatePortalLogin={onCreatePortalLogin}
+        platformConnections={platformConnections}
+        onSetPlatformConnectionStatus={onSetPlatformConnectionStatus}
       />
     );
   }
