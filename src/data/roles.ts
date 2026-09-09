@@ -1,6 +1,6 @@
 import { UserRole } from '../types/database';
 
-export type AppModuleId = 'onboarding' | 'service_briefs' | 'capacity' | 'tasks' | 'daily_operations' | 'campaigns' | 'reports';
+export type AppModuleId = 'onboarding' | 'service_briefs' | 'capacity' | 'tasks' | 'daily_operations' | 'campaigns' | 'reports' | 'dashboard';
 
 export interface RoleMetadata {
   role: UserRole;
@@ -30,8 +30,8 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     department: 'Executive Board',
     badgeBg: 'rgba(216, 180, 254, 0.2)',
     badgeText: '#e9d5ff',
-    defaultModule: 'capacity',
-    allowedModules: ['capacity', 'tasks', 'campaigns', 'reports'],
+    defaultModule: 'dashboard',
+    allowedModules: ['dashboard', 'capacity', 'tasks', 'campaigns', 'reports'],
     canRegisterClients: false,
     canCreateCampaign: false,
     canManageCapacity: true,
@@ -47,8 +47,8 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     department: 'Technical & Operations',
     badgeBg: 'rgba(123, 47, 247, 0.25)',
     badgeText: '#c084fc',
-    defaultModule: 'capacity',
-    allowedModules: ['capacity', 'tasks', 'daily_operations', 'campaigns', 'reports'],
+    defaultModule: 'dashboard',
+    allowedModules: ['dashboard', 'capacity', 'tasks', 'daily_operations', 'campaigns', 'reports'],
     canRegisterClients: false,
     canCreateCampaign: false,
     canManageCapacity: true,
@@ -81,8 +81,8 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     department: 'Account Management',
     badgeBg: 'rgba(123, 47, 247, 0.2)',
     badgeText: 'var(--purple-light)',
-    defaultModule: 'onboarding',
-    allowedModules: ['onboarding', 'service_briefs', 'capacity', 'tasks', 'campaigns', 'reports'],
+    defaultModule: 'dashboard',
+    allowedModules: ['dashboard', 'onboarding', 'service_briefs', 'capacity', 'tasks', 'campaigns', 'reports'],
     canRegisterClients: false,
     canCreateCampaign: false,
     canManageCapacity: true,
@@ -115,8 +115,8 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     department: 'Paid Media',
     badgeBg: 'rgba(14, 165, 233, 0.2)',
     badgeText: '#38bdf8',
-    defaultModule: 'campaigns',
-    allowedModules: ['campaigns', 'onboarding', 'service_briefs', 'daily_operations', 'tasks', 'capacity', 'reports'],
+    defaultModule: 'dashboard',
+    allowedModules: ['dashboard', 'campaigns', 'onboarding', 'service_briefs', 'daily_operations', 'tasks', 'capacity', 'reports'],
     canRegisterClients: false,
     canCreateCampaign: true,
     canManageCapacity: true,
@@ -149,8 +149,8 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     department: 'Organic Search (SEO)',
     badgeBg: 'rgba(16, 185, 129, 0.2)',
     badgeText: '#34d399',
-    defaultModule: 'onboarding',
-    allowedModules: ['onboarding', 'service_briefs', 'daily_operations', 'tasks', 'capacity', 'reports'],
+    defaultModule: 'dashboard',
+    allowedModules: ['dashboard', 'onboarding', 'service_briefs', 'daily_operations', 'tasks', 'capacity', 'reports'],
     canRegisterClients: false,
     canCreateCampaign: false,
     canManageCapacity: true,
@@ -183,8 +183,8 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     department: 'Social Media & Content',
     badgeBg: 'rgba(236, 72, 153, 0.2)',
     badgeText: '#f472b6',
-    defaultModule: 'onboarding',
-    allowedModules: ['onboarding', 'service_briefs', 'daily_operations', 'tasks', 'capacity', 'reports'],
+    defaultModule: 'dashboard',
+    allowedModules: ['dashboard', 'onboarding', 'service_briefs', 'daily_operations', 'tasks', 'capacity', 'reports'],
     canRegisterClients: false,
     canCreateCampaign: false,
     canManageCapacity: true,

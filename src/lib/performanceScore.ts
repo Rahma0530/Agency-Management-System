@@ -210,6 +210,18 @@ export function generateKpiScoreMetrics(
 // as "suggested — requires review."
 // ----------------------------------------------------------------------------
 
+// suggested_status stays a loose string type at the schema level (room for future values without
+// a migration), so this only covers the 4 values suggestClassification() actually produces —
+// anything else falls back to a neutral label/color rather than guessing. Exported so any screen
+// showing a suggested_status (EmployeePerformancePage.tsx, TeamLeadDashboard.tsx's employee
+// roster) renders the identical label/color instead of re-deriving its own.
+export const STATUS_META: Record<string, { label: string; color: string }> = {
+  promotion: { label: 'Promotion-Worthy', color: 'var(--roas-good)' },
+  raise: { label: 'Raise-Worthy', color: '#38bdf8' },
+  development_plan: { label: 'Needs Development Plan', color: 'var(--roas-bad)' },
+  stable: { label: 'Stable Performance', color: 'var(--lilac)' },
+};
+
 const CLASSIFIABLE_INDICATOR_KEYS = [
   'on_time_completion_rate',
   'capacity_utilization_score',

@@ -41,6 +41,7 @@ import {
   serviceFilterForRole,
 } from './lib/reportingEngine';
 import { ReportsHub } from './components/ReportsHub';
+import { DashboardHub } from './components/DashboardHub';
 import {
   ClientRecord,
   ClientStatus,
@@ -548,6 +549,7 @@ export default function App() {
     const updatePayload: Partial<ClientRecord> = { status: newStatus };
     if (newStatus === 'churned') {
       updatePayload.churn_reason = options?.churn_reason || null;
+      updatePayload.churned_at = new Date().toISOString();
     }
     if (options?.renewal_date) {
       updatePayload.renewal_date = options.renewal_date;
@@ -1557,6 +1559,26 @@ export default function App() {
           }}
         >
           <nav className="flex flex-col gap-1.5 p-4">
+            {/* Tab 0: Leadership Dashboard */}
+            {userRoleInfo.allowedModules.includes('dashboard') && (
+              <button
+                onClick={() => handleTabChange('dashboard')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'dashboard'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'dashboard' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'dashboard' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'dashboard' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <Gauge className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Dashboard</span>
+              </button>
+            )}
+
             {/* Tab 1: Onboarding & Briefs */}
             {userRoleInfo.allowedModules.includes('onboarding') && (
               <button
@@ -1806,6 +1828,25 @@ export default function App() {
               clients={clients}
               onOpenRegisterModal={userRoleInfo.canRegisterClients ? () => setIsRegisterModalOpen(true) : undefined}
             />
+
+            {/* Tab 0: Leadership Dashboard */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                <DashboardHub
+                  currentUser={currentUser}
+                  users={users}
+                  clients={clients}
+                  packages={packages}
+                  campaigns={campaigns}
+                  tasks={tasks}
+                  socialInsights={socialInsights}
+                  assignments={assignments}
+                  briefs={briefs}
+                  kpiScores={kpiScores}
+                  onNavigateToModule={handleNavigateToModule}
+                />
+              </div>
+            )}
 
             {/* Tab 1: Onboarding & Briefs or Sales Portal */}
             {activeTab === 'onboarding' && (

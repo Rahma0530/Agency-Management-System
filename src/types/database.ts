@@ -63,6 +63,12 @@ export interface ClientRecord {
   renewal_date?: string | null;
   am_team_lead_viewed_at?: string | null;
   churn_reason?: string | null;
+  // Set automatically by handleUpdateClientStatus (App.tsx) the moment status transitions to
+  // 'churned'. Null for any client that churned before this column existed — not retroactively
+  // backfillable, since there's no reliable prior signal for when that happened. Consumers doing
+  // period-scoped churn math must treat a null churned_at on a churned client as "unknown date",
+  // not as "not churned" or "churned now".
+  churned_at?: string | null;
   created_at?: string;
 }
 

@@ -104,15 +104,30 @@ export type ReportScope = { type: 'client'; clientId: string } | { type: 'agent'
 // parameter, and the persisted row all agree with no translation step between them.
 export type ReportMode = 'comparison' | 'period_summary';
 
+// True if the client's package includes the given service. Standalone (not nested in
+// resolveClientsForSubject below) so dashboards can ask "which clients belong to department X"
+// directly, without needing a fake team-lead subject to route through the resolver.
+export function clientHasService(client: ClientRecord, service: ServiceType, packages: PackageRecord[]): boolean {
+  return packages.find((p) => p.id === client.package_id)?.services.includes(service) ?? false;
+}
+
+// Every client subscribed to a given service — the same set a team lead for that department
+// already sees (resolveClientsForSubject's team-lead branches below), factored out for callers
+// that want "the whole department" without a subject user at all (DepartmentComparisonPanel).
+export function resolveDepartmentClients(
+  service: ServiceType,
+  clients: ClientRecord[],
+  packages: PackageRecord[]
+): ClientRecord[] {
+  return clients.filter((c) => clientHasService(c, service, packages));
+}
+
 export function resolveClientsForSubject(
   subject: { id: string; role: UserRole },
   clients: ClientRecord[],
   packages: PackageRecord[],
   assignments: AssignmentRecord[]
 ): ClientRecord[] {
-  const hasService = (client: ClientRecord, service: ServiceType) =>
-    packages.find((p) => p.id === client.package_id)?.services.includes(service) ?? false;
-
   const isAssigned = (client: ClientRecord, service: ServiceType) =>
     assignments.some((a) => a.client_id === client.id && a.service_type === service && a.agent_id === subject.id);
 
@@ -124,17 +139,17 @@ export function resolveClientsForSubject(
     case 'am_agent':
       return clients.filter((c) => c.am_agent_id === subject.id);
     case 'media_buying_team_lead':
-      return clients.filter((c) => hasService(c, 'media_buying'));
+      return resolveDepartmentClients('media_buying', clients, packages);
     case 'media_buying_agent':
-      return clients.filter((c) => hasService(c, 'media_buying') && isAssigned(c, 'media_buying'));
+      return resolveDepartmentClients('media_buying', clients, packages).filter((c) => isAssigned(c, 'media_buying'));
     case 'seo_team_lead':
-      return clients.filter((c) => hasService(c, 'seo'));
+      return resolveDepartmentClients('seo', clients, packages);
     case 'seo_agent':
-      return clients.filter((c) => hasService(c, 'seo') && isAssigned(c, 'seo'));
+      return resolveDepartmentClients('seo', clients, packages).filter((c) => isAssigned(c, 'seo'));
     case 'social_media_team_lead':
-      return clients.filter((c) => hasService(c, 'social_media'));
+      return resolveDepartmentClients('social_media', clients, packages);
     case 'social_media_agent':
-      return clients.filter((c) => hasService(c, 'social_media') && isAssigned(c, 'social_media'));
+      return resolveDepartmentClients('social_media', clients, packages).filter((c) => isAssigned(c, 'social_media'));
     default:
       return [];
   }

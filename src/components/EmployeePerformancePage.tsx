@@ -32,6 +32,7 @@ import {
   PeriodRange,
   suggestClassification,
   ClassificationSuggestion,
+  STATUS_META,
 } from '../lib/performanceScore';
 
 interface EmployeePerformancePageProps {
@@ -169,16 +170,6 @@ const scoreColor = (score: number) => {
   if (score >= 80) return 'var(--roas-good)';
   if (score >= 60) return 'var(--roas-mid)';
   return 'var(--roas-bad)';
-};
-
-// suggested_status stays a loose string type at the schema level (room for future values without
-// a migration), so this only covers the 4 values suggestClassification() actually produces —
-// anything else falls back to a neutral label/color rather than guessing.
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  promotion: { label: 'Promotion-Worthy', color: 'var(--roas-good)' },
-  raise: { label: 'Raise-Worthy', color: '#38bdf8' },
-  development_plan: { label: 'Needs Development Plan', color: 'var(--roas-bad)' },
-  stable: { label: 'Stable Performance', color: 'var(--lilac)' },
 };
 
 const TREND_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
