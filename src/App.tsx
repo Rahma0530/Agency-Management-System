@@ -1755,9 +1755,14 @@ export default function App() {
                   tasks={tasks}
                   dailyLogs={dailyLogs}
                   extraNotes={extraNotes}
+                  reports={reports}
+                  clientComparisons={clientComparisons}
+                  socialInsights={socialInsights}
                   onAssignServiceAgent={handleAssignServiceAgent}
                   onMarkBriefViewed={handleMarkBriefViewedByTeamLead}
                   onNavigateToModule={handleNavigateToModule}
+                  onGenerateComparison={handleGenerateComparison}
+                  onGenerateReport={handleGenerateReport}
                 />
               </div>
             )}
@@ -1838,8 +1843,13 @@ export default function App() {
                   dailyLogs={dailyLogs}
                   extraNotes={extraNotes}
                   assignments={assignments}
+                  reports={reports}
+                  clientComparisons={clientComparisons}
+                  socialInsights={socialInsights}
                   onCreateCampaign={handleCreateCampaign}
                   onUpdateCampaign={handleUpdateCampaign}
+                  onGenerateComparison={handleGenerateComparison}
+                  onGenerateReport={handleGenerateReport}
                   isLoading={loading}
                 />
               </div>

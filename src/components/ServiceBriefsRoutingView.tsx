@@ -34,6 +34,9 @@ import {
   ExtraNoteRecord,
   ServiceType,
   UserRole,
+  ReportRecord,
+  ClientComparisonRecord,
+  SocialInsightRecord,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
@@ -41,6 +44,7 @@ import { ClientDashboard } from './ClientDashboard';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
 import { BriefRepositoryView } from './BriefRepositoryView';
+import { ComparisonGranularity, DateRange } from '../lib/reportingEngine';
 
 interface ServiceBriefsRoutingViewProps {
   currentUser: UserRecord;
@@ -54,6 +58,9 @@ interface ServiceBriefsRoutingViewProps {
   tasks?: TaskRecord[];
   dailyLogs?: DailyLogRecord[];
   extraNotes?: ExtraNoteRecord[];
+  reports?: ReportRecord[];
+  clientComparisons?: ClientComparisonRecord[];
+  socialInsights?: SocialInsightRecord[];
   onAssignServiceAgent: (
     clientId: string,
     serviceType: ServiceType,
@@ -62,6 +69,12 @@ interface ServiceBriefsRoutingViewProps {
   ) => Promise<void>;
   onMarkBriefViewed?: (briefId: string) => Promise<void> | void;
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
+  onGenerateComparison?: (
+    clientId: string,
+    granularity: ComparisonGranularity | 'custom',
+    custom?: { currentRange: DateRange; previousRange: DateRange }
+  ) => Promise<void>;
+  onGenerateReport?: (clientId: string, comparisonId: string, period: string) => Promise<void>;
 }
 
 // AM roles (am_team_lead, am_agent) don't work a single service — they need visibility into
@@ -81,7 +94,33 @@ const AMServiceBriefsPanel: React.FC<{
   tasks: TaskRecord[];
   dailyLogs: DailyLogRecord[];
   extraNotes: ExtraNoteRecord[];
-}> = ({ currentUser, clients, packages, briefs, briefRevisions, assignments, users, campaigns, tasks, dailyLogs, extraNotes }) => {
+  reports: ReportRecord[];
+  clientComparisons: ClientComparisonRecord[];
+  socialInsights: SocialInsightRecord[];
+  onGenerateComparison?: (
+    clientId: string,
+    granularity: ComparisonGranularity | 'custom',
+    custom?: { currentRange: DateRange; previousRange: DateRange }
+  ) => Promise<void>;
+  onGenerateReport?: (clientId: string, comparisonId: string, period: string) => Promise<void>;
+}> = ({
+  currentUser,
+  clients,
+  packages,
+  briefs,
+  briefRevisions,
+  assignments,
+  users,
+  campaigns,
+  tasks,
+  dailyLogs,
+  extraNotes,
+  reports,
+  clientComparisons,
+  socialInsights,
+  onGenerateComparison,
+  onGenerateReport,
+}) => {
   const isTeamLead = currentUser.role === 'am_team_lead';
 
   // AM visibility: team lead sees every client; agent sees only clients personally assigned to them
@@ -197,8 +236,13 @@ const AMServiceBriefsPanel: React.FC<{
           dailyLogs={dailyLogs}
           extraNotes={extraNotes}
           assignments={assignments}
+          reports={reports}
+          clientComparisons={clientComparisons}
+          socialInsights={socialInsights}
           initialTab="briefs"
           onClose={() => setDashboardClientId(null)}
+          onGenerateComparison={onGenerateComparison}
+          onGenerateReport={onGenerateReport}
         />
       )}
     </div>
@@ -217,9 +261,14 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   tasks = [],
   dailyLogs = [],
   extraNotes = [],
+  reports = [],
+  clientComparisons = [],
+  socialInsights = [],
   onAssignServiceAgent,
   onMarkBriefViewed,
   onNavigateToModule,
+  onGenerateComparison,
+  onGenerateReport,
 }) => {
   // AM roles get a dedicated cross-service overview instead of the single-service specialist
   // workflow below (they manage the overall client relationship, not one department's queue).
@@ -237,6 +286,11 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
         tasks={tasks}
         dailyLogs={dailyLogs}
         extraNotes={extraNotes}
+        reports={reports}
+        clientComparisons={clientComparisons}
+        socialInsights={socialInsights}
+        onGenerateComparison={onGenerateComparison}
+        onGenerateReport={onGenerateReport}
       />
     );
   }

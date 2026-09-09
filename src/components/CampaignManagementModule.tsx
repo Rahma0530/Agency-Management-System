@@ -39,9 +39,13 @@ import {
   DailyLogRecord,
   ExtraNoteRecord,
   AssignmentRecord,
+  ReportRecord,
+  ClientComparisonRecord,
+  SocialInsightRecord,
 } from '../types/database';
 import { getRoleInfo } from '../data/roles';
 import { ClientDashboard } from './ClientDashboard';
+import { ComparisonGranularity, DateRange } from '../lib/reportingEngine';
 
 interface CampaignManagementModuleProps {
   campaigns: CampaignRecord[];
@@ -55,8 +59,17 @@ interface CampaignManagementModuleProps {
   dailyLogs: DailyLogRecord[];
   extraNotes: ExtraNoteRecord[];
   assignments: AssignmentRecord[];
+  reports?: ReportRecord[];
+  clientComparisons?: ClientComparisonRecord[];
+  socialInsights?: SocialInsightRecord[];
   onCreateCampaign: (campaignData: Partial<CampaignRecord>) => Promise<void> | void;
   onUpdateCampaign: (id: string, updates: Partial<CampaignRecord>) => Promise<void> | void;
+  onGenerateComparison?: (
+    clientId: string,
+    granularity: ComparisonGranularity | 'custom',
+    custom?: { currentRange: DateRange; previousRange: DateRange }
+  ) => Promise<void>;
+  onGenerateReport?: (clientId: string, comparisonId: string, period: string) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -193,8 +206,13 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   dailyLogs,
   extraNotes,
   assignments,
+  reports = [],
+  clientComparisons = [],
+  socialInsights = [],
   onCreateCampaign,
   onUpdateCampaign,
+  onGenerateComparison,
+  onGenerateReport,
   isLoading = false,
 }) => {
   const roleInfo = getRoleInfo(currentUser.role);
@@ -1767,8 +1785,13 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           dailyLogs={dailyLogs}
           extraNotes={extraNotes}
           assignments={assignments}
+          reports={reports}
+          clientComparisons={clientComparisons}
+          socialInsights={socialInsights}
           initialTab="campaigns"
           onClose={() => setDashboardClientId(null)}
+          onGenerateComparison={onGenerateComparison}
+          onGenerateReport={onGenerateReport}
         />
       )}
     </div>
