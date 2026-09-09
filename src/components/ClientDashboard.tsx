@@ -12,6 +12,7 @@ import {
   Layers,
   ChevronRight,
   TrendingUp,
+  TrendingDown,
   AlertCircle,
   Clock,
   Sparkles,
@@ -21,6 +22,7 @@ import {
   Edit2,
   CheckCircle2,
   Lock,
+  BarChart3,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -36,6 +38,9 @@ import {
   AssignmentRecord,
   ServiceType,
   TaskStatus,
+  ReportRecord,
+  ClientComparisonRecord,
+  SocialInsightRecord,
 } from '../types/database';
 import { DynamicBriefForm } from './DynamicBriefForm';
 import {
@@ -47,6 +52,13 @@ import {
   getCampaignEndDate,
   getCampaignOwnerId,
 } from './CampaignManagementModule';
+import {
+  ComparisonGranularity,
+  DateRange,
+  resolveComparisonPeriods,
+  customPeriod,
+  generateComparisonNarrative,
+} from '../lib/reportingEngine';
 
 interface ClientDashboardProps {
   client: ClientRecord;
@@ -61,6 +73,9 @@ interface ClientDashboardProps {
   dailyLogs: DailyLogRecord[];
   extraNotes: ExtraNoteRecord[];
   assignments: AssignmentRecord[];
+  reports?: ReportRecord[];
+  clientComparisons?: ClientComparisonRecord[];
+  socialInsights?: SocialInsightRecord[];
   initialTab?: DashboardTab;
   onClose: () => void;
   onSaveBrief?: (briefData: {
@@ -79,9 +94,15 @@ interface ClientDashboardProps {
     options?: { churn_reason?: string; renewal_date?: string }
   ) => Promise<void>;
   onMarkClientViewed?: (clientId: string) => Promise<void> | void;
+  onGenerateComparison?: (
+    clientId: string,
+    granularity: ComparisonGranularity | 'custom',
+    custom?: { currentRange: DateRange; previousRange: DateRange }
+  ) => Promise<void>;
+  onGenerateReport?: (clientId: string, comparisonId: string, period: string) => Promise<void>;
 }
 
-type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs';
+type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports';
 
 const CLIENT_STATUS_META: Record<ClientStatus, { label: string; bg: string; color: string; border: string }> = {
   lead: { label: 'Lead', bg: 'rgba(168, 155, 184, 0.15)', color: 'var(--lilac)', border: 'rgba(168, 155, 184, 0.3)' },
@@ -104,6 +125,9 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   dailyLogs,
   extraNotes,
   assignments,
+  reports = [],
+  clientComparisons = [],
+  socialInsights = [],
   initialTab,
   onClose,
   onSaveBrief,
@@ -112,6 +136,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   onCreateCampaign,
   onUpdateClientStatus,
   onMarkClientViewed,
+  onGenerateComparison,
+  onGenerateReport,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
@@ -120,6 +146,11 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [showChurnConfirm, setShowChurnConfirm] = useState(false);
   const [churnReasonInput, setChurnReasonInput] = useState('');
+  const [reportGranularity, setReportGranularity] = useState<ComparisonGranularity | 'custom'>('monthly');
+  const [customCurrentRange, setCustomCurrentRange] = useState<DateRange>({ start: '', end: '' });
+  const [customPreviousRange, setCustomPreviousRange] = useState<DateRange>({ start: '', end: '' });
+  const [isGeneratingComparison, setIsGeneratingComparison] = useState(false);
+  const [generatingReportForComparisonId, setGeneratingReportForComparisonId] = useState<string | null>(null);
 
   // Resolve client services from package
   const pkg = packageRecord || allPackages.find((p) => p.id === client.package_id);
@@ -251,6 +282,59 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   // Per spec, the brief feature only becomes available once an AM Agent has actually been
   // assigned to run the discovery meeting — before that there's nothing to document yet.
   const isAMAgentAssigned = !!client.am_agent_id;
+
+  // Mirrors reports_select_rls / client_comparisons_select_rls in the migrations: Executive,
+  // Head of Technical, AM Team Lead, or the client's own assigned AM Agent.
+  const hasReportsAccess =
+    currentUser.role === 'executive' ||
+    currentUser.role === 'head_of_technical' ||
+    currentUser.role === 'am_team_lead' ||
+    (currentUser.role === 'am_agent' && client.am_agent_id === currentUser.id);
+
+  const clientComparisonsForClient = useMemo(
+    () =>
+      clientComparisons
+        .filter((c) => c.client_id === client.id)
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+    [clientComparisons, client.id]
+  );
+
+  const clientReportsForClient = useMemo(
+    () =>
+      reports
+        .filter((r) => r.client_id === client.id)
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+    [reports, client.id]
+  );
+
+  const handleGenerateComparison = async () => {
+    if (!onGenerateComparison) return;
+    if (reportGranularity === 'custom' && (!customCurrentRange.start || !customCurrentRange.end || !customPreviousRange.start || !customPreviousRange.end)) {
+      return;
+    }
+    setIsGeneratingComparison(true);
+    try {
+      await onGenerateComparison(
+        client.id,
+        reportGranularity,
+        reportGranularity === 'custom'
+          ? { currentRange: customCurrentRange, previousRange: customPreviousRange }
+          : undefined
+      );
+    } finally {
+      setIsGeneratingComparison(false);
+    }
+  };
+
+  const handleGenerateReport = async (comparison: ClientComparisonRecord) => {
+    if (!onGenerateReport) return;
+    setGeneratingReportForComparisonId(comparison.id);
+    try {
+      await onGenerateReport(client.id, comparison.id, comparison.period_current);
+    } finally {
+      setGeneratingReportForComparisonId(null);
+    }
+  };
 
   const amAgents = users.filter((u) => u.role === 'am_agent');
 
@@ -420,6 +504,20 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
             <Activity className="w-3.5 h-3.5" />
             <span>Activity Logs ({clientLogs.length})</span>
           </button>
+
+          {hasReportsAccess && (
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === 'reports'
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-stone-400 hover:text-stone-200 hover:bg-purple-950/30'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Reports & Comparisons ({clientComparisonsForClient.length})</span>
+            </button>
+          )}
         </div>
 
         {/* TAB CONTENTS */}
@@ -1139,7 +1237,341 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               </div>
             </div>
           )}
+
+          {/* 7. REPORTS & COMPARISONS */}
+          {activeTab === 'reports' && (
+            <ReportsAndComparisonsTab
+              client={client}
+              users={users}
+              comparisons={clientComparisonsForClient}
+              reports={clientReportsForClient}
+              granularity={reportGranularity}
+              onGranularityChange={setReportGranularity}
+              customCurrentRange={customCurrentRange}
+              onCustomCurrentRangeChange={setCustomCurrentRange}
+              customPreviousRange={customPreviousRange}
+              onCustomPreviousRangeChange={setCustomPreviousRange}
+              canGenerate={!!onGenerateComparison}
+              isGeneratingComparison={isGeneratingComparison}
+              onGenerateComparison={handleGenerateComparison}
+              canGenerateReport={!!onGenerateReport}
+              generatingReportForComparisonId={generatingReportForComparisonId}
+              onGenerateReport={handleGenerateReport}
+            />
+          )}
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------------
+// Reports & Comparisons tab
+// ----------------------------------------------------------------------------
+// Period-over-period client performance, with a deterministic (no model call) summary +
+// recommendation derived from threshold rules in src/lib/reportingEngine.ts. A "Generate
+// Report" click on a comparison files it as an internal report (reports.comparison_id) — a
+// monthly report's content IS a current-vs-previous comparison, so nothing further to enter.
+const GRANULARITY_OPTIONS: { value: ComparisonGranularity | 'custom'; label: string }[] = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'custom', label: 'Custom Range' },
+];
+
+const SERVICE_METRIC_LABELS: Record<string, Record<string, string>> = {
+  media_buying: { spend: 'Spend', roas: 'ROAS', conversions: 'Conversions', cpa: 'CPA' },
+  social_media: { reach: 'Reach', engagement_rate: 'Engagement Rate', follower_growth: 'Follower Growth' },
+  seo: { completed_tasks: 'Completed Tasks', on_time_rate: 'On-Time Rate' },
+};
+
+const SERVICE_METRIC_UNITS: Record<string, Record<string, string>> = {
+  media_buying: { spend: ' SAR', roas: 'x', conversions: '', cpa: ' SAR' },
+  social_media: { reach: '', engagement_rate: '%', follower_growth: '' },
+  seo: { completed_tasks: '', on_time_rate: '%' },
+};
+
+const formatMetricValue = (value: number | null | undefined, unit: string): string => {
+  if (value === null || value === undefined) return 'N/A';
+  const rounded = Number.isInteger(value) ? value : Math.round(value * 100) / 100;
+  return `${rounded.toLocaleString()}${unit}`;
+};
+
+const DeltaBadge: React.FC<{ value: number | null | undefined }> = ({ value }) => {
+  if (value === null || value === undefined) {
+    return <span className="text-[10px] text-stone-500 font-mono">—</span>;
+  }
+  const isUp = value > 0;
+  const isFlat = value === 0;
+  return (
+    <span
+      className="text-[10px] font-mono font-bold flex items-center gap-0.5"
+      style={{ color: isFlat ? 'var(--lilac)' : isUp ? 'var(--roas-good)' : 'var(--roas-bad)' }}
+    >
+      {!isFlat && (isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />)}
+      {isUp ? '+' : ''}
+      {value}%
+    </span>
+  );
+};
+
+const ServiceMetricsCard: React.FC<{
+  serviceKey: 'media_buying' | 'social_media' | 'seo';
+  title: string;
+  current?: Record<string, any>;
+  previous?: Record<string, any>;
+  delta?: Partial<Record<string, number | null>>;
+}> = ({ serviceKey, title, current, previous, delta }) => {
+  if (!current && !previous) return null;
+  const labels = SERVICE_METRIC_LABELS[serviceKey];
+  const units = SERVICE_METRIC_UNITS[serviceKey];
+  return (
+    <div className="p-3 rounded-lg border border-purple-900/20 bg-purple-950/10 space-y-2">
+      <h5 className="text-xs font-bold text-white uppercase tracking-wide">{title}</h5>
+      <div className="grid grid-cols-1 gap-1.5">
+        {Object.keys(labels).map((key) => (
+          <div key={key} className="flex items-center justify-between text-[11px]">
+            <span className="text-stone-400">{labels[key]}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-stone-300 font-mono">
+                {formatMetricValue(previous?.[key], units[key])} → {formatMetricValue(current?.[key], units[key])}
+              </span>
+              <DeltaBadge value={delta?.[key]} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+interface ReportsAndComparisonsTabProps {
+  client: ClientRecord;
+  users: UserRecord[];
+  comparisons: ClientComparisonRecord[];
+  reports: ReportRecord[];
+  granularity: ComparisonGranularity | 'custom';
+  onGranularityChange: (g: ComparisonGranularity | 'custom') => void;
+  customCurrentRange: DateRange;
+  onCustomCurrentRangeChange: (r: DateRange) => void;
+  customPreviousRange: DateRange;
+  onCustomPreviousRangeChange: (r: DateRange) => void;
+  canGenerate: boolean;
+  isGeneratingComparison: boolean;
+  onGenerateComparison: () => void;
+  canGenerateReport: boolean;
+  generatingReportForComparisonId: string | null;
+  onGenerateReport: (comparison: ClientComparisonRecord) => void;
+}
+
+const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
+  client,
+  users,
+  comparisons,
+  reports,
+  granularity,
+  onGranularityChange,
+  customCurrentRange,
+  onCustomCurrentRangeChange,
+  customPreviousRange,
+  onCustomPreviousRangeChange,
+  canGenerate,
+  isGeneratingComparison,
+  onGenerateComparison,
+  canGenerateReport,
+  generatingReportForComparisonId,
+  onGenerateReport,
+}) => {
+  const previewPeriods = granularity !== 'custom' ? resolveComparisonPeriods(granularity) : null;
+
+  return (
+    <div className="space-y-6">
+      {/* Generation controls */}
+      <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-purple-400" />
+          <span>Generate Period Comparison</span>
+        </h3>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {GRANULARITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onGranularityChange(opt.value)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                granularity === opt.value
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'bg-stone-900/60 text-stone-400 hover:text-white border border-stone-800'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {granularity === 'custom' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3 rounded-lg border border-purple-900/20 bg-purple-950/10 space-y-1.5">
+              <span className="text-[11px] font-semibold text-purple-300 uppercase">Current Period</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customCurrentRange.start}
+                  onChange={(e) => onCustomCurrentRangeChange({ ...customCurrentRange, start: e.target.value })}
+                  className="w-full px-2 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
+                />
+                <span className="text-stone-500 text-xs">to</span>
+                <input
+                  type="date"
+                  value={customCurrentRange.end}
+                  onChange={(e) => onCustomCurrentRangeChange({ ...customCurrentRange, end: e.target.value })}
+                  className="w-full px-2 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="p-3 rounded-lg border border-purple-900/20 bg-purple-950/10 space-y-1.5">
+              <span className="text-[11px] font-semibold text-purple-300 uppercase">Previous Period</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customPreviousRange.start}
+                  onChange={(e) => onCustomPreviousRangeChange({ ...customPreviousRange, start: e.target.value })}
+                  className="w-full px-2 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
+                />
+                <span className="text-stone-500 text-xs">to</span>
+                <input
+                  type="date"
+                  value={customPreviousRange.end}
+                  onChange={(e) => onCustomPreviousRangeChange({ ...customPreviousRange, end: e.target.value })}
+                  className="w-full px-2 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+        ) : previewPeriods ? (
+          <p className="text-[11px] text-stone-400">
+            Will compare <strong className="text-white">{previewPeriods.current.label}</strong> against{' '}
+            <strong className="text-white">{previewPeriods.previous.label}</strong>.
+          </p>
+        ) : null}
+
+        <div className="flex items-center justify-between pt-1">
+          {canGenerate ? (
+            <button
+              onClick={onGenerateComparison}
+              disabled={isGeneratingComparison}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-500 disabled:opacity-50 transition-all"
+            >
+              {isGeneratingComparison ? 'Generating...' : 'Generate Comparison'}
+            </button>
+          ) : (
+            <span className="text-[11px] text-stone-500">Comparison generation isn't available from this screen.</span>
+          )}
+        </div>
+      </div>
+
+      {/* Past comparisons */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-emerald-400" />
+          <span>Comparisons ({comparisons.length})</span>
+        </h3>
+
+        {comparisons.length === 0 ? (
+          <p className="text-xs text-stone-500 py-4 text-center">No comparisons generated yet for this client.</p>
+        ) : (
+          comparisons.map((cmp) => {
+            const narrative = generateComparisonNarrative(cmp.metrics_current, cmp.metrics_previous, cmp.delta);
+            return (
+              <div key={cmp.id} className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-bold text-white font-mono">
+                    {cmp.period_current} vs {cmp.period_previous}
+                  </span>
+                  {canGenerateReport && (
+                    <button
+                      onClick={() => onGenerateReport(cmp)}
+                      disabled={generatingReportForComparisonId === cmp.id}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-purple-200 bg-purple-900/40 hover:bg-purple-800/60 hover:text-white border border-purple-700/40 transition-all disabled:opacity-50"
+                    >
+                      {generatingReportForComparisonId === cmp.id ? 'Filing...' : 'Generate Report'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <ServiceMetricsCard
+                    serviceKey="media_buying"
+                    title="Media Buying"
+                    current={cmp.metrics_current.media_buying}
+                    previous={cmp.metrics_previous.media_buying}
+                    delta={cmp.delta.media_buying}
+                  />
+                  <ServiceMetricsCard
+                    serviceKey="social_media"
+                    title="Social Media"
+                    current={cmp.metrics_current.social_media}
+                    previous={cmp.metrics_previous.social_media}
+                    delta={cmp.delta.social_media}
+                  />
+                  <ServiceMetricsCard
+                    serviceKey="seo"
+                    title="SEO (Delivery)"
+                    current={cmp.metrics_current.seo}
+                    previous={cmp.metrics_previous.seo}
+                    delta={cmp.delta.seo}
+                  />
+                </div>
+
+                <div className="p-3 rounded-lg bg-purple-950/20 border border-purple-900/20 space-y-1.5">
+                  <p className="text-xs text-stone-200 leading-relaxed">
+                    <strong className="text-purple-300">Summary: </strong>
+                    {narrative.summary}
+                  </p>
+                  <p className="text-xs text-stone-200 leading-relaxed">
+                    <strong className="text-purple-300">Recommendation: </strong>
+                    {cmp.ai_recommendations_text || narrative.recommendations}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Filed reports */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <FileText className="w-4 h-4 text-purple-400" />
+          <span>Filed Reports ({reports.length})</span>
+        </h3>
+
+        {reports.length === 0 ? (
+          <p className="text-xs text-stone-500 py-4 text-center">No reports filed yet for this client.</p>
+        ) : (
+          <div className="space-y-2">
+            {reports.map((r) => {
+              const author = users.find((u) => u.id === r.generated_by);
+              return (
+                <div
+                  key={r.id}
+                  className="p-3 rounded-xl border border-purple-900/30 bg-[#161224]/80 flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <p className="text-xs font-bold text-white font-mono">{r.period}</p>
+                    <p className="text-[11px] text-stone-400">
+                      {r.type} • Filed by {author?.name || 'Unknown'}
+                      {r.created_at ? ` • ${new Date(r.created_at).toLocaleDateString()}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded font-semibold text-purple-200 bg-purple-900/50 uppercase">
+                    {r.type}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

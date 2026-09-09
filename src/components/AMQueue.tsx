@@ -35,10 +35,14 @@ import {
   ExtraNoteRecord,
   AssignmentRecord,
   TaskStatus,
+  ReportRecord,
+  ClientComparisonRecord,
+  SocialInsightRecord,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { ClientDashboard } from './ClientDashboard';
+import { ComparisonGranularity, DateRange } from '../lib/reportingEngine';
 
 interface AMQueueProps {
   clients: ClientRecord[];
@@ -51,6 +55,9 @@ interface AMQueueProps {
   dailyLogs?: DailyLogRecord[];
   extraNotes?: ExtraNoteRecord[];
   assignments?: AssignmentRecord[];
+  reports?: ReportRecord[];
+  clientComparisons?: ClientComparisonRecord[];
+  socialInsights?: SocialInsightRecord[];
   currentUser?: UserRecord;
   currentUserId?: string;
   onAssignAMAgent: (clientId: string, agentId: string) => Promise<void>;
@@ -69,6 +76,12 @@ interface AMQueueProps {
   ) => Promise<void>;
   onMarkClientViewed?: (clientId: string) => Promise<void> | void;
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
+  onGenerateComparison?: (
+    clientId: string,
+    granularity: ComparisonGranularity | 'custom',
+    custom?: { currentRange: DateRange; previousRange: DateRange }
+  ) => Promise<void>;
+  onGenerateReport?: (clientId: string, comparisonId: string, period: string) => Promise<void>;
 }
 
 export const AMQueue: React.FC<AMQueueProps> = ({
@@ -82,6 +95,9 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   dailyLogs = [],
   extraNotes = [],
   assignments = [],
+  reports = [],
+  clientComparisons = [],
+  socialInsights = [],
   currentUser,
   currentUserId,
   onAssignAMAgent,
@@ -90,6 +106,8 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   onUpdateClientStatus,
   onMarkClientViewed,
   onNavigateToModule,
+  onGenerateComparison,
+  onGenerateReport,
 }) => {
   const resolvedUser = currentUser || users.find((u) => u.id === currentUserId) || users[0];
   const effectiveUserId = resolvedUser?.id || currentUserId || '';
@@ -517,12 +535,17 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           dailyLogs={dailyLogs}
           extraNotes={extraNotes}
           assignments={assignments}
+          reports={reports}
+          clientComparisons={clientComparisons}
+          socialInsights={socialInsights}
           onClose={() => setDashboardClientId(null)}
           onSaveBrief={onSaveBrief}
           onAssignAMAgent={onAssignAMAgent}
           onUpdateTaskStatus={onUpdateTaskStatus}
           onUpdateClientStatus={onUpdateClientStatus}
           onMarkClientViewed={onMarkClientViewed}
+          onGenerateComparison={onGenerateComparison}
+          onGenerateReport={onGenerateReport}
         />
       )}
     </div>

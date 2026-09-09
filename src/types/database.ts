@@ -198,6 +198,10 @@ export interface ReportRecord {
   period: string;
   generated_by: string;
   file_url?: string | null;
+  // Points at the client_comparisons row backing this report's analytical content — a monthly
+  // report is, content-wise, a current-vs-previous-period comparison. Null only for reports
+  // created before this link existed.
+  comparison_id?: string | null;
   created_at?: string;
 }
 
@@ -288,14 +292,56 @@ export interface KpiScoreRecord {
 }
 
 // 16. client_comparisons
+// Per-service-type indicator shapes for ClientComparisonRecord.metrics_current/metrics_previous
+// (stored as JSONB — untyped at the DB layer, typed here for the app side). A client only
+// carries the block(s) for the services in its package, so every block is optional. See
+// src/lib/reportingEngine.ts for how each is aggregated.
+export interface ComparisonMediaBuyingMetrics {
+  spend: number;
+  roas: number | null; // null when no campaigns had spend in the period (nothing to average)
+  conversions: number;
+  cpa: number | null; // null when conversions is 0 (undefined cost per acquisition)
+}
+
+// SEO has no analytics table in this schema (no keyword rankings, no organic traffic) — this is
+// an operational delivery proxy from `tasks` where team === 'SEO', not a true performance metric.
+export interface ComparisonSeoMetrics {
+  completed_tasks: number;
+  on_time_rate: number | null; // null when completed_tasks is 0
+}
+
+// social_insights.metrics is an untyped JSON blob per platform row with no guaranteed keys —
+// every field here is defensively optional/nullable, pulled only when present in the source rows.
+export interface ComparisonSocialMetrics {
+  reach: number | null;
+  engagement_rate: number | null;
+  follower_growth: number | null;
+}
+
+export interface ClientComparisonMetrics {
+  media_buying?: ComparisonMediaBuyingMetrics;
+  seo?: ComparisonSeoMetrics;
+  social_media?: ComparisonSocialMetrics;
+}
+
+// % change per indicator, current vs. previous period. null where either side is null/undefined
+// (nothing meaningful to compare, e.g. no spend in either period).
+export interface ClientComparisonDelta {
+  media_buying?: Partial<Record<keyof ComparisonMediaBuyingMetrics, number | null>>;
+  seo?: Partial<Record<keyof ComparisonSeoMetrics, number | null>>;
+  social_media?: Partial<Record<keyof ComparisonSocialMetrics, number | null>>;
+}
+
 export interface ClientComparisonRecord {
   id: string;
   client_id: string;
   period_current: string;
   period_previous: string;
-  metrics_current: Record<string, any>;
-  metrics_previous: Record<string, any>;
-  delta: Record<string, any>;
+  metrics_current: ClientComparisonMetrics;
+  metrics_previous: ClientComparisonMetrics;
+  delta: ClientComparisonDelta;
+  // Rule-generated summary + recommendation text (see reportingEngine.ts's threshold rules) —
+  // deterministic, not a model call, despite the DB column's name.
   ai_recommendations_text?: string | null;
   created_at?: string;
 }

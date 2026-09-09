@@ -27,6 +27,13 @@ import {
 } from './lib/supabase';
 import { resolvePeriodRange, generateKpiScoreMetrics } from './lib/performanceScore';
 import {
+  ComparisonGranularity,
+  DateRange,
+  resolveComparisonPeriods,
+  customPeriod,
+  generateClientComparison,
+} from './lib/reportingEngine';
+import {
   ClientRecord,
   ClientStatus,
   PackageRecord,
@@ -47,6 +54,9 @@ import {
   UserRole,
   TaskStatus,
   TaskPriority,
+  SocialInsightRecord,
+  ReportRecord,
+  ClientComparisonRecord,
 } from './types/database';
 import {
   INITIAL_PACKAGES,
@@ -114,6 +124,9 @@ export default function App() {
   const [kpiScores, setKpiScores] = useState<KpiScoreRecord[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>(INITIAL_CAMPAIGNS);
   const [assignments, setAssignments] = useState<AssignmentRecord[]>(INITIAL_ASSIGNMENTS);
+  const [socialInsights, setSocialInsights] = useState<SocialInsightRecord[]>([]);
+  const [reports, setReports] = useState<ReportRecord[]>([]);
+  const [clientComparisons, setClientComparisons] = useState<ClientComparisonRecord[]>([]);
 
   // Authenticated user state initialized from localStorage
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRecord | null>(() => {
@@ -413,6 +426,28 @@ export default function App() {
         const { data: assignmentData, error: assignmentErr } = await supabase.from('assignments').select('*');
         if (!assignmentErr && assignmentData && assignmentData.length > 0) {
           setAssignments(assignmentData as AssignmentRecord[]);
+        }
+
+        // Fetch social_insights (Reporting Engine: social media comparison indicators)
+        const { data: socialInsightData, error: socialInsightErr } = await supabase
+          .from('social_insights')
+          .select('*');
+        if (!socialInsightErr && socialInsightData && socialInsightData.length > 0) {
+          setSocialInsights(socialInsightData as SocialInsightRecord[]);
+        }
+
+        // Fetch reports (Reporting Engine)
+        const { data: reportData, error: reportErr } = await supabase.from('reports').select('*');
+        if (!reportErr && reportData && reportData.length > 0) {
+          setReports(reportData as ReportRecord[]);
+        }
+
+        // Fetch client_comparisons (Reporting Engine)
+        const { data: comparisonData, error: comparisonErr } = await supabase
+          .from('client_comparisons')
+          .select('*');
+        if (!comparisonErr && comparisonData && comparisonData.length > 0) {
+          setClientComparisons(comparisonData as ClientComparisonRecord[]);
         }
       } catch (err) {
         console.warn('Supabase query error, relying on local cached state:', err);
@@ -1131,6 +1166,87 @@ export default function App() {
     showNotification(`Performance score generated for ${targetUser.name} (${range.period}).`);
   };
 
+  // 8b. Generate a period-over-period client comparison (Reporting Engine)
+  const handleGenerateComparison = async (
+    clientId: string,
+    granularity: ComparisonGranularity | 'custom',
+    custom?: { currentRange: DateRange; previousRange: DateRange }
+  ) => {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+    const services = packages.find((p) => p.id === client.package_id)?.services || [];
+
+    const { current, previous } =
+      granularity === 'custom' && custom
+        ? { current: customPeriod(custom.currentRange), previous: customPeriod(custom.previousRange) }
+        : resolveComparisonPeriods(granularity as ComparisonGranularity);
+
+    const result = generateClientComparison(client, services, current, previous, campaigns, tasks, socialInsights);
+
+    const existing = clientComparisons.find(
+      (c) => c.client_id === clientId && c.period_current === result.period_current && c.period_previous === result.period_previous
+    );
+    const comparisonPayload: ClientComparisonRecord = {
+      id: existing?.id || `cmp-${Date.now().toString().slice(-4)}`,
+      client_id: clientId,
+      ...result,
+      created_at: existing?.created_at || new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = await supabase
+          .from('client_comparisons')
+          .upsert([comparisonPayload], { onConflict: 'client_id,period_current,period_previous' })
+          .select();
+        if (error) throw error;
+        const saved = (data?.[0] as ClientComparisonRecord) || comparisonPayload;
+        setClientComparisons((prev) => [...prev.filter((c) => c.id !== saved.id), saved]);
+      } catch (err) {
+        console.error('Supabase client_comparisons upsert error:', err);
+        showNotification('Unable to save the comparison.', 'info');
+        return;
+      }
+    } else {
+      setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
+    }
+
+    showNotification(`Comparison generated for ${client.name} (${result.period_current} vs ${result.period_previous}).`);
+  };
+
+  // 8c. File a monthly/period report against an existing comparison (Reporting Engine)
+  const handleGenerateReport = async (clientId: string, comparisonId: string, period: string) => {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    const reportPayload: ReportRecord = {
+      id: `rpt-${Date.now().toString().slice(-4)}`,
+      client_id: clientId,
+      type: 'internal',
+      period,
+      generated_by: currentUser.id,
+      comparison_id: comparisonId,
+      created_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = await supabase.from('reports').insert([reportPayload]).select();
+        if (error) throw error;
+        const saved = (data?.[0] as ReportRecord) || reportPayload;
+        setReports((prev) => [...prev, saved]);
+      } catch (err) {
+        console.error('Supabase reports insert error:', err);
+        showNotification('Unable to file the report.', 'info');
+        return;
+      }
+    } else {
+      setReports((prev) => [...prev, reportPayload]);
+    }
+
+    showNotification(`Report filed for ${client.name} (${period}).`);
+  };
+
   // 9. Create and update ad campaigns (Campaign Management)
   const handleCreateCampaign = async (campaignData: Partial<CampaignRecord>) => {
     const newId = `cmp-${Date.now().toString().slice(-4)}`;
@@ -1605,6 +1721,11 @@ export default function App() {
                     users={users}
                     briefs={briefs}
                     briefRevisions={briefRevisions}
+                    campaigns={campaigns}
+                    tasks={tasks}
+                    reports={reports}
+                    clientComparisons={clientComparisons}
+                    socialInsights={socialInsights}
                     currentUser={currentUser}
                     currentUserId={currentUser.id}
                     onAssignAMAgent={handleAssignAMAgent}
@@ -1612,6 +1733,8 @@ export default function App() {
                     onUpdateClientStatus={handleUpdateClientStatus}
                     onMarkClientViewed={handleMarkClientViewedByAMLead}
                     onNavigateToModule={handleNavigateToModule}
+                    onGenerateComparison={handleGenerateComparison}
+                    onGenerateReport={handleGenerateReport}
                   />
                 )}
               </div>
