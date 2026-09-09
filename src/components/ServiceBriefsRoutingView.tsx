@@ -44,7 +44,7 @@ import { ClientDashboard } from './ClientDashboard';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
 import { BriefRepositoryView } from './BriefRepositoryView';
-import { ComparisonGranularity, DateRange } from '../lib/reportingEngine';
+import { ComparisonGranularity, DateRange, ReportScope } from '../lib/reportingEngine';
 
 interface ServiceBriefsRoutingViewProps {
   currentUser: UserRecord;
@@ -70,11 +70,11 @@ interface ServiceBriefsRoutingViewProps {
   onMarkBriefViewed?: (briefId: string) => Promise<void> | void;
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
   onGenerateComparison?: (
-    clientId: string,
+    scope: ReportScope,
     granularity: ComparisonGranularity | 'custom',
     custom?: { currentRange: DateRange; previousRange: DateRange }
   ) => Promise<void>;
-  onGenerateReport?: (clientId: string, comparisonId: string, period: string) => Promise<void>;
+  onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
 }
 
 // AM roles (am_team_lead, am_agent) don't work a single service — they need visibility into
@@ -98,11 +98,11 @@ const AMServiceBriefsPanel: React.FC<{
   clientComparisons: ClientComparisonRecord[];
   socialInsights: SocialInsightRecord[];
   onGenerateComparison?: (
-    clientId: string,
+    scope: ReportScope,
     granularity: ComparisonGranularity | 'custom',
     custom?: { currentRange: DateRange; previousRange: DateRange }
   ) => Promise<void>;
-  onGenerateReport?: (clientId: string, comparisonId: string, period: string) => Promise<void>;
+  onGenerateReport?: (comparisonId: string, period: string) => Promise<void>;
 }> = ({
   currentUser,
   clients,

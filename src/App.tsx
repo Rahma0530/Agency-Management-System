@@ -18,6 +18,7 @@ import {
   Clock,
   LogOut,
   Target,
+  BarChart3,
 } from 'lucide-react';
 import {
   supabase,
@@ -29,10 +30,14 @@ import { resolvePeriodRange, generateKpiScoreMetrics } from './lib/performanceSc
 import {
   ComparisonGranularity,
   DateRange,
+  ReportScope,
   resolveComparisonPeriods,
   customPeriod,
   generateClientComparison,
+  resolveClientsForSubject,
+  serviceFilterForRole,
 } from './lib/reportingEngine';
+import { ReportsHub } from './components/ReportsHub';
 import {
   ClientRecord,
   ClientStatus,
@@ -1166,62 +1171,142 @@ export default function App() {
     showNotification(`Performance score generated for ${targetUser.name} (${range.period}).`);
   };
 
-  // 8b. Generate a period-over-period client comparison (Reporting Engine)
+  // 8b. Generate a period-over-period comparison (Reporting Engine) — either a single client, or
+  // an agent's pooled client set (that agent's own "all my clients" report, or a team lead
+  // generating one for a specific direct report).
   const handleGenerateComparison = async (
-    clientId: string,
+    scope: ReportScope,
     granularity: ComparisonGranularity | 'custom',
     custom?: { currentRange: DateRange; previousRange: DateRange }
   ) => {
-    const client = clients.find((c) => c.id === clientId);
-    if (!client) return;
-    const services = packages.find((p) => p.id === client.package_id)?.services || [];
-
     const { current, previous } =
       granularity === 'custom' && custom
         ? { current: customPeriod(custom.currentRange), previous: customPeriod(custom.previousRange) }
         : resolveComparisonPeriods(granularity as ComparisonGranularity);
 
-    const result = generateClientComparison(client, services, current, previous, campaigns, tasks, socialInsights);
+    let scopedClients: ClientRecord[];
+    let serviceFilter: ServiceType[] | undefined;
+    let scopeLabel: string;
 
-    const existing = clientComparisons.find(
-      (c) => c.client_id === clientId && c.period_current === result.period_current && c.period_previous === result.period_previous
-    );
-    const comparisonPayload: ClientComparisonRecord = {
-      id: existing?.id || `cmp-${Date.now().toString().slice(-4)}`,
-      client_id: clientId,
-      ...result,
-      created_at: existing?.created_at || new Date().toISOString(),
-    };
-
-    if (supabaseActive) {
-      try {
-        const { data, error } = await supabase
-          .from('client_comparisons')
-          .upsert([comparisonPayload], { onConflict: 'client_id,period_current,period_previous' })
-          .select();
-        if (error) throw error;
-        const saved = (data?.[0] as ClientComparisonRecord) || comparisonPayload;
-        setClientComparisons((prev) => [...prev.filter((c) => c.id !== saved.id), saved]);
-      } catch (err) {
-        console.error('Supabase client_comparisons upsert error:', err);
-        showNotification('Unable to save the comparison.', 'info');
-        return;
-      }
+    if (scope.type === 'client') {
+      const client = clients.find((c) => c.id === scope.clientId);
+      if (!client) return;
+      scopedClients = [client];
+      scopeLabel = client.name;
     } else {
-      setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
+      const subject = users.find((u) => u.id === scope.agentId);
+      if (!subject) return;
+      scopedClients = resolveClientsForSubject(subject, clients, packages, assignments);
+      serviceFilter = serviceFilterForRole(subject.role);
+      scopeLabel = subject.name;
     }
 
-    showNotification(`Comparison generated for ${client.name} (${result.period_current} vs ${result.period_previous}).`);
+    if (scopedClients.length === 0) {
+      showNotification('No clients found for this scope — nothing to compare.', 'info');
+      return;
+    }
+
+    const result = generateClientComparison(scopedClients, packages, current, previous, campaigns, tasks, socialInsights, serviceFilter);
+
+    if (scope.type === 'client') {
+      const existing = clientComparisons.find(
+        (c) => c.client_id === scope.clientId && c.period_current === result.period_current && c.period_previous === result.period_previous
+      );
+      const comparisonPayload: ClientComparisonRecord = {
+        id: existing?.id || `cmp-${Date.now().toString().slice(-4)}`,
+        ...result,
+        client_id: scope.clientId,
+        agent_id: null,
+        covered_client_ids: null,
+        created_at: existing?.created_at || new Date().toISOString(),
+      };
+
+      if (supabaseActive) {
+        try {
+          const { data, error } = await supabase
+            .from('client_comparisons')
+            .upsert([comparisonPayload], { onConflict: 'client_id,period_current,period_previous' })
+            .select();
+          if (error) throw error;
+          const saved = (data?.[0] as ClientComparisonRecord) || comparisonPayload;
+          setClientComparisons((prev) => [...prev.filter((c) => c.id !== saved.id), saved]);
+        } catch (err) {
+          console.error('Supabase client_comparisons upsert error:', err);
+          showNotification('Unable to save the comparison.', 'info');
+          return;
+        }
+      } else {
+        setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
+      }
+    } else {
+      // Agent-scoped rows sit behind a partial unique index (agent_id, period_current,
+      // period_previous) where agent_id is not null — PostgREST's upsert(onConflict) only takes
+      // a bare column list, and Postgres's ON CONFLICT arbiter inference generally won't match a
+      // partial index that way, so this looks up any existing row explicitly instead of
+      // upserting in one round trip.
+      const agentId = scope.agentId;
+      let existing: ClientComparisonRecord | undefined;
+
+      if (supabaseActive) {
+        try {
+          const { data, error } = await supabase
+            .from('client_comparisons')
+            .select('*')
+            .eq('agent_id', agentId)
+            .eq('period_current', result.period_current)
+            .eq('period_previous', result.period_previous)
+            .maybeSingle();
+          if (error) throw error;
+          existing = (data as ClientComparisonRecord) || undefined;
+        } catch (err) {
+          console.error('Supabase client_comparisons lookup error:', err);
+          showNotification('Unable to save the comparison.', 'info');
+          return;
+        }
+      } else {
+        existing = clientComparisons.find(
+          (c) => c.agent_id === agentId && c.period_current === result.period_current && c.period_previous === result.period_previous
+        );
+      }
+
+      const comparisonPayload: ClientComparisonRecord = {
+        id: existing?.id || `cmp-${Date.now().toString().slice(-4)}`,
+        ...result,
+        client_id: null,
+        agent_id: agentId,
+        created_at: existing?.created_at || new Date().toISOString(),
+      };
+
+      if (supabaseActive) {
+        try {
+          const { data, error } = existing
+            ? await supabase.from('client_comparisons').update(comparisonPayload).eq('id', existing.id).select()
+            : await supabase.from('client_comparisons').insert([comparisonPayload]).select();
+          if (error) throw error;
+          const saved = (data?.[0] as ClientComparisonRecord) || comparisonPayload;
+          setClientComparisons((prev) => [...prev.filter((c) => c.id !== saved.id), saved]);
+        } catch (err) {
+          console.error('Supabase client_comparisons write error:', err);
+          showNotification('Unable to save the comparison.', 'info');
+          return;
+        }
+      } else {
+        setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
+      }
+    }
+
+    showNotification(`Comparison generated for ${scopeLabel} (${result.period_current} vs ${result.period_previous}).`);
   };
 
-  // 8c. File a monthly/period report against an existing comparison (Reporting Engine)
-  const handleGenerateReport = async (clientId: string, comparisonId: string, period: string) => {
-    const client = clients.find((c) => c.id === clientId);
-    if (!client) return;
+  // 8c. File a monthly/period report against an existing comparison (Reporting Engine). The
+  // report's scope always follows its comparison via comparison_id — client_id here is purely a
+  // display convenience, denormalized from the comparison at filing time.
+  const handleGenerateReport = async (comparisonId: string, period: string) => {
+    const comparison = clientComparisons.find((c) => c.id === comparisonId);
 
     const reportPayload: ReportRecord = {
       id: `rpt-${Date.now().toString().slice(-4)}`,
-      client_id: clientId,
+      client_id: comparison?.client_id ?? null,
       type: 'internal',
       period,
       generated_by: currentUser.id,
@@ -1244,7 +1329,7 @@ export default function App() {
       setReports((prev) => [...prev, reportPayload]);
     }
 
-    showNotification(`Report filed for ${client.name} (${period}).`);
+    showNotification(`Report filed for ${period}.`);
   };
 
   // 9. Create and update ad campaigns (Campaign Management)
@@ -1651,6 +1736,26 @@ export default function App() {
                 </span>
               </button>
             )}
+
+            {/* Tab 6: Reports & Comparisons (Reporting Engine) */}
+            {userRoleInfo.allowedModules.includes('reports') && (
+              <button
+                onClick={() => handleTabChange('reports')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'reports'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'reports' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'reports' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'reports' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <BarChart3 className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Reports</span>
+              </button>
+            )}
           </nav>
         </aside>
 
@@ -1851,6 +1956,23 @@ export default function App() {
                   onGenerateComparison={handleGenerateComparison}
                   onGenerateReport={handleGenerateReport}
                   isLoading={loading}
+                />
+              </div>
+            )}
+
+            {/* Tab 6: Reports & Comparisons (Reporting Engine) */}
+            {activeTab === 'reports' && (
+              <div className="space-y-6">
+                <ReportsHub
+                  currentUser={currentUser}
+                  users={users}
+                  clients={clients}
+                  packages={packages}
+                  assignments={assignments}
+                  reports={reports}
+                  clientComparisons={clientComparisons}
+                  onGenerateComparison={handleGenerateComparison}
+                  onGenerateReport={handleGenerateReport}
                 />
               </div>
             )}

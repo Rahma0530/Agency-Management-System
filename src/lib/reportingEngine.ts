@@ -1,4 +1,5 @@
 import {
+  AssignmentRecord,
   CampaignRecord,
   ClientComparisonDelta,
   ClientComparisonMetrics,
@@ -6,9 +7,11 @@ import {
   ComparisonMediaBuyingMetrics,
   ComparisonSeoMetrics,
   ComparisonSocialMetrics,
+  PackageRecord,
   ServiceType,
   SocialInsightRecord,
   TaskRecord,
+  UserRole,
 } from '../types/database';
 import { getCampaignStartDate, getCampaignEndDate } from '../components/CampaignManagementModule';
 
@@ -80,7 +83,82 @@ export function customPeriod(range: DateRange): ComparisonPeriod {
 }
 
 // ----------------------------------------------------------------------------
-// Media Buying: spend, ROAS, conversions, CPA — from CampaignRecord.
+// Client-set resolution: "my own work" or "a specific agent's work", for the multi-scope
+// reporting engine (Reports Hub). Deliberately mirrors two things that must stay in lockstep:
+//  1. The visibility rules already coded in AMQueue.tsx (am_team_lead/am_agent) and
+//     ServiceBriefsRoutingView.tsx's single-service queues (the other three departments) — team
+//     leads see every client subscribed to their service, agents see only clients they hold a
+//     formal assignments-table row for.
+//  2. The report_scope_accessible() RLS helper the resulting comparison must pass on insert. If
+//     this resolver and that helper diverge, a client-side "successful" generation can still be
+//     rejected server-side — keep them matched.
+// ----------------------------------------------------------------------------
+
+// What a report/comparison generation call is about: one specific client, or an agent's pooled
+// client set (agentId is the caller's own id for a self-generated "all my clients" report, or a
+// direct report's id when a team lead generates one for a specific agent under them).
+export type ReportScope = { type: 'client'; clientId: string } | { type: 'agent'; agentId: string };
+
+export function resolveClientsForSubject(
+  subject: { id: string; role: UserRole },
+  clients: ClientRecord[],
+  packages: PackageRecord[],
+  assignments: AssignmentRecord[]
+): ClientRecord[] {
+  const hasService = (client: ClientRecord, service: ServiceType) =>
+    packages.find((p) => p.id === client.package_id)?.services.includes(service) ?? false;
+
+  const isAssigned = (client: ClientRecord, service: ServiceType) =>
+    assignments.some((a) => a.client_id === client.id && a.service_type === service && a.agent_id === subject.id);
+
+  switch (subject.role) {
+    case 'executive':
+    case 'head_of_technical':
+    case 'am_team_lead':
+      return clients.filter((c) => c.status !== 'lead');
+    case 'am_agent':
+      return clients.filter((c) => c.am_agent_id === subject.id);
+    case 'media_buying_team_lead':
+      return clients.filter((c) => hasService(c, 'media_buying'));
+    case 'media_buying_agent':
+      return clients.filter((c) => hasService(c, 'media_buying') && isAssigned(c, 'media_buying'));
+    case 'seo_team_lead':
+      return clients.filter((c) => hasService(c, 'seo'));
+    case 'seo_agent':
+      return clients.filter((c) => hasService(c, 'seo') && isAssigned(c, 'seo'));
+    case 'social_media_team_lead':
+      return clients.filter((c) => hasService(c, 'social_media'));
+    case 'social_media_agent':
+      return clients.filter((c) => hasService(c, 'social_media') && isAssigned(c, 'social_media'));
+    default:
+      return [];
+  }
+}
+
+// Which service block(s) an aggregate report for this role should compute. The four
+// single-department agent/lead roles only ever report on their own department's numbers, even
+// if a pooled client happens to also subscribe to another service. AM and leadership roles own
+// the whole client relationship, so their aggregate spans every service a pooled client has —
+// signaled by returning undefined (no filter).
+export function serviceFilterForRole(role: UserRole): ServiceType[] | undefined {
+  switch (role) {
+    case 'media_buying_team_lead':
+    case 'media_buying_agent':
+      return ['media_buying'];
+    case 'seo_team_lead':
+    case 'seo_agent':
+      return ['seo'];
+    case 'social_media_team_lead':
+    case 'social_media_agent':
+      return ['social_media'];
+    default:
+      return undefined;
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Media Buying: spend, ROAS, conversions, CPA — from CampaignRecord, pooled across one or more
+// clients (a single client is just the clientIds.length === 1 case).
 // ----------------------------------------------------------------------------
 // Campaign rows carry cumulative results for the campaign's whole run, not a per-day time
 // series, so "in period X" means "was running during period X" (start/end overlap the range),
@@ -95,10 +173,10 @@ function campaignOverlapsRange(c: CampaignRecord, range: DateRange): boolean {
 
 export function aggregateMediaBuyingMetrics(
   campaigns: CampaignRecord[],
-  clientId: string,
+  clientIds: string[],
   range: DateRange
 ): ComparisonMediaBuyingMetrics {
-  const scoped = campaigns.filter((c) => c.client_id === clientId && campaignOverlapsRange(c, range));
+  const scoped = campaigns.filter((c) => clientIds.includes(c.client_id) && campaignOverlapsRange(c, range));
 
   const spend = scoped.reduce((sum, c) => sum + (c.spend || 0), 0);
   const conversions = scoped.reduce((sum, c) => {
@@ -106,31 +184,45 @@ export function aggregateMediaBuyingMetrics(
     return sum + (typeof v === 'number' ? v : 0);
   }, 0);
 
-  const roasValues = scoped
-    .map((c) => c.results?.roas)
-    .filter((v): v is number => typeof v === 'number');
-  const roas = roasValues.length ? roasValues.reduce((a, b) => a + b, 0) / roasValues.length : null;
+  // CPA is a true ratio, so it's recomputed from the pooled totals rather than averaged
+  // per-campaign — averaging per-campaign CPA would weight a $50 campaign the same as a $50k
+  // one. This also corrects the original single-client implementation, which had the same flaw
+  // at smaller scale.
+  const cpa = conversions > 0 ? Math.round((spend / conversions) * 100) / 100 : null;
 
-  const cpaValues = scoped
-    .map((c) => c.results?.cpa)
-    .filter((v): v is number => typeof v === 'number');
-  const cpa = cpaValues.length ? cpaValues.reduce((a, b) => a + b, 0) / cpaValues.length : null;
+  // No revenue field exists to recompute a true ROAS ratio (unlike CPA), so this is the best
+  // available proxy: each campaign's own reported ROAS, weighted by its spend, rather than a
+  // flat average — still better than treating every campaign as equally sized.
+  const roasEntries = scoped
+    .map((c) => ({ roas: c.results?.roas, spend: c.spend || 0 }))
+    .filter((e): e is { roas: number; spend: number } => typeof e.roas === 'number' && e.spend > 0);
+  const roasWeight = roasEntries.reduce((sum, e) => sum + e.spend, 0);
+  const roas = roasWeight > 0
+    ? Math.round((roasEntries.reduce((sum, e) => sum + e.roas * e.spend, 0) / roasWeight) * 100) / 100
+    : null;
 
   return { spend, roas, conversions, cpa };
 }
 
 // ----------------------------------------------------------------------------
 // SEO: no analytics table exists in this schema — this is an operational delivery proxy
-// (completed tasks + on-time rate for the client's SEO-team tasks), not a true performance
-// metric. Flagged in the reporting plan as a real data gap.
+// (completed tasks + on-time rate for the SEO-team tasks of the pooled clients), not a true
+// performance metric. Flagged in the reporting plan as a real data gap.
 // ----------------------------------------------------------------------------
-export function aggregateSeoMetrics(tasks: TaskRecord[], clientId: string, range: DateRange): ComparisonSeoMetrics {
+export function aggregateSeoMetrics(tasks: TaskRecord[], clientIds: string[], range: DateRange): ComparisonSeoMetrics {
   const completed = tasks.filter(
-    (t) => t.client_id === clientId && t.team === 'SEO' && t.status === 'completed' && t.completed_at && inRange(t.completed_at.split('T')[0], range)
+    (t) =>
+      clientIds.includes(t.client_id) &&
+      t.team === 'SEO' &&
+      t.status === 'completed' &&
+      t.completed_at &&
+      inRange(t.completed_at.split('T')[0], range)
   );
   const completed_tasks = completed.length;
   if (completed_tasks === 0) return { completed_tasks, on_time_rate: null };
 
+  // Ratio recomputed from the pooled completed-task set, not averaged per client — same
+  // weighting principle as CPA above.
   const onTime = completed.filter((t) => t.completed_at!.split('T')[0] <= t.due_date).length;
   return { completed_tasks, on_time_rate: Math.round((onTime / completed_tasks) * 100) };
 }
@@ -138,7 +230,7 @@ export function aggregateSeoMetrics(tasks: TaskRecord[], clientId: string, range
 // ----------------------------------------------------------------------------
 // Social Media: from SocialInsightRecord.metrics — an untyped JSON blob per platform row, so
 // every field is pulled defensively (present or not, per row). reach/engagement_rate are
-// averaged across the period's rows (rate-like); follower_growth is summed (accumulates).
+// averaged across the period's pooled rows (rate-like); follower_growth is summed (accumulates).
 // ----------------------------------------------------------------------------
 function avgMetric(rows: SocialInsightRecord[], key: string): number | null {
   const values = rows.map((r) => r.metrics?.[key]).filter((v): v is number => typeof v === 'number');
@@ -152,10 +244,10 @@ function sumMetric(rows: SocialInsightRecord[], key: string): number | null {
 
 export function aggregateSocialMetrics(
   insights: SocialInsightRecord[],
-  clientId: string,
+  clientIds: string[],
   range: DateRange
 ): ComparisonSocialMetrics {
-  const rows = insights.filter((i) => i.client_id === clientId && inRange(i.date, range));
+  const rows = insights.filter((i) => clientIds.includes(i.client_id) && inRange(i.date, range));
   return {
     reach: avgMetric(rows, 'reach'),
     engagement_rate: avgMetric(rows, 'engagement_rate'),
@@ -164,20 +256,41 @@ export function aggregateSocialMetrics(
 }
 
 // ----------------------------------------------------------------------------
-// Full metrics block for a client's period, scoped to whichever services its package includes.
+// Full metrics block for a period, pooled across one or more clients. Each service block is
+// independently scoped to whichever of the given clients actually subscribes to that service
+// (so a single client with only SEO never gets an empty media_buying block, and a mixed pool
+// only counts each client toward the services it actually has) — narrowed further by
+// serviceFilter when the caller's role only reports on one department's numbers.
 // ----------------------------------------------------------------------------
 export function generateClientComparisonMetrics(
-  services: ServiceType[],
-  clientId: string,
+  clients: ClientRecord[],
+  packages: PackageRecord[],
   range: DateRange,
   campaigns: CampaignRecord[],
   tasks: TaskRecord[],
-  socialInsights: SocialInsightRecord[]
+  socialInsights: SocialInsightRecord[],
+  serviceFilter?: ServiceType[]
 ): ClientComparisonMetrics {
+  const hasService = (client: ClientRecord, service: ServiceType) =>
+    packages.find((p) => p.id === client.package_id)?.services.includes(service) ?? false;
+  const wantsService = (service: ServiceType) => !serviceFilter || serviceFilter.includes(service);
+  const clientIdsWith = (service: ServiceType) => clients.filter((c) => hasService(c, service)).map((c) => c.id);
+
   const metrics: ClientComparisonMetrics = {};
-  if (services.includes('media_buying')) metrics.media_buying = aggregateMediaBuyingMetrics(campaigns, clientId, range);
-  if (services.includes('seo')) metrics.seo = aggregateSeoMetrics(tasks, clientId, range);
-  if (services.includes('social_media')) metrics.social_media = aggregateSocialMetrics(socialInsights, clientId, range);
+
+  if (wantsService('media_buying')) {
+    const ids = clientIdsWith('media_buying');
+    if (ids.length) metrics.media_buying = aggregateMediaBuyingMetrics(campaigns, ids, range);
+  }
+  if (wantsService('seo')) {
+    const ids = clientIdsWith('seo');
+    if (ids.length) metrics.seo = aggregateSeoMetrics(tasks, ids, range);
+  }
+  if (wantsService('social_media')) {
+    const ids = clientIdsWith('social_media');
+    if (ids.length) metrics.social_media = aggregateSocialMetrics(socialInsights, ids, range);
+  }
+
   return metrics;
 }
 
@@ -317,15 +430,20 @@ export function generateComparisonNarrative(
 
 // ----------------------------------------------------------------------------
 // Full generation, tying the above together into what gets stored in client_comparisons.
+// `clients` is one client for the original single-client case, or a resolved pool (via
+// resolveClientsForSubject) for an aggregate. Each service block is scoped automatically to
+// whichever of `clients` actually subscribes to it (see generateClientComparisonMetrics), so
+// passing a single client behaves exactly as before with no explicit service list needed.
 // ----------------------------------------------------------------------------
 export function generateClientComparison(
-  client: ClientRecord,
-  services: ServiceType[],
+  clients: ClientRecord[],
+  packages: PackageRecord[],
   currentPeriod: ComparisonPeriod,
   previousPeriod: ComparisonPeriod,
   campaigns: CampaignRecord[],
   tasks: TaskRecord[],
-  socialInsights: SocialInsightRecord[]
+  socialInsights: SocialInsightRecord[],
+  serviceFilter?: ServiceType[]
 ): {
   period_current: string;
   period_previous: string;
@@ -333,22 +451,25 @@ export function generateClientComparison(
   metrics_previous: ClientComparisonMetrics;
   delta: ClientComparisonDelta;
   ai_recommendations_text: string;
+  covered_client_ids: string[];
 } {
   const metrics_current = generateClientComparisonMetrics(
-    services,
-    client.id,
+    clients,
+    packages,
     currentPeriod.range,
     campaigns,
     tasks,
-    socialInsights
+    socialInsights,
+    serviceFilter
   );
   const metrics_previous = generateClientComparisonMetrics(
-    services,
-    client.id,
+    clients,
+    packages,
     previousPeriod.range,
     campaigns,
     tasks,
-    socialInsights
+    socialInsights,
+    serviceFilter
   );
   const delta = computeComparisonDelta(metrics_current, metrics_previous);
   const { recommendations } = generateComparisonNarrative(metrics_current, metrics_previous, delta);
@@ -360,5 +481,6 @@ export function generateClientComparison(
     metrics_previous,
     delta,
     ai_recommendations_text: recommendations,
+    covered_client_ids: clients.map((c) => c.id),
   };
 }

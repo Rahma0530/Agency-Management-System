@@ -193,7 +193,11 @@ export interface SocialInsightRecord {
 // 9. reports
 export interface ReportRecord {
   id: string;
-  client_id: string;
+  // Null for an aggregate report (all-my-clients or a specific agent's clients) — those have no
+  // single client. The report's actual subject (one client, or an agent's pooled clients) always
+  // lives on the client_comparisons row it points to via comparison_id, which is the single
+  // source of truth for scope; this column is a display convenience for the single-client case.
+  client_id?: string | null;
   type: 'internal' | 'client';
   period: string;
   generated_by: string;
@@ -334,7 +338,18 @@ export interface ClientComparisonDelta {
 
 export interface ClientComparisonRecord {
   id: string;
-  client_id: string;
+  // Exactly one of client_id / agent_id is set (enforced by a DB check constraint):
+  //  - client_id set, agent_id null: a single client's comparison (the original, unchanged shape).
+  //  - agent_id set, client_id null: an aggregate pooled across an agent's resolved client set —
+  //    either that agent's own "all my clients" report, or a team lead generating one for a
+  //    specific direct report. See reportingEngine.ts's resolveClientsForSubject().
+  client_id?: string | null;
+  agent_id?: string | null;
+  // Which clients actually got pooled into this row, recorded at generation time. Only set for
+  // agent-scoped rows (client-scoped rows have exactly one client, already in client_id). Purely
+  // for audit/drill-down display — RLS cannot re-verify this against current assignments (they
+  // may have changed since generation), so it is not part of the access-control model.
+  covered_client_ids?: string[] | null;
   period_current: string;
   period_previous: string;
   metrics_current: ClientComparisonMetrics;
