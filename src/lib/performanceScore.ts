@@ -4,6 +4,7 @@ import {
   TaskRecord,
   ExtraNoteRecord,
   KpiScoreMetrics,
+  KpiScoreRecord,
   PerformancePeriodType,
 } from '../types/database';
 import { getUserCapacityData } from './capacity';
@@ -198,4 +199,154 @@ export function generateKpiScoreMetrics(
   };
 
   return { metrics, overallScore };
+}
+
+// ----------------------------------------------------------------------------
+// Classification suggestion (Module 10: guided promotion/raise/development-plan
+// suggestion). Explicitly advisory — this only ever produces a *suggestion* attached
+// to a generated score for a Team Lead/Head of Technical to review; nothing in this
+// app acts on it automatically. See EmployeePerformancePage.tsx's Growth &
+// Classification panel, which is the only place this gets surfaced, always framed
+// as "suggested — requires review."
+// ----------------------------------------------------------------------------
+
+const CLASSIFIABLE_INDICATOR_KEYS = [
+  'on_time_completion_rate',
+  'capacity_utilization_score',
+  'initiative_score',
+] as const;
+
+type ClassifiableIndicatorKey = (typeof CLASSIFIABLE_INDICATOR_KEYS)[number];
+
+const INDICATOR_LABELS: Record<ClassifiableIndicatorKey, string> = {
+  on_time_completion_rate: 'On-Time Completion Rate',
+  capacity_utilization_score: 'Capacity Utilization',
+  initiative_score: 'Initiative',
+};
+
+export type TrendSignal =
+  | 'improving_streak' // 2+ consecutive periods each higher than the last
+  | 'declining_streak' // 2+ consecutive periods each lower than the last
+  | 'improving' // single-period increase, not (yet) a streak
+  | 'declining' // single-period decrease, not (yet) a streak
+  | 'stable'
+  | 'insufficient_data'; // fewer than 2 generated periods
+
+export interface ClassificationDiagnostic {
+  indicatorKey: ClassifiableIndicatorKey;
+  label: string;
+  currentValue: number;
+  previousValue: number | null;
+  // 'low_value': this indicator is below 60 in absolute terms.
+  // 'declining': not necessarily low yet, but dropped 10+ points since the previous period —
+  // the thing actually explaining a decline-triggered suggestion even when the score itself
+  // hasn't crossed into "low" territory.
+  reason: 'low_value' | 'declining';
+}
+
+export interface ClassificationSuggestion {
+  suggestedStatus: 'promotion' | 'raise' | 'development_plan' | 'stable';
+  trend: TrendSignal;
+  rationale: string;
+  // Ranked lowest-value-first. Populated whenever a weak or declining indicator exists —
+  // in practice always non-empty for 'development_plan' (the low-score trigger can't fire
+  // without at least one indicator under 60), and occasionally for 'stable' when one
+  // indicator is quietly weak despite an adequate overall score.
+  diagnostics: ClassificationDiagnostic[];
+}
+
+const isStrictlyIncreasing = (values: number[]): boolean => {
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] <= values[i - 1]) return false;
+  }
+  return true;
+};
+
+const isStrictlyDecreasing = (values: number[]): boolean => {
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] >= values[i - 1]) return false;
+  }
+  return true;
+};
+
+function computeDiagnostics(
+  latest: KpiScoreRecord,
+  previous: KpiScoreRecord | null
+): ClassificationDiagnostic[] {
+  const diagnostics: ClassificationDiagnostic[] = [];
+
+  CLASSIFIABLE_INDICATOR_KEYS.forEach((key) => {
+    const currentValue = latest.metrics?.[key];
+    if (currentValue === null || currentValue === undefined) return; // untracked for this employee
+    const previousValue = previous?.metrics?.[key] ?? null;
+
+    if (currentValue < 60) {
+      diagnostics.push({ indicatorKey: key, label: INDICATOR_LABELS[key], currentValue, previousValue, reason: 'low_value' });
+      return;
+    }
+    if (previousValue !== null && currentValue - previousValue <= -10) {
+      diagnostics.push({ indicatorKey: key, label: INDICATOR_LABELS[key], currentValue, previousValue, reason: 'declining' });
+    }
+  });
+
+  return diagnostics.sort((a, b) => a.currentValue - b.currentValue);
+}
+
+// scoreHistory must be sorted ascending by period (oldest first), ending with the period being
+// classified — i.e. only periods up to and including "now" from that period's point of view, so
+// a later backfilled-earlier generation doesn't get judged against periods that hadn't happened
+// yet. Callers: App.tsx's handleGenerateKpiScore (to set the stored suggested_status column) and
+// EmployeePerformancePage.tsx (to recompute the same suggestion live for display, off whatever
+// history is already in scope — never persisted separately, so it can't drift from the data).
+export function suggestClassification(scoreHistory: KpiScoreRecord[]): ClassificationSuggestion {
+  const latest = scoreHistory[scoreHistory.length - 1];
+  const previous = scoreHistory.length >= 2 ? scoreHistory[scoreHistory.length - 2] : null;
+  const overallScore = latest.overall_score;
+
+  const last3Scores = scoreHistory.slice(-3).map((s) => s.overall_score);
+  const improvingStreak = last3Scores.length === 3 && isStrictlyIncreasing(last3Scores);
+  const decliningStreak = last3Scores.length === 3 && isStrictlyDecreasing(last3Scores);
+
+  const singleStepDelta = previous ? overallScore - previous.overall_score : null;
+  const sharpDrop = singleStepDelta !== null && singleStepDelta <= -10;
+
+  let trend: TrendSignal;
+  if (improvingStreak) trend = 'improving_streak';
+  else if (decliningStreak) trend = 'declining_streak';
+  else if (singleStepDelta === null) trend = 'insufficient_data';
+  else if (singleStepDelta >= 5) trend = 'improving';
+  else if (singleStepDelta <= -5) trend = 'declining';
+  else trend = 'stable';
+
+  let suggestedStatus: ClassificationSuggestion['suggestedStatus'];
+  let rationale: string;
+
+  if (overallScore >= 85 && improvingStreak) {
+    suggestedStatus = 'promotion';
+    rationale = `Overall score of ${overallScore} with an improving trend across the last 3 periods (${last3Scores.join(' → ')}).`;
+  } else if (overallScore < 60 || decliningStreak || sharpDrop) {
+    suggestedStatus = 'development_plan';
+    if (overallScore < 60) {
+      rationale = `Overall score of ${overallScore} is below the sustainable-performance threshold.`;
+    } else if (decliningStreak) {
+      rationale = `Score has declined for 2 consecutive periods (${last3Scores.join(' → ')}).`;
+    } else {
+      rationale = `Score dropped ${Math.abs(singleStepDelta!)} points from the previous period (${previous!.overall_score} → ${overallScore}).`;
+    }
+  } else if (overallScore >= 80 && (singleStepDelta === null || singleStepDelta >= 0)) {
+    suggestedStatus = 'raise';
+    rationale = previous
+      ? `Sustained high performance: score of ${overallScore}, holding steady or improving from ${previous.overall_score}.`
+      : `Strong score of ${overallScore} in its first generated period.`;
+  } else {
+    suggestedStatus = 'stable';
+    rationale = `Overall score of ${overallScore} — adequate performance with no strong signal in either direction.`;
+  }
+
+  return {
+    suggestedStatus,
+    trend,
+    rationale,
+    diagnostics: computeDiagnostics(latest, previous),
+  };
 }

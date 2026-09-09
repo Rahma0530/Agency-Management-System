@@ -33,6 +33,7 @@ import {
   TaskRecord,
   CapacityLogRecord,
   KpiScoreRecord,
+  ExtraNoteRecord,
   PerformancePeriodType,
   UserRole,
 } from '../types/database';
@@ -51,6 +52,7 @@ interface CapacityManagementProps {
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
   kpiScores?: KpiScoreRecord[];
   onGenerateKpiScore?: (userId: string, periodType: PerformancePeriodType, referenceDate: Date) => Promise<void>;
+  extraNotes?: ExtraNoteRecord[];
 }
 
 export type CapacityStatus = 'all' | 'available' | 'near_capacity' | 'over_capacity';
@@ -86,6 +88,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
   onNavigateToModule,
   kpiScores = [],
   onGenerateKpiScore,
+  extraNotes = [],
 }) => {
   const [performanceEmployeeId, setPerformanceEmployeeId] = useState<string | null>(null);
   // View mode
@@ -1399,6 +1402,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
               tasks={tasks}
               capacityLogs={capacityLogs}
               kpiScores={kpiScores}
+              extraNotes={extraNotes}
               onGenerateKpiScore={onGenerateKpiScore}
               onClose={() => setPerformanceEmployeeId(null)}
             />

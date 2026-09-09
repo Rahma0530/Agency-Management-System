@@ -10,6 +10,10 @@ import {
   Calendar,
   RefreshCw,
   Info,
+  ShieldAlert,
+  Award,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 import {
   UserRecord,
@@ -17,11 +21,18 @@ import {
   TaskRecord,
   CapacityLogRecord,
   KpiScoreRecord,
+  ExtraNoteRecord,
   PerformancePeriodType,
 } from '../types/database';
 import { getRoleInfo } from '../data/roles';
 import { getUserCapacityData } from '../lib/capacity';
-import { computeOnTimeCompletionRate, resolvePeriodRange, PeriodRange } from '../lib/performanceScore';
+import {
+  computeOnTimeCompletionRate,
+  resolvePeriodRange,
+  PeriodRange,
+  suggestClassification,
+  ClassificationSuggestion,
+} from '../lib/performanceScore';
 
 interface EmployeePerformancePageProps {
   employee: UserRecord;
@@ -30,6 +41,7 @@ interface EmployeePerformancePageProps {
   tasks: TaskRecord[];
   capacityLogs: CapacityLogRecord[];
   kpiScores: KpiScoreRecord[];
+  extraNotes?: ExtraNoteRecord[];
   onGenerateKpiScore: (userId: string, periodType: PerformancePeriodType, referenceDate: Date) => Promise<void>;
   onClose: () => void;
 }
@@ -159,6 +171,25 @@ const scoreColor = (score: number) => {
   return 'var(--roas-bad)';
 };
 
+// suggested_status stays a loose string type at the schema level (room for future values without
+// a migration), so this only covers the 4 values suggestClassification() actually produces —
+// anything else falls back to a neutral label/color rather than guessing.
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  promotion: { label: 'Promotion-Worthy', color: 'var(--roas-good)' },
+  raise: { label: 'Raise-Worthy', color: '#38bdf8' },
+  development_plan: { label: 'Needs Development Plan', color: 'var(--roas-bad)' },
+  stable: { label: 'Stable Performance', color: 'var(--lilac)' },
+};
+
+const TREND_META: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
+  improving_streak: { label: 'Improving across the last 3 periods', Icon: TrendingUp },
+  declining_streak: { label: 'Declining across the last 3 periods', Icon: TrendingDown },
+  improving: { label: 'Improved from the previous period', Icon: TrendingUp },
+  declining: { label: 'Declined from the previous period', Icon: TrendingDown },
+  stable: { label: 'Holding steady', Icon: Minus },
+  insufficient_data: { label: 'Not enough history yet for a trend', Icon: Minus },
+};
+
 export const EmployeePerformancePage: React.FC<EmployeePerformancePageProps> = ({
   employee,
   users,
@@ -166,6 +197,7 @@ export const EmployeePerformancePage: React.FC<EmployeePerformancePageProps> = (
   tasks,
   capacityLogs,
   kpiScores,
+  extraNotes = [],
   onGenerateKpiScore,
   onClose,
 }) => {
@@ -207,6 +239,26 @@ export const EmployeePerformancePage: React.FC<EmployeePerformancePageProps> = (
     [kpiScores, employee.id]
   );
   const latestScore = employeeKpiScores[employeeKpiScores.length - 1] || null;
+
+  // Advisory classification suggestion — recomputed live from the same history shown above,
+  // never persisted separately (the stored suggested_status on `latestScore` was set from this
+  // exact function at generation time; recomputing here just keeps the displayed rationale/
+  // diagnostics in sync with whatever's actually in view, with zero risk of drifting from it).
+  const classification: ClassificationSuggestion | null = useMemo(
+    () => (employeeKpiScores.length > 0 ? suggestClassification(employeeKpiScores) : null),
+    [employeeKpiScores]
+  );
+
+  // Raw count (not the derived 0-100 initiative_score) of documented extra-effort notes within
+  // the latest score's period — same category exclusion as computeInitiativeScore, so this
+  // number is the literal thing behind that indicator, not a separate reading of it.
+  const extraNotesInPeriod = useMemo(() => {
+    if (!latestScore?.metrics?.period_start || !latestScore?.metrics?.period_end) return null;
+    const { period_start, period_end } = latestScore.metrics;
+    return extraNotes.filter(
+      (n) => n.user_id === employee.id && n.category !== 'blocker' && n.date >= period_start && n.date <= period_end
+    ).length;
+  }, [extraNotes, employee.id, latestScore]);
 
   const capacityHistory = useMemo(
     () =>
@@ -496,6 +548,97 @@ export const EmployeePerformancePage: React.FC<EmployeePerformancePageProps> = (
             </div>
           )}
         </div>
+
+        {/* GROWTH & CLASSIFICATION — advisory suggestion, never a verdict */}
+        {classification && latestScore && (
+          <div
+            className="p-4 rounded-2xl border-2 space-y-4"
+            style={{ background: 'var(--gradient-card)', borderColor: 'rgba(245, 226, 154, 0.35)' }}
+          >
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Award className="w-4 h-4" style={{ color: 'var(--roas-mid)' }} />
+                <h3 className="text-sm font-bold text-white">Growth & Classification Summary</h3>
+              </div>
+              <span
+                className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border"
+                style={{ background: 'rgba(245, 226, 154, 0.15)', color: 'var(--roas-mid)', borderColor: 'rgba(245, 226, 154, 0.4)' }}
+              >
+                <ShieldAlert className="w-3 h-3" />
+                Suggested — Requires Review
+              </span>
+            </div>
+
+            <p className="text-[10px] text-stone-400 -mt-2">
+              A guided suggestion for the Team Lead or Head of Technical reviewing this profile to weigh — not an
+              automatic decision. Any promotion, raise, or development plan still requires human review and
+              sign-off.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-stone-900/60 border border-stone-800">
+              <span
+                className="text-xs font-bold px-3 py-1.5 rounded-lg border"
+                style={{
+                  color: (STATUS_META[latestScore.suggested_status || ''] || STATUS_META.stable).color,
+                  borderColor: (STATUS_META[latestScore.suggested_status || ''] || STATUS_META.stable).color,
+                  background: 'rgba(0,0,0,0.2)',
+                }}
+              >
+                {(STATUS_META[latestScore.suggested_status || ''] || {
+                  label: latestScore.suggested_status || 'Stable Performance',
+                }).label}
+              </span>
+              <span className="flex items-center gap-1.5 text-[11px] text-stone-300">
+                {React.createElement((TREND_META[classification.trend] || TREND_META.stable).Icon, { className: 'w-3.5 h-3.5' })}
+                {(TREND_META[classification.trend] || TREND_META.stable).label}
+              </span>
+            </div>
+
+            <p className="text-xs text-stone-200 leading-relaxed">{classification.rationale}</p>
+
+            {classification.diagnostics.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-semibold text-stone-400 block">
+                  Diagnostic breakdown — where this is coming from
+                </label>
+                {classification.diagnostics.map((d) => (
+                  <div
+                    key={d.indicatorKey}
+                    className="flex items-center justify-between p-2 rounded-lg bg-red-950/20 border border-red-900/30 text-xs"
+                  >
+                    <span className="text-stone-200">
+                      <strong>{d.label}</strong>
+                      {d.reason === 'low_value' ? ' is a primary driver' : ' declined sharply'}
+                    </span>
+                    <span className="font-mono text-red-300">
+                      {d.currentValue}%{d.previousValue !== null ? ` (from ${d.previousValue}%)` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div>
+              <label className="text-[10px] font-semibold text-stone-400 block mb-1.5">
+                Compiled growth summary — {latestScore.period}
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <StatTile label="Overall Score" value={`${latestScore.overall_score}/100`} icon={Gauge} />
+                <StatTile
+                  label="Extra Notes Logged"
+                  value={extraNotesInPeriod === null ? 'N/A' : extraNotesInPeriod}
+                  icon={Sparkles}
+                />
+                <StatTile
+                  label="Workload"
+                  value={capacityData.isUntracked ? 'N/A' : `${capacityData.utilizationRate}%`}
+                  icon={Gauge}
+                />
+                <StatTile label="Completed Tasks" value={tasksByStatus.completed} icon={CheckSquare} />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-start gap-2 p-3 rounded-xl bg-purple-950/20 border border-purple-900/30">
           <Info className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />

@@ -26,7 +26,7 @@ import {
   setSupabaseSessionUser,
   buildAttachmentStoragePath,
 } from './lib/supabase';
-import { resolvePeriodRange, generateKpiScoreMetrics } from './lib/performanceScore';
+import { resolvePeriodRange, generateKpiScoreMetrics, suggestClassification } from './lib/performanceScore';
 import {
   ComparisonGranularity,
   ComparisonPeriod,
@@ -1153,6 +1153,15 @@ export default function App() {
       created_at: existing?.created_at || new Date().toISOString(),
     };
 
+    // Classification suggestion (advisory only — see performanceScore.ts): judged against this
+    // period and whatever came before it, never periods that hadn't happened yet from this
+    // period's point of view, so backfilling an earlier period can't retroactively borrow trend
+    // evidence from a later one.
+    const classificationHistory = [...kpiScores.filter((k) => k.user_id === userId && k.period !== range.period), scorePayload]
+      .filter((k) => (k.metrics?.period_start || '') <= range.start)
+      .sort((a, b) => (a.metrics?.period_start || '').localeCompare(b.metrics?.period_start || ''));
+    scorePayload.suggested_status = suggestClassification(classificationHistory).suggestedStatus;
+
     if (supabaseActive) {
       try {
         const { data, error } = await supabase
@@ -1877,6 +1886,7 @@ export default function App() {
                   onNavigateToModule={handleNavigateToModule}
                   kpiScores={kpiScores}
                   onGenerateKpiScore={handleGenerateKpiScore}
+                  extraNotes={extraNotes}
                 />
               </div>
             )}
