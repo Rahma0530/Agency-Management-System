@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { UserRecord } from '../types/database';
+import { isPendingEmployee } from '../lib/permissions';
 import { getRoleInfo } from '../data/roles';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -347,7 +348,7 @@ export const EmployeeLogin: React.FC<EmployeeLoginProps> = ({
             </div>
 
             <div className="overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-              {users.map((u) => {
+              {users.filter((u) => !isPendingEmployee(u)).map((u) => {
                 const info = getRoleInfo(u.role);
                 return (
                   <div

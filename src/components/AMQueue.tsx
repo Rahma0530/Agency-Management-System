@@ -46,6 +46,7 @@ import {
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
+import { isPendingEmployee } from '../lib/permissions';
 import { ClientDashboard } from './ClientDashboard';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 
@@ -179,8 +180,8 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   const [isAssigning, setIsAssigning] = useState<string | null>(null);
   const [assignMessage, setAssignMessage] = useState<{ id: string; text: string } | null>(null);
 
-  const amAgents = users.filter((u) => u.role === 'am_agent');
-  const salesUsers = users.filter((u) => u.role === 'sales');
+  const amAgents = users.filter((u) => u.role === 'am_agent' && !isPendingEmployee(u));
+  const salesUsers = users.filter((u) => u.role === 'sales' && !isPendingEmployee(u));
 
   const activeDashboardClient = useMemo(
     () => clients.find((c) => c.id === dashboardClientId) || null,

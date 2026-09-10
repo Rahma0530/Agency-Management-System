@@ -17,6 +17,7 @@ import {
   detectClientAnomalies,
   ClientAnomalyResult,
 } from '../lib/reportingEngine';
+import { isPendingEmployee } from '../lib/permissions';
 import { PeriodSelector } from './reporting/PeriodSelector';
 import { ComparisonCard, FiledReportsList, describeComparisonScope } from './reporting/ComparisonDisplay';
 
@@ -73,7 +74,7 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
   );
 
   const directReports = useMemo(
-    () => (agentRoleForLead ? users.filter((u) => u.role === agentRoleForLead) : []),
+    () => (agentRoleForLead ? users.filter((u) => u.role === agentRoleForLead && !isPendingEmployee(u)) : []),
     [users, agentRoleForLead]
   );
 

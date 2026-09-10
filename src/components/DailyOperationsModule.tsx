@@ -44,6 +44,7 @@ import {
   UserRole,
 } from '../types/database';
 import { getTodayStr, isTaskOverdue, isTaskDueToday, sortTasksByPriorityThenDueDate } from '../lib/employeeWork';
+import { isPendingEmployee } from '../lib/permissions';
 
 interface DailyOperationsModuleProps {
   tasks: TaskRecord[];
@@ -301,8 +302,10 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
     }
     // Executive and Head of Technical never receive task assignments, so they
     // never belong in this workload/team-member list — even when the viewer
-    // is one of them.
-    return result.filter((u) => u.role !== 'executive' && u.role !== 'head_of_technical');
+    // is one of them. Pending employees (no Auth account yet) are excluded too —
+    // a pending employee can never be the logged-in currentUser, so this never
+    // filters out "yourself".
+    return result.filter((u) => u.role !== 'executive' && u.role !== 'head_of_technical' && !isPendingEmployee(u));
   }, [users, currentUser]);
 
   // All blockers across visible tasks for Blockers Hub

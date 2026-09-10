@@ -20,6 +20,7 @@ import {
   Target,
   BarChart3,
   Briefcase,
+  UserPlus,
 } from 'lucide-react';
 import {
   supabase,
@@ -29,6 +30,7 @@ import {
   buildMeetingRecordingStoragePath,
 } from './lib/supabase';
 import { resolvePeriodRange, generateKpiScoreMetrics, suggestClassification } from './lib/performanceScore';
+import { isPendingEmployee } from './lib/permissions';
 import {
   ComparisonGranularity,
   ComparisonPeriod,
@@ -43,6 +45,7 @@ import {
   serviceFilterForRole,
 } from './lib/reportingEngine';
 import { ReportsHub } from './components/ReportsHub';
+import { EmployeeAdminHub, NewEmployeeInput } from './components/EmployeeAdminHub';
 import { DashboardHub } from './components/DashboardHub';
 import {
   ClientRecord,
@@ -549,6 +552,35 @@ export default function App() {
     }
 
     showNotification(`Client "${clientData.name}" registered as a Lead successfully!`);
+  };
+
+  // 1b. Add a new employee (Add Employee admin screen: single form or bulk CSV/Excel upload) —
+  // creates a pending employee row (auth_id null). Real Supabase Auth account creation needs the
+  // service-role key, which never touches the browser, so it happens separately via
+  // scripts/provisionAuthUsers.ts. Unlike most local-fallback handlers in this file, a real
+  // Supabase error here is re-thrown rather than swallowed: the bulk uploader in
+  // EmployeeAdminHub.tsx depends on catching per-row failures (e.g. a duplicate email hitting
+  // users_email_unique) to report them individually instead of silently "succeeding" locally.
+  const handleAddEmployee = async (employee: NewEmployeeInput) => {
+    const newUserPayload: UserRecord = {
+      id: `usr-${Date.now().toString().slice(-4)}-${Math.random().toString(36).slice(2, 6)}`,
+      name: employee.name,
+      email: employee.email,
+      role: employee.role,
+      team: employee.team,
+      manager_id: employee.manager_id || null,
+      capacity_limit: employee.capacity_limit ?? null,
+      auth_id: null,
+      created_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      const { data, error } = await supabase.from('users').insert([newUserPayload]).select();
+      if (error) throw error;
+      setUsers((prev) => [...prev, (data?.[0] as UserRecord) || newUserPayload]);
+    } else {
+      setUsers((prev) => [...prev, newUserPayload]);
+    }
   };
 
   // 2. Assign the client to an Account Manager (AM Agent)
@@ -2073,6 +2105,25 @@ export default function App() {
                 <span className="flex-1 text-left">Reports</span>
               </button>
             )}
+
+            {userRoleInfo.allowedModules.includes('employees') && (
+              <button
+                onClick={() => handleTabChange('employees')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'employees'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'employees' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'employees' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'employees' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <UserPlus className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Employees</span>
+              </button>
+            )}
           </nav>
         </aside>
 
@@ -2357,6 +2408,13 @@ export default function App() {
                 />
               </div>
             )}
+
+            {/* Tab 7: Add Employee (admin) */}
+            {activeTab === 'employees' && (
+              <div className="space-y-6">
+                <EmployeeAdminHub currentUser={currentUser} users={users} onAddEmployee={handleAddEmployee} />
+              </div>
+            )}
           </>
         )}
         </main>
@@ -2367,7 +2425,7 @@ export default function App() {
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
         packages={packages}
-        amTeamLeaders={users.filter((u) => u.role === 'am_team_lead')}
+        amTeamLeaders={users.filter((u) => u.role === 'am_team_lead' && !isPendingEmployee(u))}
         onSubmit={handleRegisterClient}
       />
     </div>

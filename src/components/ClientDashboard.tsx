@@ -66,7 +66,7 @@ import { CreateClientPortalLoginModal } from './clientPortal/CreateClientPortalL
 import { MonthlyReportDraftView } from './reporting/MonthlyReportDraftView';
 import { ClientMeetingsPanel } from './ClientMeetingsPanel';
 import { ClientIntegrationsPanel } from './ClientIntegrationsPanel';
-import { canSeeContractValue } from '../lib/permissions';
+import { canSeeContractValue, isPendingEmployee } from '../lib/permissions';
 import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
 
 interface ClientDashboardProps {
@@ -403,7 +403,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     }
   };
 
-  const amAgents = users.filter((u) => u.role === 'am_agent');
+  const amAgents = users.filter((u) => u.role === 'am_agent' && !isPendingEmployee(u));
 
   const handleAssignAM = async () => {
     if (!selectedAMId || !onAssignAMAgent) return;

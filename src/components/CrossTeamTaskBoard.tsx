@@ -50,6 +50,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
+import { isPendingEmployee } from '../lib/permissions';
 import { SubtaskList } from './SubtaskList';
 import { TaskCommentThread } from './TaskCommentThread';
 import { TaskAttachmentList } from './TaskAttachmentList';
@@ -171,6 +172,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   const isOperationalAssignee = (u: UserRecord) => {
     if (!u || u.role === 'client') return false;
     if (u.role === 'executive' || u.role === 'head_of_technical') return false;
+    if (isPendingEmployee(u)) return false;
     return true;
   };
 

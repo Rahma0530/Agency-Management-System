@@ -47,6 +47,7 @@ import {
   PlatformConnectionStatus,
   PlatformCategory,
 } from '../types/database';
+import { isPendingEmployee } from '../lib/permissions';
 import { getRoleInfo } from '../data/roles';
 import { ClientDashboard } from './ClientDashboard';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
@@ -1176,7 +1177,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 All Owners
               </option>
               {users
-                .filter((u) => u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id)
+                .filter((u) => (u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id) && !isPendingEmployee(u))
                 .map((u) => (
                   <option key={u.id} value={u.id} className="bg-stone-900 text-white">
                     {u.name} ({u.team || u.role})
@@ -1654,7 +1655,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                     }}
                   >
                     {users
-                      .filter((u) => u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id)
+                      .filter((u) => (u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id) && !isPendingEmployee(u))
                       .map((u) => (
                         <option key={u.id} value={u.id} className="bg-stone-900 text-white">
                           {u.name} ({u.team || u.role})

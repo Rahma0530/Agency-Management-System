@@ -49,7 +49,7 @@ import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
 import { BriefRepositoryView } from './BriefRepositoryView';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
-import { canSeeContractValue } from '../lib/permissions';
+import { canSeeContractValue, isPendingEmployee } from '../lib/permissions';
 import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
 
 interface ServiceBriefsRoutingViewProps {
@@ -462,7 +462,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const eligibleAgents = users.filter((u) => u.role === agentRole);
+  const eligibleAgents = users.filter((u) => u.role === agentRole && !isPendingEmployee(u));
 
   const selectedClient =
     authorizedClients.find((c) => c.id === selectedClientId) || authorizedClients[0] || null;

@@ -36,7 +36,11 @@ export interface UserRecord {
   team?: string | null;
   manager_id?: string | null;
   capacity_limit?: number | null;
-  auth_id: string;
+  // Null for a "pending" employee created via the Add Employee admin flow (single form or bulk
+  // upload) — real Supabase Auth account creation needs the service-role key, which never touches
+  // the browser, so it happens out-of-band via scripts/provisionAuthUsers.ts. Use
+  // lib/permissions.ts's isPendingEmployee() rather than checking this directly everywhere.
+  auth_id: string | null;
   created_at?: string;
 }
 

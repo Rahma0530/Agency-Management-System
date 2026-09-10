@@ -1,6 +1,6 @@
 import { UserRole } from '../types/database';
 
-export type AppModuleId = 'onboarding' | 'service_briefs' | 'capacity' | 'tasks' | 'daily_operations' | 'campaigns' | 'reports' | 'dashboard' | 'my_work';
+export type AppModuleId = 'onboarding' | 'service_briefs' | 'capacity' | 'tasks' | 'daily_operations' | 'campaigns' | 'reports' | 'dashboard' | 'my_work' | 'employees';
 
 export interface RoleMetadata {
   role: UserRole;
@@ -31,7 +31,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     badgeBg: 'rgba(216, 180, 254, 0.2)',
     badgeText: '#e9d5ff',
     defaultModule: 'dashboard',
-    allowedModules: ['dashboard', 'capacity', 'tasks', 'campaigns', 'reports'],
+    allowedModules: ['dashboard', 'capacity', 'tasks', 'campaigns', 'reports', 'employees'],
     canRegisterClients: false,
     canCreateCampaign: false,
     canManageCapacity: true,
@@ -48,7 +48,7 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     badgeBg: 'rgba(123, 47, 247, 0.25)',
     badgeText: '#c084fc',
     defaultModule: 'dashboard',
-    allowedModules: ['dashboard', 'capacity', 'tasks', 'daily_operations', 'campaigns', 'reports'],
+    allowedModules: ['dashboard', 'capacity', 'tasks', 'daily_operations', 'campaigns', 'reports', 'employees'],
     canRegisterClients: false,
     canCreateCampaign: false,
     canManageCapacity: true,
