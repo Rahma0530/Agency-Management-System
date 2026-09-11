@@ -51,6 +51,7 @@ interface MyWorkHubProps {
     date: string;
     summary_text: string;
     linked_task_ids: string[];
+    client_id?: string | null;
   }) => Promise<void>;
   onCreateExtraNote: (noteData: {
     user_id: string;
@@ -141,6 +142,8 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
 
   const [isLoggingDailyActivity, setIsLoggingDailyActivity] = useState(false);
   const [dailySummary, setDailySummary] = useState('');
+  const [logClientId, setLogClientId] = useState('');
+  const [logClientFilter, setLogClientFilter] = useState('all');
   const [isSubmittingLog, setIsSubmittingLog] = useState(false);
 
   const [isLoggingExtraEffort, setIsLoggingExtraEffort] = useState(false);
@@ -242,10 +245,10 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   const myRecentLogs = useMemo(
     () =>
       dailyLogs
-        .filter((l) => l.user_id === currentUser.id)
+        .filter((l) => l.user_id === currentUser.id && (logClientFilter === 'all' || l.client_id === logClientFilter))
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 5),
-    [dailyLogs, currentUser.id]
+    [dailyLogs, currentUser.id, logClientFilter]
   );
   const myRecentExtraNotes = useMemo(
     () =>
@@ -266,8 +269,10 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
         date: todayStr,
         summary_text: dailySummary.trim(),
         linked_task_ids: [],
+        client_id: logClientId || null,
       });
       setDailySummary('');
+      setLogClientId('');
       setIsLoggingDailyActivity(false);
       showNotification('Daily activity log saved successfully.');
     } catch {
@@ -443,14 +448,30 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
           <FileText className="w-4 h-4 text-purple-400" />
           <h3 className="text-xs font-bold text-white">Daily Log</h3>
         </div>
-        <button
-          onClick={() => setIsLoggingDailyActivity(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-white shadow-md hover:opacity-90 transition-all"
-          style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
-        >
-          <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
-          <span>Log Today's Activity</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {myClients.length > 0 && (
+            <select
+              value={logClientFilter}
+              onChange={(e) => setLogClientFilter(e.target.value)}
+              className="px-2 py-1.5 rounded-lg text-[11px] bg-stone-900 border border-stone-800 text-white outline-none focus:border-purple-400"
+            >
+              <option value="all" className="bg-stone-900">All Clients</option>
+              {myClients.map((c) => (
+                <option key={c.id} value={c.id} className="bg-stone-900">
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={() => setIsLoggingDailyActivity(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-white shadow-md hover:opacity-90 transition-all"
+            style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+          >
+            <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
+            <span>Log Today's Activity</span>
+          </button>
+        </div>
       </div>
 
       {isLoggingDailyActivity && (
@@ -463,6 +484,18 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
             className="w-full px-3 py-2 rounded-lg text-xs bg-black/30 border border-stone-800 text-white outline-none focus:border-purple-400"
             autoFocus
           />
+          <select
+            value={logClientId}
+            onChange={(e) => setLogClientId(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg text-xs bg-black/30 border border-stone-800 text-white outline-none focus:border-purple-400"
+          >
+            <option value="" className="bg-stone-900 text-stone-400">-- Not specific to one client --</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id} className="bg-stone-900 text-white">
+                {c.name}
+              </option>
+            ))}
+          </select>
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
@@ -489,12 +522,22 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
         <p className="text-xs text-stone-500 py-2 text-center">No daily logs yet.</p>
       ) : (
         <div className="space-y-1.5">
-          {myRecentLogs.map((log) => (
-            <div key={log.id} className="p-2.5 rounded-lg bg-stone-900/50 border border-stone-800/60 text-xs">
-              <span className="text-stone-500 font-mono text-[10px]">{log.date}</span>
-              <p className="text-stone-200 mt-0.5">{log.summary_text}</p>
-            </div>
-          ))}
+          {myRecentLogs.map((log) => {
+            const logClient = log.client_id ? clients.find((c) => c.id === log.client_id) : null;
+            return (
+              <div key={log.id} className="p-2.5 rounded-lg bg-stone-900/50 border border-stone-800/60 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-stone-500 font-mono text-[10px]">{log.date}</span>
+                  {logClient && (
+                    <span className="text-[10px] font-bold text-purple-300 bg-purple-950/50 px-1.5 py-0.5 rounded-full border border-purple-800/60">
+                      {logClient.name}
+                    </span>
+                  )}
+                </div>
+                <p className="text-stone-200 mt-0.5">{log.summary_text}</p>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

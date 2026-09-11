@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BarChart3, TrendingUp, FileText, Users, AlertTriangle } from 'lucide-react';
+import { BarChart3, TrendingUp, FileText, Users, AlertTriangle, ClipboardList } from 'lucide-react';
 import {
   ClientRecord,
   PackageRecord,
@@ -7,6 +7,7 @@ import {
   AssignmentRecord,
   ReportRecord,
   ClientComparisonRecord,
+  DailyLogRecord,
 } from '../types/database';
 import {
   ComparisonGranularity,
@@ -38,6 +39,7 @@ interface ReportsHubProps {
   assignments: AssignmentRecord[];
   reports: ReportRecord[];
   clientComparisons: ClientComparisonRecord[];
+  dailyLogs?: DailyLogRecord[];
   onGenerateComparison: (
     scope: ReportScope,
     mode: ReportMode,
@@ -62,11 +64,32 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
   assignments,
   reports,
   clientComparisons,
+  dailyLogs = [],
   onGenerateComparison,
   onGenerateReport,
 }) => {
   const agentRoleForLead = TEAM_LEAD_TO_AGENT_ROLE[currentUser.role];
   const isTeamLead = !!agentRoleForLead;
+
+  // Point 9's aggregate daily-activity report — manager/leadership audience only. Note this
+  // never widens visibility: dailyLogs here is whatever direct_report_visible() already let
+  // through (a team lead's own reports' logs; executive/head_of_technical see everyone's), the
+  // same scope MyWorkHub/DailyOperationsModule already operate under. This is a client filter
+  // over already-visible rows, not a new access grant.
+  const canSeeDailyActivityReport =
+    currentUser.role === 'executive' || currentUser.role === 'head_of_technical' || isTeamLead;
+  const [dailyLogClientFilter, setDailyLogClientFilter] = useState('all');
+  const filteredDailyLogs = useMemo(
+    () =>
+      dailyLogs
+        .filter((l) => dailyLogClientFilter === 'all' || l.client_id === dailyLogClientFilter)
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [dailyLogs, dailyLogClientFilter]
+  );
+  const clientsWithLogs = useMemo(
+    () => clients.filter((c) => dailyLogs.some((l) => l.client_id === c.id)),
+    [clients, dailyLogs]
+  );
 
   const myClients = useMemo(
     () => resolveClientsForSubject(currentUser, clients, packages, assignments),
@@ -372,6 +395,59 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
         </h3>
         <FiledReportsList reports={visibleReports} comparisons={clientComparisons} clients={clients} users={users} showScope />
       </div>
+
+      {canSeeDailyActivityReport && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-amber-400" />
+              <span>Daily Activity Log ({filteredDailyLogs.length})</span>
+            </h3>
+            {clientsWithLogs.length > 0 && (
+              <select
+                value={dailyLogClientFilter}
+                onChange={(e) => setDailyLogClientFilter(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] bg-stone-900 border border-stone-800 text-white outline-none focus:border-purple-400"
+              >
+                <option value="all" className="bg-stone-900">All Clients</option>
+                {clientsWithLogs.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-stone-900">
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {filteredDailyLogs.length === 0 ? (
+            <p className="text-xs text-stone-500 py-4 text-center">No daily activity logged yet for this scope.</p>
+          ) : (
+            <div className="max-h-96 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+              {filteredDailyLogs.map((log) => {
+                const logUser = users.find((u) => u.id === log.user_id);
+                const logClient = log.client_id ? clients.find((c) => c.id === log.client_id) : null;
+                return (
+                  <div key={log.id} className="p-3 rounded-xl border border-purple-900/30 bg-[#161224]/80 text-xs">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">{logUser?.name || 'Employee'}</span>
+                        <span className="text-stone-500 text-[11px]">({logUser?.team || logUser?.role})</span>
+                        {logClient && (
+                          <span className="text-[10px] font-bold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded-full border border-purple-800/60">
+                            {logClient.name}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono text-stone-500">{log.date}</span>
+                    </div>
+                    <p className="text-stone-300 mt-1.5 whitespace-pre-wrap">{log.summary_text}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

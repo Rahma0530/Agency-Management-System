@@ -61,6 +61,7 @@ interface DailyOperationsModuleProps {
     date: string;
     summary_text: string;
     linked_task_ids: string[];
+    client_id?: string | null;
   }) => Promise<void>;
   onCreateExtraNote?: (noteData: {
     user_id: string;
@@ -106,6 +107,8 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
   const [dailySummary, setDailySummary] = useState('');
   const [selectedLinkedTasks, setSelectedLinkedTasks] = useState<string[]>([]);
   const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0]);
+  const [logClientId, setLogClientId] = useState('');
+  const [logClientFilter, setLogClientFilter] = useState('all');
   const [isSubmittingLog, setIsSubmittingLog] = useState(false);
 
   // Extra Effort Log Form State — the genuine "document initiative beyond
@@ -349,10 +352,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
   // Daily Logs filtered for current employee or team
   const relevantDailyLogs = useMemo(() => {
     return dailyLogs.filter((log) => {
-      if (selectedEmployeeId === 'all') return true;
-      return log.user_id === effectiveEmployee.id;
+      if (selectedEmployeeId !== 'all' && log.user_id !== effectiveEmployee.id) return false;
+      if (logClientFilter !== 'all' && log.client_id !== logClientFilter) return false;
+      return true;
     });
-  }, [dailyLogs, effectiveEmployee.id, selectedEmployeeId]);
+  }, [dailyLogs, effectiveEmployee.id, selectedEmployeeId, logClientFilter]);
 
   // Handlers for task status
   const handleAdvanceStatus = async (taskId: string, currentStatus: TaskStatus) => {
@@ -451,10 +455,12 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
         date: logDate,
         summary_text: dailySummary.trim(),
         linked_task_ids: selectedLinkedTasks,
+        client_id: logClientId || null,
       });
 
       setDailySummary('');
       setSelectedLinkedTasks([]);
+      setLogClientId('');
       setIsLoggingDailyActivity(false);
       showNotification('Daily activity log saved successfully.');
     } catch (err) {
@@ -1468,14 +1474,28 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               </p>
             </div>
 
-            <button
-              onClick={() => setIsLoggingDailyActivity(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white transition-all shadow-md hover:opacity-90 shrink-0"
-              style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
-            >
-              <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
-              <span>Add New Daily Report</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <select
+                value={logClientFilter}
+                onChange={(e) => setLogClientFilter(e.target.value)}
+                className="px-2.5 py-1.5 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
+              >
+                <option value="all" className="bg-stone-900 text-white">All Clients</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-stone-900 text-white">
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => setIsLoggingDailyActivity(true)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white transition-all shadow-md hover:opacity-90 shrink-0"
+                style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-purple-200" />
+                <span>Add New Daily Report</span>
+              </button>
+            </div>
           </div>
 
           {/* Logs Feed */}
@@ -1493,6 +1513,7 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
               {relevantDailyLogs.map((log) => {
                 const logUser = users.find((u) => u.id === log.user_id);
                 const linkedTasksList = tasks.filter((t) => log.linked_task_ids?.includes(t.id));
+                const logClient = log.client_id ? clients.find((c) => c.id === log.client_id) : null;
 
                 return (
                   <div
@@ -1509,6 +1530,11 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                         </div>
                         <span className="font-bold text-white">{logUser?.name || 'Employee'}</span>
                         <span className="text-stone-400 text-[11px]">({logUser?.team || logUser?.role})</span>
+                        {logClient && (
+                          <span className="text-[10px] font-bold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded-full border border-purple-800/60">
+                            {logClient.name}
+                          </span>
+                        )}
                       </div>
 
                       <span className="text-[11px] font-mono text-purple-300 bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-800">
@@ -1977,6 +2003,22 @@ export const DailyOperationsModule: React.FC<DailyOperationsModuleProps> = ({
                     className="w-full p-2.5 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-stone-400 block mb-1">Client (optional):</label>
+                <select
+                  value={logClientId}
+                  onChange={(e) => setLogClientId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl text-xs bg-stone-900 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
+                >
+                  <option value="" className="bg-stone-900 text-stone-400">-- Not specific to one client --</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-stone-900 text-white">
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

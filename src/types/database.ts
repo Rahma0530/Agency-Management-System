@@ -295,6 +295,10 @@ export interface DailyLogRecord {
   date: string;
   summary_text: string;
   linked_task_ids?: string[] | null;
+  // Which client this entry's work relates to, if any — single nullable id, matching every other
+  // work-artifact table in this schema (tasks/briefs/campaigns), not an array. A day genuinely
+  // spanning multiple clients is already handled today by writing multiple log rows.
+  client_id?: string | null;
   created_at?: string;
 }
 

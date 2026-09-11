@@ -1159,6 +1159,7 @@ export default function App() {
     date: string;
     summary_text: string;
     linked_task_ids: string[];
+    client_id?: string | null;
   }) => {
     const newLogPayload: DailyLogRecord = {
       id: `log-${Date.now().toString().slice(-4)}`,
@@ -1166,6 +1167,7 @@ export default function App() {
       date: logData.date,
       summary_text: logData.summary_text,
       linked_task_ids: logData.linked_task_ids,
+      client_id: logData.client_id ?? null,
       created_at: new Date().toISOString(),
     };
 
@@ -2403,6 +2405,7 @@ export default function App() {
                   assignments={assignments}
                   reports={reports}
                   clientComparisons={clientComparisons}
+                  dailyLogs={dailyLogs}
                   onGenerateComparison={handleGenerateComparison}
                   onGenerateReport={handleGenerateReport}
                 />
