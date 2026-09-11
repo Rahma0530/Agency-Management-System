@@ -47,7 +47,7 @@ import {
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
-import { isPendingEmployee } from '../lib/permissions';
+import { isPendingEmployee, canSeeContractValue } from '../lib/permissions';
 import { ClientDashboard } from './ClientDashboard';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 
@@ -186,6 +186,13 @@ export const AMQueue: React.FC<AMQueueProps> = ({
     }
     return handedOff;
   }, [clients, isAMAgent, effectiveUserId]);
+
+  // Module 12 Phase 8: clients due for renewal, within the same am_team_lead/am_agent scope
+  // as visibleClients above (full portfolio vs. own-assigned-only).
+  const renewalClients = useMemo(
+    () => visibleClients.filter((c) => c.status === 'renewal'),
+    [visibleClients]
+  );
 
   const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
   const [assigningAgentId, setAssigningAgentId] = useState<Record<string, string>>({});
@@ -374,6 +381,47 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Module 12 Phase 8: Renewal Queue — clients in 'renewal' status, with quick access to
+          the existing renewal-confirmation action in ClientDashboard's Client Lifecycle card. */}
+      {renewalClients.length > 0 && (
+        <div
+          className="rounded-2xl border overflow-hidden"
+          style={{ background: 'var(--gradient-card)', borderColor: 'rgba(245, 226, 154, 0.3)' }}
+        >
+          <div className="p-4 border-b border-amber-800/30 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-300" />
+              <h3 className="text-sm font-bold text-white">Renewal Queue</h3>
+            </div>
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-950/60 text-amber-300 border border-amber-800/40">
+              {renewalClients.length} pending
+            </span>
+          </div>
+          <div className="divide-y divide-amber-900/20">
+            {renewalClients.map((c) => (
+              <div key={c.id} className="p-3.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white truncate">{c.name}</p>
+                  <p className="text-[11px] text-stone-400">
+                    Renewal Date: <strong className="text-amber-300">{c.renewal_date || 'Not set'}</strong>
+                    {canSeeContractValue(currentRole, c.sales_owner_id === effectiveUserId) && c.contract_value
+                      ? ` • ${c.contract_value.toLocaleString()} SAR/mo`
+                      : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setDashboardClientId(c.id)}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-amber-200 bg-amber-900/30 hover:bg-amber-800/50 hover:text-white border border-amber-700/40 transition-all shrink-0 flex items-center gap-1.5"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>View Dashboard</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Lightweight Client List */}
       <div
