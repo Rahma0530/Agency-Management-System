@@ -174,6 +174,28 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     canAssignAM: false,
     description: 'On-page audits, backlink execution, technical SEO tasks, and daily logs.',
   },
+  // Structurally like graphic_designer/video_editor (no dedicated team lead, task-based work
+  // with no service_type/assignments relationship to clients) — but exclusively owned by
+  // seo_team_lead's oversight rather than shared across every team lead the way the creative
+  // pool is. allowedModules mirrors graphic_designer/video_editor for that reason, not seo_agent:
+  // service_briefs and reports are both built around a service_type this role doesn't have.
+  programming_agent: {
+    role: 'programming_agent',
+    englishTitle: 'Programming Specialist',
+    portalTitleEn: 'Programming Specialist Portal',
+    portalSlug: 'programming-agent',
+    team: 'Programming',
+    department: 'Programming',
+    badgeBg: 'rgba(99, 102, 241, 0.2)',
+    badgeText: '#818cf8',
+    defaultModule: 'my_work',
+    allowedModules: ['my_work', 'daily_operations', 'onboarding', 'tasks'],
+    canRegisterClients: false,
+    canCreateCampaign: false,
+    canManageCapacity: false,
+    canAssignAM: false,
+    description: 'Website/platform development tasks and technical implementation, under SEO Team Lead oversight.',
+  },
   social_media_team_lead: {
     role: 'social_media_team_lead',
     englishTitle: 'Social Media Team Leader',

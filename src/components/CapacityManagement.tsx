@@ -185,6 +185,9 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
       result = users.filter(
         (u) =>
           u.role === 'seo_agent' ||
+          // programming_agent has no dedicated team lead of its own — exclusively managed by
+          // seo_team_lead (not a shared pool like graphic_designer/video_editor below).
+          u.role === 'programming_agent' ||
           u.role === 'graphic_designer' ||
           u.role === 'video_editor' ||
           OTHER_TEAM_LEAD_ROLES.seo_team_lead.includes(u.role)
