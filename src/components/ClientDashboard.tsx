@@ -103,6 +103,7 @@ interface ClientDashboardProps {
     options?: { churn_reason?: string; renewal_date?: string }
   ) => Promise<void>;
   onMarkClientViewed?: (clientId: string) => Promise<void> | void;
+  onMarkAssignmentViewed?: (assignmentId: string) => Promise<void> | void;
   onGenerateComparison?: (
     scope: ReportScope,
     mode: ReportMode,
@@ -164,6 +165,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   onCreateCampaign,
   onUpdateClientStatus,
   onMarkClientViewed,
+  onMarkAssignmentViewed,
   onGenerateComparison,
   onGenerateReport,
   onGenerateMonthlyReportDraft,
@@ -212,6 +214,28 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
       !client.am_team_lead_viewed_at
     ) {
       onMarkClientViewed(client.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.id]);
+
+  // Module 12 Phase 5: same "New" indicator, for the service agent's own assignment on this
+  // client (seo_agent/media_buying_agent/social_media_agent) — mirrors the effect above.
+  React.useEffect(() => {
+    if (!onMarkAssignmentViewed) return;
+    const service =
+      currentUser.role === 'seo_agent'
+        ? 'seo'
+        : currentUser.role === 'media_buying_agent'
+        ? 'media_buying'
+        : currentUser.role === 'social_media_agent'
+        ? 'social_media'
+        : null;
+    if (!service) return;
+    const myAssignment = assignments.find(
+      (a) => a.client_id === client.id && a.service_type === service && a.agent_id === currentUser.id
+    );
+    if (myAssignment && !myAssignment.viewed_at) {
+      onMarkAssignmentViewed(myAssignment.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.id]);

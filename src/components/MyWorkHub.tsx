@@ -61,6 +61,7 @@ interface MyWorkHubProps {
   }) => Promise<void>;
   onGenerateKpiScore: (userId: string, periodType: PerformancePeriodType, referenceDate: Date) => Promise<void>;
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
+  onMarkTaskViewed?: (taskId: string) => Promise<void> | void;
 }
 
 // Ordering only, not section presence: am_agent/am_team_lead/sales lead with
@@ -93,13 +94,15 @@ const SERVICE_BY_ROLE: Partial<Record<UserRole, ServiceType>> = {
 };
 const SERVICE_TEAM_LEAD_ROLES: UserRole[] = ['media_buying_team_lead', 'seo_team_lead', 'social_media_team_lead'];
 
-// graphic_designer/video_editor have no AssignmentRecord relationship (that
-// machinery only exists for the three departments above — 'creative' is a
-// valid ServiceType but no UI path ever creates an assignments row for it),
-// so "their" clients are derived from active task assignment instead: a
-// genuinely different, more transient signal than an owned relationship, but
-// the only one this app's data model actually gives these two roles.
-const TASK_DERIVED_CLIENT_ROLES: UserRole[] = ['graphic_designer', 'video_editor'];
+// graphic_designer/video_editor/programming_agent have no AssignmentRecord
+// relationship (that machinery only exists for the three departments above —
+// 'creative' is a valid ServiceType but no UI path ever creates an
+// assignments row for it, and programming_agent was deliberately kept
+// task-based only per Module 12 Phase 1), so "their" clients are derived
+// from active task assignment instead: a genuinely different, more
+// transient signal than an owned relationship, but the only one this app's
+// data model actually gives these roles.
+const TASK_DERIVED_CLIENT_ROLES: UserRole[] = ['graphic_designer', 'video_editor', 'programming_agent'];
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: 'To Do',
@@ -125,6 +128,7 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   onCreateExtraNote,
   onGenerateKpiScore,
   onNavigateToModule,
+  onMarkTaskViewed,
 }) => {
   const roleInfo = getRoleInfo(currentUser.role);
   const layout: 'client-first' | 'task-first' = CLIENT_FIRST_LAYOUT_ROLES.includes(currentUser.role)
@@ -191,6 +195,31 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
 
     return [];
   }, [showClients, currentUser.role, currentUser.id, clients, packages, assignments, tasks]);
+
+  // Module 12 Phase 5: "New" notification badge for programming_agent's task-derived clients.
+  // They have no assignments row (see TASK_DERIVED_CLIENT_ROLES above), so there's no
+  // assignments.viewed_at to hang the badge on — tasks.assignee_viewed_at is the equivalent
+  // signal, keyed here by client so a client shows "New" while it still has any unseen task.
+  const newClientTaskIds = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (currentUser.role !== 'programming_agent') return map;
+    tasks
+      .filter((t) => t.assigned_to === currentUser.id && !t.assignee_viewed_at)
+      .forEach((t) => {
+        const list = map.get(t.client_id) || [];
+        list.push(t.id);
+        map.set(t.client_id, list);
+      });
+    return map;
+  }, [currentUser.role, currentUser.id, tasks]);
+
+  // My Work is the only client-facing surface this role gets, so opening it IS "seeing" the
+  // new assignment — mirrors the mount-effect pattern ClientDashboard uses for other roles.
+  React.useEffect(() => {
+    if (!onMarkTaskViewed) return;
+    newClientTaskIds.forEach((taskIds) => taskIds.forEach((id) => onMarkTaskViewed(id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newClientTaskIds]);
 
   // ---------------------------------------------------------------------
   // My Tasks & Deadlines
@@ -321,13 +350,21 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto">
           {myClients.map((client) => {
             const showValue = canSeeContractValue(currentUser.role, client.sales_owner_id === currentUser.id);
+            const isNewAssignment = newClientTaskIds.has(client.id);
             return (
               <div
                 key={client.id}
                 className="p-3 rounded-xl border border-stone-800 bg-stone-900/60 flex items-center justify-between gap-2"
               >
                 <div>
-                  <p className="text-xs font-bold text-white">{client.name}</p>
+                  <p className="text-xs font-bold text-white inline-flex items-center gap-1.5">
+                    {client.name}
+                    {isNewAssignment && (
+                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase bg-purple-600 text-white">
+                        New
+                      </span>
+                    )}
+                  </p>
                   <p className="text-[10px] text-stone-400 capitalize">{client.status}</p>
                 </div>
                 <div className="text-right">

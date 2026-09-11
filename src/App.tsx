@@ -689,6 +689,50 @@ export default function App() {
     );
   };
 
+  // 2d. Mark an assignment as viewed by its assigned agent (Module 12 Phase 5 — clears the
+  // "New" indicator for seo_agent/media_buying_agent/social_media_agent)
+  const handleMarkAssignmentViewed = async (assignmentId: string) => {
+    const viewedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('assignments')
+          .update({ viewed_at: viewedAt })
+          .eq('id', assignmentId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase mark assignment viewed error:', err);
+      }
+    }
+
+    setAssignments((prev) =>
+      prev.map((a) => (a.id === assignmentId ? { ...a, viewed_at: viewedAt } : a))
+    );
+  };
+
+  // 2e. Mark a task as viewed by its assignee (Module 12 Phase 5 — same notification concept as
+  // handleMarkAssignmentViewed, for programming_agent, which has no assignments row to hang it on)
+  const handleMarkTaskViewed = async (taskId: string) => {
+    const viewedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .update({ assignee_viewed_at: viewedAt })
+          .eq('id', taskId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase mark task viewed error:', err);
+      }
+    }
+
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, assignee_viewed_at: viewedAt } : t))
+    );
+  };
+
   // Assign a service specialist (SEO / Social Media / Media Buying) to a client, by that team's lead
   const handleAssignServiceAgent = async (
     clientId: string,
@@ -700,11 +744,14 @@ export default function App() {
     const teamLeadId = users.find((u) => u.id === agentId)?.manager_id || currentUser.id;
 
     if (existing) {
+      // Reassigning to a different agent is a fresh "new client" for them — clears the
+      // notification badge so it re-flags as unseen (Module 12 Phase 5).
+      const viewedAt = existing.agent_id !== agentId ? null : existing.viewed_at;
       if (supabaseActive) {
         try {
           const { error } = await supabase
             .from('assignments')
-            .update({ agent_id: agentId, reason_notes: reasonNotes || existing.reason_notes })
+            .update({ agent_id: agentId, reason_notes: reasonNotes || existing.reason_notes, viewed_at: viewedAt })
             .eq('id', existing.id);
           if (error) throw error;
         } catch (err: any) {
@@ -713,7 +760,9 @@ export default function App() {
       }
       setAssignments((prev) =>
         prev.map((a) =>
-          a.id === existing.id ? { ...a, agent_id: agentId, reason_notes: reasonNotes || a.reason_notes } : a
+          a.id === existing.id
+            ? { ...a, agent_id: agentId, reason_notes: reasonNotes || a.reason_notes, viewed_at: viewedAt }
+            : a
         )
       );
     } else {
@@ -942,6 +991,14 @@ export default function App() {
     const finalUpdates: Partial<TaskRecord> = { ...updates };
     if ('status' in updates) {
       finalUpdates.completed_at = updates.status === 'completed' ? new Date().toISOString() : null;
+    }
+    // Reassigning a task to a different person is a fresh "new task" for them (Module 12
+    // Phase 5's programming_agent notification badge, since that role has no assignments row).
+    if ('assigned_to' in updates) {
+      const existingTask = tasks.find((t) => t.id === taskId);
+      if (existingTask && existingTask.assigned_to !== updates.assigned_to) {
+        finalUpdates.assignee_viewed_at = null;
+      }
     }
 
     if (supabaseActive) {
@@ -2215,6 +2272,7 @@ export default function App() {
                   onCreateExtraNote={handleCreateExtraNote}
                   onGenerateKpiScore={handleGenerateKpiScore}
                   onNavigateToModule={handleNavigateToModule}
+                  onMarkTaskViewed={handleMarkTaskViewed}
                 />
               </div>
             )}
@@ -2287,6 +2345,7 @@ export default function App() {
                   clientPortalUsers={clientPortalUsers}
                   onAssignServiceAgent={handleAssignServiceAgent}
                   onMarkBriefViewed={handleMarkBriefViewedByTeamLead}
+                  onMarkAssignmentViewed={handleMarkAssignmentViewed}
                   onNavigateToModule={handleNavigateToModule}
                   onGenerateComparison={handleGenerateComparison}
                   onGenerateReport={handleGenerateReport}

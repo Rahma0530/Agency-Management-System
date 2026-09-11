@@ -134,6 +134,11 @@ export interface AssignmentRecord {
   agent_id: string;
   assigned_at: string;
   reason_notes?: string | null;
+  // Module 12 Phase 5: cleared to null whenever agent_id changes (a
+  // reassignment is a fresh "new client" for the new agent), set when the
+  // assigned agent opens the client. Drives a "New" notification badge —
+  // never gates access, mirrors clients.am_team_lead_viewed_at.
+  viewed_at?: string | null;
 }
 
 // 6. tasks
@@ -158,6 +163,11 @@ export interface TaskRecord {
   // handleUpdateTaskStatus/handleUpdateTask in App.tsx). Needed to filter
   // "completed today" — status alone carries no timing information.
   completed_at?: string | null;
+  // Module 12 Phase 5: notification-badge equivalent of assignments.viewed_at
+  // for roles with no AssignmentRecord relationship (programming_agent).
+  // Cleared to null whenever assigned_to changes, set when the assignee
+  // opens the client this task belongs to.
+  assignee_viewed_at?: string | null;
 }
 
 // 6b. task_comments — threaded comments on a task, capped at 3 levels

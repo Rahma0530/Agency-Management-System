@@ -75,6 +75,7 @@ interface ServiceBriefsRoutingViewProps {
     reasonNotes?: string
   ) => Promise<void>;
   onMarkBriefViewed?: (briefId: string) => Promise<void> | void;
+  onMarkAssignmentViewed?: (assignmentId: string) => Promise<void> | void;
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
   onGenerateComparison?: (
     scope: ReportScope,
@@ -311,6 +312,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   clientPortalUsers = [],
   onAssignServiceAgent,
   onMarkBriefViewed,
+  onMarkAssignmentViewed,
   onNavigateToModule,
   onGenerateComparison,
   onGenerateReport,
@@ -750,6 +752,8 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                 const assignedPerson = users.find((u) => u.id === asg?.agent_id);
                 const clientBrief = briefs.find((b) => b.client_id === client.id && b.service_type === serviceType);
                 const isNewBrief = isTeamLead && !!clientBrief && !clientBrief.team_lead_viewed_at;
+                // Module 12 Phase 5: "New" badge for the agent's own freshly (re)assigned client.
+                const isNewAssignment = !isTeamLead && !!asg && asg.agent_id === currentUser.id && !asg.viewed_at;
                 const briefIssueCount = clientBrief ? reviewBrief(clientBrief, briefs).length : 0;
 
                 return (
@@ -779,7 +783,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                         <div>
                           <h4 className="font-bold text-xs text-white inline-flex items-center gap-1.5">
                             {client.name}
-                            {isNewBrief && (
+                            {(isNewBrief || isNewAssignment) && (
                               <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase bg-purple-600 text-white">
                                 New
                               </span>
@@ -962,6 +966,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
           dailyLogs={dailyLogs}
           extraNotes={extraNotes}
           assignments={assignments}
+          onMarkAssignmentViewed={onMarkAssignmentViewed}
           onClose={() => setDashboardClientId(null)}
         />
       )}
