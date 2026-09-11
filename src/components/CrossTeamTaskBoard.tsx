@@ -191,6 +191,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
     { id: 'Media Buying', label: 'Media Buying' },
     { id: 'Creative & Design', label: 'Creative & Design' },
     { id: 'Video Production', label: 'Video Production' },
+    { id: 'Programming', label: 'Programming' },
     { id: 'Account Management', label: 'Account Management' },
   ];
 
@@ -512,6 +513,8 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
         return { text: '#f472b6', bg: 'rgba(244, 114, 182, 0.15)' };
       case 'Video Production':
         return { text: '#f87171', bg: 'rgba(248, 113, 113, 0.15)' };
+      case 'Programming':
+        return { text: '#818cf8', bg: 'rgba(99, 102, 241, 0.15)' };
       case 'Account Management':
         return { text: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)' };
       default:
@@ -1473,6 +1476,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                     <option value="Media Buying" className="bg-stone-900 text-white">Media Buying</option>
                     <option value="Creative & Design" className="bg-stone-900 text-white">Creative & Design</option>
                     <option value="Video Production" className="bg-stone-900 text-white">Video Production</option>
+                    <option value="Programming" className="bg-stone-900 text-white">Programming</option>
                     <option value="Account Management" className="bg-stone-900 text-white">Account Management</option>
                   </select>
                 </div>
@@ -1677,6 +1681,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                     <option value="Media Buying" className="bg-stone-900 text-white">Media Buying</option>
                     <option value="Creative & Design" className="bg-stone-900 text-white">Creative & Design</option>
                     <option value="Video Production" className="bg-stone-900 text-white">Video Production</option>
+                    <option value="Programming" className="bg-stone-900 text-white">Programming</option>
                     <option value="Account Management" className="bg-stone-900 text-white">Account Management</option>
                   </select>
                 </div>
