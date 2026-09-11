@@ -174,6 +174,9 @@ export interface TaskRecord {
   // Cleared to null whenever assigned_to changes, set when the assignee
   // opens the client this task belongs to.
   assignee_viewed_at?: string | null;
+  // Module 12 Phase 9: manually-pasted Google Drive URL — no real Drive API integration,
+  // same scaffolding-only posture as Module 6's other integration points.
+  drive_link?: string | null;
 }
 
 // 6b. task_comments — threaded comments on a task, capped at 3 levels

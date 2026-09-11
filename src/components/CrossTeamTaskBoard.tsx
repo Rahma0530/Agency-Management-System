@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Kanban,
   Table as TableIcon,
@@ -30,6 +30,7 @@ import {
   Shield,
   Send,
   Flag,
+  Link2,
 } from 'lucide-react';
 import {
   TaskRecord,
@@ -135,6 +136,12 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<TaskRecord | null>(null);
+  // Module 12 Phase 9: Drive Link draft, synced whenever a different task's details open.
+  const [driveLinkDraft, setDriveLinkDraft] = useState('');
+  const [isSavingDriveLink, setIsSavingDriveLink] = useState(false);
+  useEffect(() => {
+    setDriveLinkDraft(selectedTaskDetails?.drive_link || '');
+  }, [selectedTaskDetails?.id]);
   const [editingTask, setEditingTask] = useState<TaskRecord | null>(null);
   // Set when the Create Task modal was opened via "+ Add Subtask" — locks
   // the client to the parent's and attaches parent_task_id on submit.
@@ -457,6 +464,19 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Module 12 Phase 9
+  const handleSaveDriveLink = async () => {
+    if (!selectedTaskDetails || !onUpdateTask) return;
+    const nextValue = driveLinkDraft.trim() || null;
+    setIsSavingDriveLink(true);
+    try {
+      await onUpdateTask(selectedTaskDetails.id, { drive_link: nextValue });
+      setSelectedTaskDetails({ ...selectedTaskDetails, drive_link: nextValue });
+    } finally {
+      setIsSavingDriveLink(false);
     }
   };
 
@@ -979,13 +999,14 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                   <th className="p-3.5 text-center">Due Date</th>
                   <th className="p-3.5 text-center">Est. Hours</th>
                   <th className="p-3.5 text-center">Act. Hours</th>
+                  <th className="p-3.5 text-center">Drive Link</th>
                   <th className="p-3.5 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-800/60">
                 {filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="p-8 text-center text-stone-400">
+                    <td colSpan={12} className="p-8 text-center text-stone-400">
                       No tasks matching current filter criteria.
                     </td>
                   </tr>
@@ -1090,6 +1111,21 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                           {task.actual_hours !== undefined && task.actual_hours !== null
                             ? `${task.actual_hours}h`
                             : '—'}
+                        </td>
+                        <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          {task.drive_link ? (
+                            <a
+                              href={task.drive_link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-purple-300 hover:text-white"
+                              title={task.drive_link}
+                            >
+                              <Link2 className="w-3.5 h-3.5" />
+                            </a>
+                          ) : (
+                            <span className="text-stone-600">—</span>
+                          )}
                         </td>
                         <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1.5">
@@ -1240,6 +1276,43 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
                   >
                     {selectedTaskDetails.due_date || 'None'}
                   </p>
+                </div>
+              </div>
+
+              {/* Drive Link (Module 12 Phase 9) — manually-pasted URL, no real Drive API */}
+              <div>
+                <label className="text-[11px] font-semibold text-stone-400 mb-1.5 flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>Drive Link:</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="url"
+                    value={driveLinkDraft}
+                    onChange={(e) => setDriveLinkDraft(e.target.value)}
+                    placeholder="https://drive.google.com/..."
+                    className="flex-1 px-3 py-2 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-400"
+                  />
+                  {onUpdateTask && driveLinkDraft !== (selectedTaskDetails.drive_link || '') && (
+                    <button
+                      onClick={handleSaveDriveLink}
+                      disabled={isSavingDriveLink}
+                      className="px-3 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-500 disabled:opacity-50 shrink-0"
+                    >
+                      {isSavingDriveLink ? 'Saving...' : 'Save'}
+                    </button>
+                  )}
+                  {selectedTaskDetails.drive_link && (
+                    <a
+                      href={selectedTaskDetails.drive_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-2 rounded-xl bg-stone-900/80 border border-stone-800 text-purple-300 hover:text-white shrink-0"
+                      title="Open in new tab"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </a>
+                  )}
                 </div>
               </div>
 
