@@ -130,7 +130,7 @@ interface ClientDashboardProps {
   ) => Promise<void>;
 }
 
-type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports' | 'meetings' | 'integrations';
+type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports' | 'meetings' | 'integrations' | 'team_activity';
 
 const CLIENT_STATUS_META: Record<ClientStatus, { label: string; bg: string; color: string; border: string }> = {
   lead: { label: 'Lead', bg: 'rgba(168, 155, 184, 0.15)', color: 'var(--lilac)', border: 'rgba(168, 155, 184, 0.3)' },
@@ -359,6 +359,30 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     [platformConnections, client.id]
   );
 
+  // Module 12 Phase 4: Team Activity — a consolidated, per-team rollup of every task
+  // in progress for this client, for AM/leadership roles who otherwise only see their
+  // own department's slice of the picture. Task-status only (no daily-log text) — see
+  // the migration comment on task_visible()'s am_agent branch for why.
+  const clientTasksByTeam = useMemo(() => {
+    const groups = new Map<string, TaskRecord[]>();
+    clientTasks.forEach((t) => {
+      const key = t.team || 'Unassigned';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
+    });
+    return Array.from(groups.entries())
+      .map(([team, teamTasks]) => ({
+        team,
+        tasks: teamTasks.slice().sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')),
+        activeCount: teamTasks.filter((t) => t.status !== 'completed').length,
+        blockedCount: teamTasks.filter((t) => t.status === 'blocked').length,
+        overdueCount: teamTasks.filter(
+          (t) => t.status !== 'completed' && t.due_date && t.due_date < new Date().toISOString().slice(0, 10)
+        ).length,
+      }))
+      .sort((a, b) => a.team.localeCompare(b.team));
+  }, [clientTasks]);
+
   const isSinglePeriodReport = reportMode === 'period_summary';
 
   const handleGenerateComparison = async () => {
@@ -573,6 +597,20 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
             <Activity className="w-3.5 h-3.5" />
             <span>Activity Logs ({clientLogs.length})</span>
           </button>
+
+          {hasReportsAccess && (
+            <button
+              onClick={() => setActiveTab('team_activity')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === 'team_activity'
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-stone-400 hover:text-stone-200 hover:bg-purple-950/30'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Team Activity ({clientTasks.length})</span>
+            </button>
+          )}
 
           {hasReportsAccess && (
             <button
@@ -1388,6 +1426,75 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   <p className="text-xs text-stone-500 py-6 text-center">No activity logs recorded yet for this client.</p>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* 6b. TEAM ACTIVITY (Module 12 Phase 4) */}
+          {activeTab === 'team_activity' && (
+            <div className="space-y-4">
+              <span className="text-xs text-stone-400 block">
+                Every task currently in flight for this client, across every department — a single
+                consolidated view for account management and leadership.
+              </span>
+              {clientTasksByTeam.length === 0 && (
+                <p className="text-xs text-stone-500 py-6 text-center">No task activity recorded for this client yet.</p>
+              )}
+              {clientTasksByTeam.map((group) => (
+                <div key={group.team} className="rounded-xl border border-purple-900/30 bg-[#161224]/80 overflow-hidden">
+                  <div className="px-4 py-2.5 bg-purple-950/40 border-b border-purple-900/30 flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-purple-200 uppercase tracking-wider">{group.team}</span>
+                    <div className="flex items-center gap-2 text-[10px] font-bold">
+                      <span className="px-2 py-0.5 rounded bg-purple-900/40 text-purple-300">{group.activeCount} Active</span>
+                      {group.overdueCount > 0 && (
+                        <span className="px-2 py-0.5 rounded bg-red-900/30 text-red-300">{group.overdueCount} Overdue</span>
+                      )}
+                      {group.blockedCount > 0 && (
+                        <span className="px-2 py-0.5 rounded bg-orange-900/30 text-orange-300">{group.blockedCount} Blocked</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="divide-y divide-purple-900/20">
+                    {group.tasks.map((t) => {
+                      const assignee = users.find((u) => u.id === t.assigned_to);
+                      const isOverdue = t.status !== 'completed' && t.due_date && t.due_date < new Date().toISOString().slice(0, 10);
+                      return (
+                        <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{t.title}</p>
+                            <p className="text-[11px] text-stone-400 mt-0.5">
+                              {assignee?.name || 'Unassigned'} • Due: {t.due_date || 'No deadline'}
+                              {isOverdue && <span className="text-red-400 font-bold"> • Overdue</span>}
+                            </p>
+                          </div>
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider whitespace-nowrap"
+                            style={{
+                              background:
+                                t.status === 'completed'
+                                  ? 'rgba(169, 245, 193, 0.15)'
+                                  : t.status === 'blocked'
+                                  ? 'rgba(245, 163, 163, 0.15)'
+                                  : t.status === 'in_review'
+                                  ? 'rgba(245, 226, 154, 0.15)'
+                                  : 'rgba(168, 155, 184, 0.15)',
+                              color:
+                                t.status === 'completed'
+                                  ? 'var(--roas-good)'
+                                  : t.status === 'blocked'
+                                  ? 'var(--roas-bad)'
+                                  : t.status === 'in_review'
+                                  ? 'var(--roas-mid)'
+                                  : 'var(--lilac)',
+                            }}
+                          >
+                            {t.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
