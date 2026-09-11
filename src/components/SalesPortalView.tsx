@@ -25,6 +25,7 @@ import {
   DailyLogRecord,
   ExtraNoteRecord,
   AssignmentRecord,
+  ClientContractRecord,
 } from '../types/database';
 import { ClientDashboard } from './ClientDashboard';
 
@@ -53,6 +54,9 @@ interface SalesPortalViewProps {
     newStatus: ClientStatus,
     options?: { churn_reason?: string; renewal_date?: string }
   ) => Promise<void>;
+  clientContracts?: ClientContractRecord[];
+  onUploadClientContract?: (clientId: string, file: File) => Promise<void>;
+  onDeleteClientContract?: (contractId: string) => Promise<void>;
 }
 
 export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
@@ -68,6 +72,9 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
   assignments = [],
   onOpenRegisterModal,
   onUpdateClientStatus,
+  clientContracts = [],
+  onUploadClientContract,
+  onDeleteClientContract,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
@@ -339,6 +346,9 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
           extraNotes={extraNotes}
           assignments={assignments}
           onUpdateClientStatus={onUpdateClientStatus}
+          clientContracts={clientContracts}
+          onUploadClientContract={onUploadClientContract}
+          onDeleteClientContract={onDeleteClientContract}
           onClose={() => setDashboardClientId(null)}
         />
       )}

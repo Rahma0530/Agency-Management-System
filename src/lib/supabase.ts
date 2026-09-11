@@ -466,6 +466,16 @@ export function buildMeetingRecordingStoragePath(
   return `${clientId}/${meetingId}-${sanitizeAttachmentFilename(rawFilename)}`;
 }
 
+// Same convention as buildMeetingRecordingStoragePath, for the 'client-contracts' bucket
+// (Module 12 Phase 6).
+export function buildClientContractStoragePath(
+  clientId: string,
+  contractId: string,
+  rawFilename: string
+): string {
+  return `${clientId}/${contractId}-${sanitizeAttachmentFilename(rawFilename)}`;
+}
+
 let rawClientInstance: SupabaseClient | null = null;
 
 /**

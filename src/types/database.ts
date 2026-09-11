@@ -200,6 +200,19 @@ export interface TaskAttachmentRecord {
   uploaded_at: string;
 }
 
+// 6c. client_contracts — Module 12 Phase 6, same shape as TaskAttachmentRecord, one level up
+// (client instead of task) for Sales's signed-contract upload.
+export interface ClientContractRecord {
+  id: string;
+  client_id: string;
+  storage_path: string;
+  filename: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_by: string;
+  uploaded_at: string;
+}
+
 // 7. campaigns
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'archived';
 

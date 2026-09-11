@@ -43,6 +43,7 @@ import {
   PlatformConnectionRecord,
   PlatformConnectionStatus,
   PlatformCategory,
+  ClientContractRecord,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
@@ -107,6 +108,9 @@ interface AMQueueProps {
     status: PlatformConnectionStatus,
     notes: string
   ) => Promise<void>;
+  clientContracts?: ClientContractRecord[];
+  onUploadClientContract?: (clientId: string, file: File) => Promise<void>;
+  onDeleteClientContract?: (contractId: string) => Promise<void>;
 }
 
 export const AMQueue: React.FC<AMQueueProps> = ({
@@ -142,6 +146,9 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   onSaveMeetingNotes,
   platformConnections = [],
   onSetPlatformConnectionStatus,
+  clientContracts = [],
+  onUploadClientContract,
+  onDeleteClientContract,
 }) => {
   const resolvedUser = currentUser || users.find((u) => u.id === currentUserId) || users[0];
   const effectiveUserId = resolvedUser?.id || currentUserId || '';
@@ -589,6 +596,9 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           platformConnections={platformConnections}
           onSetPlatformConnectionStatus={onSetPlatformConnectionStatus}
           onCreatePortalLogin={onCreatePortalLogin}
+          clientContracts={clientContracts}
+          onUploadClientContract={onUploadClientContract}
+          onDeleteClientContract={onDeleteClientContract}
         />
       )}
     </div>

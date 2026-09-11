@@ -28,6 +28,7 @@ import {
   setSupabaseSessionUser,
   buildAttachmentStoragePath,
   buildMeetingRecordingStoragePath,
+  buildClientContractStoragePath,
 } from './lib/supabase';
 import { resolvePeriodRange, generateKpiScoreMetrics, suggestClassification } from './lib/performanceScore';
 import { isPendingEmployee } from './lib/permissions';
@@ -76,6 +77,7 @@ import {
   PlatformConnectionRecord,
   PlatformConnectionStatus,
   PlatformCategory,
+  ClientContractRecord,
 } from './types/database';
 import {
   INITIAL_PACKAGES,
@@ -149,6 +151,7 @@ export default function App() {
   const [clientComparisons, setClientComparisons] = useState<ClientComparisonRecord[]>([]);
   const [clientPortalUsers, setClientPortalUsers] = useState<ClientPortalUserRecord[]>([]);
   const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
+  const [clientContracts, setClientContracts] = useState<ClientContractRecord[]>([]);
   const [platformConnections, setPlatformConnections] = useState<PlatformConnectionRecord[]>([]);
 
   // Authenticated user state initialized from localStorage
@@ -485,6 +488,12 @@ export default function App() {
         const { data: meetingData, error: meetingErr } = await supabase.from('meetings').select('*');
         if (!meetingErr && meetingData && meetingData.length > 0) {
           setMeetings(meetingData as MeetingRecord[]);
+        }
+
+        // Fetch client_contracts (Module 12 Phase 6: Sales's signed-contract upload)
+        const { data: contractData, error: contractErr } = await supabase.from('client_contracts').select('*');
+        if (!contractErr && contractData && contractData.length > 0) {
+          setClientContracts(contractData as ClientContractRecord[]);
         }
 
         // Fetch platform_connections (Module 6 scaffolding: manual integration status tracker)
@@ -1659,6 +1668,70 @@ export default function App() {
     showNotification('Meeting notes saved.');
   };
 
+  // 8g. Upload a signed contract document for a client (Module 12 Phase 6) — same private-bucket
+  // upload-then-insert-metadata pattern as handleUploadMeetingRecording/handleUploadTaskAttachment.
+  const handleUploadClientContract = async (clientId: string, file: File) => {
+    if (!supabaseActive) {
+      showNotification('Contract uploads require a connected Supabase backend.', 'info');
+      return;
+    }
+
+    const contractId = `ctr-${Date.now().toString().slice(-4)}`;
+    const storagePath = buildClientContractStoragePath(clientId, contractId, file.name);
+
+    const { error: uploadError } = await supabase.storage
+      .from('client-contracts')
+      .upload(storagePath, file, { contentType: file.type });
+    if (uploadError) {
+      console.error('Supabase contract upload error:', uploadError);
+      throw uploadError;
+    }
+
+    const newContractPayload: ClientContractRecord = {
+      id: contractId,
+      client_id: clientId,
+      storage_path: storagePath,
+      filename: file.name,
+      file_size: file.size,
+      mime_type: file.type,
+      uploaded_by: currentUser.id,
+      uploaded_at: new Date().toISOString(),
+    };
+
+    const { data, error: insertError } = await supabase
+      .from('client_contracts')
+      .insert([newContractPayload])
+      .select();
+    if (insertError) {
+      console.error('Supabase contract metadata insert error:', insertError);
+      // The file itself uploaded successfully — clean it up rather than leaving an orphaned
+      // Storage object with no matching metadata row.
+      await supabase.storage.from('client-contracts').remove([storagePath]);
+      throw insertError;
+    }
+
+    setClientContracts((prev) => [...prev, (data?.[0] as ClientContractRecord) || newContractPayload]);
+    showNotification(`"${file.name}" uploaded successfully.`);
+  };
+
+  // Delete your own contract upload — removes both the Storage object and its metadata row.
+  const handleDeleteClientContract = async (contractId: string) => {
+    const contract = clientContracts.find((c) => c.id === contractId);
+    if (!contract) return;
+
+    if (supabaseActive) {
+      try {
+        await supabase.storage.from('client-contracts').remove([contract.storage_path]);
+        await supabase.from('client_contracts').delete().eq('id', contractId);
+      } catch (err) {
+        console.error('Supabase contract delete error:', err);
+      }
+    }
+
+    setClientContracts((prev) => prev.filter((c) => c.id !== contractId));
+    showNotification('Contract document removed.');
+  };
+
   // 8h. Manually set a platform's connection status (Module 6 scaffolding, point 1). This is a
   // real tracker of the human process of getting API access from a client — never a live
   // connection, never a real OAuth flow, and no credentials are read or written here at all.
@@ -2288,6 +2361,9 @@ export default function App() {
                     users={users}
                     onOpenRegisterModal={() => setIsRegisterModalOpen(true)}
                     onUpdateClientStatus={handleUpdateClientStatus}
+                    clientContracts={clientContracts}
+                    onUploadClientContract={handleUploadClientContract}
+                    onDeleteClientContract={handleDeleteClientContract}
                   />
                 ) : (
                   <AMQueue
@@ -2319,6 +2395,9 @@ export default function App() {
                     onSaveMeetingNotes={handleSaveMeetingNotes}
                     platformConnections={platformConnections}
                     onSetPlatformConnectionStatus={handleSetPlatformConnectionStatus}
+                    clientContracts={clientContracts}
+                    onUploadClientContract={handleUploadClientContract}
+                    onDeleteClientContract={handleDeleteClientContract}
                   />
                 )}
               </div>

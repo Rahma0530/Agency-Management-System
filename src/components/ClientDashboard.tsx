@@ -48,6 +48,7 @@ import {
   PlatformConnectionRecord,
   PlatformConnectionStatus,
   PlatformCategory,
+  ClientContractRecord,
 } from '../types/database';
 import { DynamicBriefForm } from './DynamicBriefForm';
 import {
@@ -65,6 +66,7 @@ import { ComparisonCard, FiledReportsList } from './reporting/ComparisonDisplay'
 import { CreateClientPortalLoginModal } from './clientPortal/CreateClientPortalLoginModal';
 import { MonthlyReportDraftView } from './reporting/MonthlyReportDraftView';
 import { ClientMeetingsPanel } from './ClientMeetingsPanel';
+import { ClientContractsPanel } from './ClientContractsPanel';
 import { ClientIntegrationsPanel } from './ClientIntegrationsPanel';
 import { canSeeContractValue, isPendingEmployee } from '../lib/permissions';
 import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
@@ -129,6 +131,9 @@ interface ClientDashboardProps {
     status: PlatformConnectionStatus,
     notes: string
   ) => Promise<void>;
+  clientContracts?: ClientContractRecord[];
+  onUploadClientContract?: (clientId: string, file: File) => Promise<void>;
+  onDeleteClientContract?: (contractId: string) => Promise<void>;
 }
 
 type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports' | 'meetings' | 'integrations' | 'team_activity';
@@ -177,6 +182,9 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   onSaveMeetingNotes,
   platformConnections = [],
   onSetPlatformConnectionStatus,
+  clientContracts = [],
+  onUploadClientContract,
+  onDeleteClientContract,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
@@ -756,6 +764,19 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Signed Contract (Module 12 Phase 6) — same visibility as contract value */}
+              {showContractValue && onUploadClientContract && onDeleteClientContract && (
+                <ClientContractsPanel
+                  clientId={client.id}
+                  contracts={clientContracts}
+                  users={users}
+                  currentUserId={currentUser.id}
+                  canUpload={currentUser.role === 'sales' && client.sales_owner_id === currentUser.id}
+                  onUpload={onUploadClientContract}
+                  onDelete={onDeleteClientContract}
+                />
+              )}
 
               {/* Client Lifecycle */}
               <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
