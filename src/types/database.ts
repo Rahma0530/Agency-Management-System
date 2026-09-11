@@ -81,6 +81,12 @@ export interface ClientRecord {
   // leaked or rotated portal link never touches the client's actual primary key. Null until a
   // portal login is created for this client (ClientDashboard.tsx's "Create Portal Login" action).
   portal_slug?: string | null;
+  // Module 12 Phase 7: AM Team Lead payment-tracking, distinct from contract_value (Sales's
+  // monthly retainer figure, set once at registration). Tracks the actual payment schedule
+  // against a signed contract's total value — manually editable, never auto-computed.
+  due_value?: number | null;
+  remaining_value?: number | null;
+  contract_duration_months?: number | null;
   created_at?: string;
 }
 

@@ -111,6 +111,10 @@ interface AMQueueProps {
   clientContracts?: ClientContractRecord[];
   onUploadClientContract?: (clientId: string, file: File) => Promise<void>;
   onDeleteClientContract?: (contractId: string) => Promise<void>;
+  onUpdatePaymentTracking?: (
+    clientId: string,
+    updates: { due_value?: number | null; remaining_value?: number | null; contract_duration_months?: number | null }
+  ) => Promise<void>;
 }
 
 export const AMQueue: React.FC<AMQueueProps> = ({
@@ -149,6 +153,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   clientContracts = [],
   onUploadClientContract,
   onDeleteClientContract,
+  onUpdatePaymentTracking,
 }) => {
   const resolvedUser = currentUser || users.find((u) => u.id === currentUserId) || users[0];
   const effectiveUserId = resolvedUser?.id || currentUserId || '';
@@ -599,6 +604,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           clientContracts={clientContracts}
           onUploadClientContract={onUploadClientContract}
           onDeleteClientContract={onDeleteClientContract}
+          onUpdatePaymentTracking={onUpdatePaymentTracking}
         />
       )}
     </div>

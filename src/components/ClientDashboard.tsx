@@ -134,6 +134,10 @@ interface ClientDashboardProps {
   clientContracts?: ClientContractRecord[];
   onUploadClientContract?: (clientId: string, file: File) => Promise<void>;
   onDeleteClientContract?: (contractId: string) => Promise<void>;
+  onUpdatePaymentTracking?: (
+    clientId: string,
+    updates: { due_value?: number | null; remaining_value?: number | null; contract_duration_months?: number | null }
+  ) => Promise<void>;
 }
 
 type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports' | 'meetings' | 'integrations' | 'team_activity';
@@ -185,6 +189,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   clientContracts = [],
   onUploadClientContract,
   onDeleteClientContract,
+  onUpdatePaymentTracking,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
@@ -201,6 +206,13 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   const [customPreviousRange, setCustomPreviousRange] = useState<DateRange>({ start: '', end: '' });
   const [isGeneratingComparison, setIsGeneratingComparison] = useState(false);
   const [generatingReportForComparisonId, setGeneratingReportForComparisonId] = useState<string | null>(null);
+  const [isEditingPaymentTracking, setIsEditingPaymentTracking] = useState(false);
+  const [paymentTrackingDraft, setPaymentTrackingDraft] = useState({
+    due_value: client.due_value != null ? String(client.due_value) : '',
+    remaining_value: client.remaining_value != null ? String(client.remaining_value) : '',
+    contract_duration_months: client.contract_duration_months != null ? String(client.contract_duration_months) : '',
+  });
+  const [isSavingPaymentTracking, setIsSavingPaymentTracking] = useState(false);
 
   // Resolve client services from package
   const pkg = packageRecord || allPackages.find((p) => p.id === client.package_id);
@@ -325,6 +337,18 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
 
   const showContractValue = canSeeContractValue(currentUser.role, client.sales_owner_id === currentUser.id);
 
+  // Module 12 Phase 7: AM Team Lead payment tracking — visible to AM/leadership only (unlike
+  // contract_value, Sales never sees this: it tracks the post-handoff payment schedule, not
+  // their concern). Edit rights mirror clients_update_am_assignment_rls's AM-side branch
+  // exactly (executive/head_of_technical/am_team_lead) — am_agent is read-only here.
+  const canSeePaymentTracking =
+    currentUser.role === 'executive' ||
+    currentUser.role === 'head_of_technical' ||
+    currentUser.role === 'am_team_lead' ||
+    (currentUser.role === 'am_agent' && client.am_agent_id === currentUser.id);
+  const canEditPaymentTracking =
+    currentUser.role === 'executive' || currentUser.role === 'head_of_technical' || currentUser.role === 'am_team_lead';
+
   // Only the AM department can actually enter/edit brief data: am_agent is the primary author
   // (they run the client meeting), am_team_lead can edit as department oversight/fallback.
   // Everyone else who is allowed to see brief content at all (service teams, executive/HoT) is
@@ -416,6 +440,24 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   }, [clientTasks]);
 
   const isSinglePeriodReport = reportMode === 'period_summary';
+
+  const handleSavePaymentTracking = async () => {
+    if (!onUpdatePaymentTracking) return;
+    setIsSavingPaymentTracking(true);
+    try {
+      await onUpdatePaymentTracking(client.id, {
+        due_value: paymentTrackingDraft.due_value === '' ? null : Number(paymentTrackingDraft.due_value),
+        remaining_value: paymentTrackingDraft.remaining_value === '' ? null : Number(paymentTrackingDraft.remaining_value),
+        contract_duration_months:
+          paymentTrackingDraft.contract_duration_months === ''
+            ? null
+            : Number(paymentTrackingDraft.contract_duration_months),
+      });
+      setIsEditingPaymentTracking(false);
+    } finally {
+      setIsSavingPaymentTracking(false);
+    }
+  };
 
   const handleGenerateComparison = async () => {
     if (!onGenerateComparison) return;
@@ -776,6 +818,114 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   onUpload={onUploadClientContract}
                   onDelete={onDeleteClientContract}
                 />
+              )}
+
+              {/* Payment Tracking (Module 12 Phase 7) — AM/leadership only, never Sales */}
+              {canSeePaymentTracking && (
+                <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-purple-400" />
+                      <span>Payment Tracking</span>
+                    </h3>
+                    {canEditPaymentTracking && onUpdatePaymentTracking && !isEditingPaymentTracking && (
+                      <button
+                        onClick={() => setIsEditingPaymentTracking(true)}
+                        className="text-[11px] font-bold text-purple-300 hover:text-white flex items-center gap-1"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        <span>Edit</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isEditingPaymentTracking ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <label className="text-[11px] text-stone-400 space-y-1 block">
+                          <span>Due Value (SAR)</span>
+                          <input
+                            type="number"
+                            value={paymentTrackingDraft.due_value}
+                            onChange={(e) =>
+                              setPaymentTrackingDraft((prev) => ({ ...prev, due_value: e.target.value }))
+                            }
+                            className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
+                          />
+                        </label>
+                        <label className="text-[11px] text-stone-400 space-y-1 block">
+                          <span>Remaining Value (SAR)</span>
+                          <input
+                            type="number"
+                            value={paymentTrackingDraft.remaining_value}
+                            onChange={(e) =>
+                              setPaymentTrackingDraft((prev) => ({ ...prev, remaining_value: e.target.value }))
+                            }
+                            className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
+                          />
+                        </label>
+                        <label className="text-[11px] text-stone-400 space-y-1 block">
+                          <span>Contract Duration (months)</span>
+                          <input
+                            type="number"
+                            value={paymentTrackingDraft.contract_duration_months}
+                            onChange={(e) =>
+                              setPaymentTrackingDraft((prev) => ({
+                                ...prev,
+                                contract_duration_months: e.target.value,
+                              }))
+                            }
+                            className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-[#100c1c] border border-purple-900/40 text-white focus:outline-none"
+                          />
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleSavePaymentTracking}
+                          disabled={isSavingPaymentTracking}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-purple-600 hover:bg-purple-500 disabled:opacity-50"
+                        >
+                          {isSavingPaymentTracking ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsEditingPaymentTracking(false);
+                            setPaymentTrackingDraft({
+                              due_value: client.due_value != null ? String(client.due_value) : '',
+                              remaining_value: client.remaining_value != null ? String(client.remaining_value) : '',
+                              contract_duration_months:
+                                client.contract_duration_months != null ? String(client.contract_duration_months) : '',
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-stone-300 bg-stone-800 hover:bg-stone-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <span className="text-[11px] text-stone-400 block">Due Value</span>
+                        <p className="text-sm font-bold text-white font-mono">
+                          {client.due_value != null ? `${client.due_value.toLocaleString()} SAR` : 'Not set'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-stone-400 block">Remaining Value</span>
+                        <p className="text-sm font-bold text-white font-mono">
+                          {client.remaining_value != null ? `${client.remaining_value.toLocaleString()} SAR` : 'Not set'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-stone-400 block">Contract Duration</span>
+                        <p className="text-sm font-bold text-white font-mono">
+                          {client.contract_duration_months != null ? `${client.contract_duration_months} months` : 'Not set'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Client Lifecycle */}

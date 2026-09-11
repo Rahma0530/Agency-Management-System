@@ -649,6 +649,28 @@ export default function App() {
     showNotification(`Client "${client?.name || clientId}" status updated to ${newStatus}.`);
   };
 
+  // 2a-2. AM Team Lead payment tracking (Module 12 Phase 7) — manually-editable, never
+  // auto-computed from anything. Distinct handler from handleUpdateClientStatus since it edits
+  // an unrelated field group and shouldn't carry that function's status-transition side effects.
+  const handleUpdatePaymentTracking = async (
+    clientId: string,
+    updates: { due_value?: number | null; remaining_value?: number | null; contract_duration_months?: number | null }
+  ) => {
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('clients').update(updates).eq('id', clientId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase update payment tracking error:', err);
+        showNotification('Unable to save payment tracking.', 'info');
+        return;
+      }
+    }
+
+    setClients((prev) => prev.map((c) => (c.id === clientId ? { ...c, ...updates } : c)));
+    showNotification('Payment tracking updated.');
+  };
+
   // 2b-2. Invite a client to the Client Portal: creates the placeholder client_portal_users row
   // (auth_id null). The client finishes setup themselves via ClientPortalLogin.tsx's "First Time?"
   // path, which claims this row by matching its own session email — see
@@ -2398,6 +2420,7 @@ export default function App() {
                     clientContracts={clientContracts}
                     onUploadClientContract={handleUploadClientContract}
                     onDeleteClientContract={handleDeleteClientContract}
+                    onUpdatePaymentTracking={handleUpdatePaymentTracking}
                   />
                 )}
               </div>
