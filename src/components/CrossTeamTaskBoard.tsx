@@ -175,10 +175,13 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   const [editActualHours, setEditActualHours] = useState<number>(0);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  // Operational task assignees: strictly exclude Executive Management and Head of Technical
+  // Operational task assignees: strictly exclude Executive Management, Head of
+  // Technical, and Sales — sales has no task-based work (task_visible()/
+  // isTaskAccessibleUnderRLS block them from tasks entirely), so they must
+  // never appear as a selectable assignee here either.
   const isOperationalAssignee = (u: UserRecord) => {
     if (!u || u.role === 'client') return false;
-    if (u.role === 'executive' || u.role === 'head_of_technical') return false;
+    if (u.role === 'executive' || u.role === 'head_of_technical' || u.role === 'sales') return false;
     if (isPendingEmployee(u)) return false;
     return true;
   };
