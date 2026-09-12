@@ -44,6 +44,7 @@ import {
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
+import { CLIENT_STATUS_META } from '../lib/clientStatus';
 import { ClientDashboard } from './ClientDashboard';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
@@ -810,16 +811,28 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                         </div>
                       </div>
 
-                      <span
-                        className="text-[9px] px-2 py-0.5 rounded-full font-semibold"
-                        style={{
-                          background: status.bg,
-                          color: status.color,
-                          border: `1px solid ${status.border}`,
-                        }}
-                      >
-                        {status.label}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span
+                          className="text-[9px] px-2 py-0.5 rounded-full font-semibold"
+                          style={{
+                            background: CLIENT_STATUS_META[client.status].bg,
+                            color: CLIENT_STATUS_META[client.status].color,
+                            border: `1px solid ${CLIENT_STATUS_META[client.status].border}`,
+                          }}
+                        >
+                          {CLIENT_STATUS_META[client.status].label}
+                        </span>
+                        <span
+                          className="text-[9px] px-2 py-0.5 rounded-full font-semibold"
+                          style={{
+                            background: status.bg,
+                            color: status.color,
+                            border: `1px solid ${status.border}`,
+                          }}
+                        >
+                          {status.label}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="mt-2.5 pt-2 flex items-center justify-between border-t border-stone-800/60 text-[11px]">
@@ -855,6 +868,15 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-base font-bold text-white">{selectedClient.name}</h3>
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full font-bold"
+                        style={{
+                          background: CLIENT_STATUS_META[selectedClient.status].bg,
+                          color: CLIENT_STATUS_META[selectedClient.status].color,
+                        }}
+                      >
+                        {CLIENT_STATUS_META[selectedClient.status].label}
+                      </span>
                       <span
                         className="text-[10px] px-2 py-0.5 rounded-full font-bold"
                         style={{

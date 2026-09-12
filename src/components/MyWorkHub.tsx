@@ -32,6 +32,7 @@ import { getRoleInfo, AppModuleId } from '../data/roles';
 import { getTodayStr, isTaskOverdue, isTaskDueToday, getSortedEmployeeTasks } from '../lib/employeeWork';
 import { resolveDepartmentClients } from '../lib/reportingEngine';
 import { canSeeContractValue } from '../lib/permissions';
+import { CLIENT_STATUS_META } from '../lib/clientStatus';
 import { EmployeePerformancePage } from './EmployeePerformancePage';
 
 interface MyWorkHubProps {
@@ -366,7 +367,16 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
                       </span>
                     )}
                   </p>
-                  <p className="text-[10px] text-stone-400 capitalize">{client.status}</p>
+                  <span
+                    className="inline-block mt-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold"
+                    style={{
+                      background: CLIENT_STATUS_META[client.status].bg,
+                      color: CLIENT_STATUS_META[client.status].color,
+                      border: `1px solid ${CLIENT_STATUS_META[client.status].border}`,
+                    }}
+                  >
+                    {CLIENT_STATUS_META[client.status].label}
+                  </span>
                 </div>
                 <div className="text-right">
                   {showValue && client.contract_value ? (

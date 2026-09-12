@@ -48,6 +48,7 @@ import {
   PlatformCategory,
 } from '../types/database';
 import { isPendingEmployee } from '../lib/permissions';
+import { CLIENT_STATUS_META } from '../lib/clientStatus';
 import { getRoleInfo } from '../data/roles';
 import { ClientDashboard } from './ClientDashboard';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
@@ -1310,6 +1311,20 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                           <Building2 className="w-3 h-3 text-purple-400" />
                           <span>{client?.name || 'Unassigned client'}</span>
                         </span>
+
+                        {/* Client Status Badge */}
+                        {client && (
+                          <span
+                            className="px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+                            style={{
+                              background: CLIENT_STATUS_META[client.status].bg,
+                              color: CLIENT_STATUS_META[client.status].color,
+                              border: `1px solid ${CLIENT_STATUS_META[client.status].border}`,
+                            }}
+                          >
+                            {CLIENT_STATUS_META[client.status].label}
+                          </span>
+                        )}
 
                         {campaign.campaign_id_external && (
                           <span className="text-[10px] font-mono text-stone-400">
