@@ -180,7 +180,7 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   // isTaskAccessibleUnderRLS block them from tasks entirely), so they must
   // never appear as a selectable assignee here either.
   const isOperationalAssignee = (u: UserRecord) => {
-    if (!u || u.role === 'client') return false;
+    if (!u) return false;
     if (u.role === 'executive' || u.role === 'head_of_technical' || u.role === 'sales') return false;
     if (isPendingEmployee(u)) return false;
     return true;
