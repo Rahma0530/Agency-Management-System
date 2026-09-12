@@ -1,13 +1,35 @@
-import React, { useState } from 'react';
-import { Save, History, CheckCircle2, Layers, Table, Edit3, Globe, Share2, Target, AlertCircle } from 'lucide-react';
-import { BriefRecord, ServiceType } from '../types/database';
+import React, { useMemo, useState } from 'react';
+import {
+  Save,
+  CheckCircle2,
+  Layers,
+  Table,
+  Edit3,
+  Globe,
+  Share2,
+  Target,
+  AlertCircle,
+  Lock,
+  Palette,
+  ClipboardCheck,
+} from 'lucide-react';
+import { BriefRecord, BriefRevisionRecord, ServiceType } from '../types/database';
+import { BRIEF_FIELD_SCHEMAS } from '../data/briefFieldSchemas';
+import { reviewBrief, BriefReviewSeverity } from '../lib/briefReview';
+import { BriefEditHistory } from './BriefEditHistory';
 
 interface DynamicBriefFormProps {
   clientId: string;
   clientName: string;
   serviceType: ServiceType;
   existingBrief?: BriefRecord;
+  revisions?: BriefRevisionRecord[];
+  // Every brief across every client/service, for the review assistant's cross-brief comparison
+  // (lib/briefReview.ts filters this down to the same service_type itself). Optional — omitting
+  // it just disables that one check, not the whole checklist.
+  allBriefs?: BriefRecord[];
   currentUserId: string;
+  canEdit: boolean;
   onSaveBrief: (briefData: {
     client_id: string;
     service_type: ServiceType;
@@ -17,12 +39,21 @@ interface DynamicBriefFormProps {
   }) => Promise<void>;
 }
 
+const SEVERITY_STYLES: Record<BriefReviewSeverity, { bg: string; text: string; border: string }> = {
+  missing_required: { bg: 'rgba(245, 163, 163, 0.12)', text: 'var(--roas-bad)', border: 'var(--roas-bad)' },
+  too_short: { bg: 'rgba(245, 226, 154, 0.12)', text: 'var(--roas-mid)', border: 'rgba(245, 226, 154, 0.4)' },
+  unusual_gap: { bg: 'rgba(123, 47, 247, 0.12)', text: 'var(--purple-light)', border: 'var(--border-soft)' },
+};
+
 export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   clientId,
   clientName,
   serviceType,
   existingBrief,
+  revisions = [],
+  allBriefs = [],
   currentUserId,
+  canEdit,
   onSaveBrief,
 }) => {
   const [activeView, setActiveView] = useState<'edit' | 'spreadsheet'>('edit');
@@ -33,11 +64,30 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 
   const currentVersion = existingBrief?.version || 1;
 
+  // Review assistant (Module 9, point 1): recomputed live off formData as the author types, not
+  // just the last-saved existingBrief — advisory only, never blocks handleSave below.
+  const reviewIssues = useMemo(
+    () =>
+      reviewBrief(
+        {
+          id: existingBrief?.id || 'draft',
+          client_id: clientId,
+          service_type: serviceType,
+          fields: formData,
+          version: currentVersion,
+          submitted_by: currentUserId,
+        },
+        allBriefs
+      ),
+    [existingBrief?.id, clientId, serviceType, formData, currentVersion, currentUserId, allBriefs]
+  );
+
   const handleFieldChange = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleSave = async () => {
+    if (!canEdit) return;
     setIsSaving(true);
     setErrorMsg('');
     setSaveSuccess(false);
@@ -53,7 +103,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'حدث خطأ أثناء حفظ البريف');
+      setErrorMsg(err?.message || 'An error occurred while saving the brief');
     } finally {
       setIsSaving(false);
     }
@@ -67,6 +117,8 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
         return <Share2 className="w-4 h-4 text-purple-400" />;
       case 'media_buying':
         return <Target className="w-4 h-4 text-amber-400" />;
+      case 'creative':
+        return <Palette className="w-4 h-4 text-pink-400" />;
       default:
         return <Layers className="w-4 h-4 text-stone-400" />;
     }
@@ -75,15 +127,19 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   const getServiceLabel = () => {
     switch (serviceType) {
       case 'seo':
-        return 'تحسين محركات البحث (SEO)';
+        return 'Search Engine Optimization (SEO)';
       case 'social_media':
-        return 'إدارة منصات التواصل (Social Media)';
+        return 'Social Media Management';
       case 'media_buying':
-        return 'الحملات الإعلانية الممولة (Media Buying)';
+        return 'Paid Advertising (Media Buying)';
+      case 'creative':
+        return 'Creative (Graphic Design & Video)';
       default:
         return serviceType;
     }
   };
+
+  const fieldDefs = BRIEF_FIELD_SCHEMAS[serviceType] || [];
 
   return (
     <div
@@ -105,7 +161,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h4 className="font-bold text-sm" style={{ color: 'var(--white)' }}>
-                نموذج بريف: {getServiceLabel()}
+                Brief Form: {getServiceLabel()}
               </h4>
               <span
                 className="text-[11px] px-2.5 py-0.5 rounded-full font-medium"
@@ -115,11 +171,11 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
                   border: '1px solid var(--border-lilac)',
                 }}
               >
-                النسخة v{currentVersion}
+                Version v{currentVersion}
               </span>
             </div>
             <p className="text-xs mt-0.5" style={{ color: 'var(--grey)' }}>
-              العميل: {clientName} — يُعبأ بواسطة موظف إدارة الحسابات (AM Agent)
+              Client: {clientName} — filled in by the Account Manager (AM Agent)
             </p>
           </div>
         </div>
@@ -138,7 +194,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
               }`}
             >
               <Edit3 className="w-3.5 h-3.5" />
-              نموذج التحرير
+              Edit Form
             </button>
             <button
               onClick={() => setActiveView('spreadsheet')}
@@ -149,25 +205,68 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
               }`}
             >
               <Table className="w-3.5 h-3.5" />
-              عرض جدولي (Spreadsheet)
+              Spreadsheet View
             </button>
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md"
-            style={{
-              background: 'var(--gradient-badge)',
-              color: 'var(--white)',
-              border: '1px solid var(--border-strong)',
-              opacity: isSaving ? 0.7 : 1,
-            }}
-          >
-            <Save className="w-3.5 h-3.5" />
-            {isSaving ? 'جارٍ الحفظ...' : 'حفظ كنسخة جديدة'}
-          </button>
+          {canEdit ? (
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md"
+              style={{
+                background: 'var(--gradient-badge)',
+                color: 'var(--white)',
+                border: '1px solid var(--border-strong)',
+                opacity: isSaving ? 0.7 : 1,
+              }}
+            >
+              <Save className="w-3.5 h-3.5" />
+              {isSaving ? 'Saving...' : 'Save as New Version'}
+            </button>
+          ) : (
+            <span
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold"
+              style={{
+                background: 'rgba(168, 155, 184, 0.1)',
+                color: 'var(--grey)',
+                border: '1px solid var(--border-soft)',
+              }}
+              title="Only the assigned AM Agent or AM Team Lead can edit this brief"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              View Only
+            </span>
+          )}
         </div>
+      </div>
+
+      {reviewIssues.length > 0 && (
+        <div
+          className="p-3 mb-4 rounded-xl space-y-1.5"
+          style={{ background: 'rgba(123, 47, 247, 0.06)', border: '1px solid var(--border-soft)' }}
+        >
+          <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: 'var(--lilac)' }}>
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            Review Checklist ({reviewIssues.length}) — advisory only, does not block saving
+          </p>
+          {reviewIssues.map((issue, i) => {
+            const style = SEVERITY_STYLES[issue.severity];
+            return (
+              <p
+                key={i}
+                className="text-[11px] px-2.5 py-1.5 rounded-lg"
+                style={{ background: style.bg, color: style.text, border: `1px solid ${style.border}` }}
+              >
+                {issue.message}
+              </p>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mb-4">
+        <BriefEditHistory revisions={revisions} serviceType={serviceType} />
       </div>
 
       {errorMsg && (
@@ -186,367 +285,72 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
           style={{ background: 'rgba(169, 245, 193, 0.15)', border: '1px solid var(--roas-good)', color: 'var(--roas-good)' }}
         >
           <CheckCircle2 className="w-4 h-4 shrink-0" />
-          تم حفظ وتوثيق البريف في قاعدة البيانات بنجاح (النسخة v{existingBrief ? currentVersion + 1 : 1})
+          Brief saved and documented successfully (Version v{existingBrief ? currentVersion + 1 : 1})
         </div>
       )}
 
       {/* VIEW 1: Dynamic Form per Service Type */}
       {activeView === 'edit' && (
-        <div className="space-y-4">
-          {serviceType === 'seo' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+        <fieldset
+          disabled={!canEdit}
+          className={`border-0 p-0 m-0 min-w-0 ${!canEdit ? 'opacity-60' : ''}`}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {fieldDefs.map((field) => (
+              <div key={field.key} className={field.span === 'full' ? 'md:col-span-2' : ''}>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  رابط الموقع الإلكتروني (Website URL)
+                  {field.label}
                 </label>
-                <input
-                  type="text"
-                  placeholder="https://example.com"
-                  value={formData.website_url || ''}
-                  onChange={(e) => handleFieldChange('website_url', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
+                {field.type === 'textarea' ? (
+                  <textarea
+                    rows={field.rows || 2}
+                    placeholder={field.placeholder}
+                    value={formData[field.key] || ''}
+                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    style={{
+                      background: 'rgba(10, 10, 13, 0.85)',
+                      border: '1px solid var(--border-soft)',
+                      color: 'var(--white)',
+                    }}
+                  />
+                ) : field.type === 'tag-list' ? (
+                  <input
+                    type="text"
+                    placeholder={field.placeholder}
+                    value={
+                      Array.isArray(formData[field.key])
+                        ? formData[field.key].join(', ')
+                        : formData[field.key] || ''
+                    }
+                    onChange={(e) =>
+                      handleFieldChange(field.key, e.target.value.split(',').map((s) => s.trim()))
+                    }
+                    className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    style={{
+                      background: 'rgba(10, 10, 13, 0.85)',
+                      border: '1px solid var(--border-soft)',
+                      color: 'var(--white)',
+                    }}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    placeholder={field.placeholder}
+                    value={formData[field.key] || ''}
+                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    style={{
+                      background: 'rgba(10, 10, 13, 0.85)',
+                      border: '1px solid var(--border-soft)',
+                      color: 'var(--white)',
+                    }}
+                  />
+                )}
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  المنصة البرمجية / CMS
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: WordPress, Shopify, Next.js, Custom PHP..."
-                  value={formData.cms_platform || ''}
-                  onChange={(e) => handleFieldChange('cms_platform', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الكلمات المفتاحية المستهدفة مبدئياً (Target Keywords)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="اكتب الكلمات مفصولة بفاصلة أو أسطر جديدة..."
-                  value={formData.target_keywords || ''}
-                  onChange={(e) => handleFieldChange('target_keywords', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  النطاق الجغرافي المستهدف (Geo-Targeting)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: السعودية (الرياض، جدة)، الإمارات..."
-                  value={formData.target_locations || ''}
-                  onChange={(e) => handleFieldChange('target_locations', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الزيارات العضوية الحالية التقديرية (Current Traffic)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: 5,000 زائر شهرياً"
-                  value={formData.current_organic_traffic || ''}
-                  onChange={(e) => handleFieldChange('current_organic_traffic', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  روابط المنافسين المباشرين (Competitor URLs)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="أدخل روابط المنافسين..."
-                  value={formData.competitor_urls || ''}
-                  onChange={(e) => handleFieldChange('competitor_urls', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الأهداف الاستراتيجية لخدمة SEO (Primary Goals)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="ما هي النتائج المتوقعة التي تم الاتفاق عليها مع العميل؟"
-                  value={formData.primary_goals || ''}
-                  onChange={(e) => handleFieldChange('primary_goals', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {serviceType === 'social_media' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  المنصات المطلوب إدارتها (Social Channels)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: Instagram, TikTok, LinkedIn, X"
-                  value={Array.isArray(formData.social_channels) ? formData.social_channels.join(', ') : formData.social_channels || ''}
-                  onChange={(e) => handleFieldChange('social_channels', e.target.value.split(',').map((s) => s.trim()))}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  نبرة الصوت والهوية الكلامية (Tone of Voice)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: فخم وراقي، ودي ومرح، رسمي وتثقيفي..."
-                  value={formData.brand_tone || ''}
-                  onChange={(e) => handleFieldChange('brand_tone', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  معدل النشر المستهدف أسبوعياً
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: 5 بوستات + 1 ريلز + ستوريز يومية"
-                  value={formData.posting_frequency || ''}
-                  onChange={(e) => handleFieldChange('posting_frequency', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  رابط ملفات البراند والمحتوى (Google Drive / Assets)
-                </label>
-                <input
-                  type="text"
-                  placeholder="https://drive.google.com/..."
-                  value={formData.assets_drive_link || ''}
-                  onChange={(e) => handleFieldChange('assets_drive_link', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الجمهور المستهدف والفئة العمرية (Target Demographics)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="توصيف دقيق للشريحة المستهدفة واهتماماتها..."
-                  value={formData.target_demographics || ''}
-                  onChange={(e) => handleFieldChange('target_demographics', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الأعمدة والمحاور الرئيسية للمحتوى (Content Pillars)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="مثال: تعليمي وتثقيفي (40%)، تجاري وترويجي (30%)، تفاعلي ومسابقات (30%)"
-                  value={formData.content_pillars || ''}
-                  onChange={(e) => handleFieldChange('content_pillars', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {serviceType === 'media_buying' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  المنصات الإعلانية المستهدفة (Ad Platforms)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: Meta Ads, Google Ads, TikTok, Snapchat"
-                  value={Array.isArray(formData.ad_platforms) ? formData.ad_platforms.join(', ') : formData.ad_platforms || ''}
-                  onChange={(e) => handleFieldChange('ad_platforms', e.target.value.split(',').map((s) => s.trim()))}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  الميزانية الإعلانية الشهرية المتوقعة (Ad Spend Budget)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: 40,000 ريال شهرياً"
-                  value={formData.monthly_ad_budget || ''}
-                  onChange={(e) => handleFieldChange('monthly_ad_budget', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  مؤشر العائد على الإنفاق الإعلاني المستهدف (Target ROAS)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: 3.5x أو 4.0x"
-                  value={formData.target_roas || ''}
-                  onChange={(e) => handleFieldChange('target_roas', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  هدف التحويل الأساسي (Conversion Goal)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: مبيعات متجر، رسائل واتساب، ليدات محتملة..."
-                  value={formData.primary_conversion_goal || ''}
-                  onChange={(e) => handleFieldChange('primary_conversion_goal', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  حالة صلاحيات الحسابات الإعلانية والبيكسل (Pixel & Ad Accounts Access)
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: تم إرسال الشراكة مع Business Manager، والبيكسل مفعل على المتجر"
-                  value={formData.ad_accounts_access_status || ''}
-                  onChange={(e) => handleFieldChange('ad_accounts_access_status', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  تفاصيل الجماهير والاستهداف الديموغرافي
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="الاهتمامات، الاستبعاد، الجماهير المشابهة (Lookalike) المطلوبة..."
-                  value={formData.target_audiences || ''}
-                  onChange={(e) => handleFieldChange('target_audiences', e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                  style={{
-                    background: 'rgba(10, 10, 13, 0.85)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--white)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        </fieldset>
       )}
 
       {/* VIEW 2: Spreadsheet Tabular Review View */}
@@ -556,10 +360,10 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
             <thead>
               <tr style={{ background: 'rgba(59, 21, 96, 0.4)', borderBottom: '1px solid var(--border-soft)' }}>
                 <th className="p-3 font-bold" style={{ color: 'var(--purple-light)', width: '30%' }}>
-                  الحقل الاستراتيجي (Field)
+                  Field
                 </th>
                 <th className="p-3 font-bold" style={{ color: 'var(--white)' }}>
-                  القيمة المسجلة بالبريف (Value)
+                  Recorded Value
                 </th>
               </tr>
             </thead>
@@ -567,7 +371,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
               {Object.keys(formData).length === 0 ? (
                 <tr>
                   <td colSpan={2} className="p-6 text-center text-stone-400">
-                    لم يتم إدخال بيانات بعد في هذا البريف. قم بالتبديل إلى «نموذج التحرير» لتعبئة الحقول.
+                    No data entered yet for this brief. Switch to "Edit Form" to fill in the fields.
                   </td>
                 </tr>
               ) : (

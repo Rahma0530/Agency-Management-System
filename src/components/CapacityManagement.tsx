@@ -25,15 +25,22 @@ import {
   History,
   Briefcase,
   AlertCircle,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   UserRecord,
   ClientRecord,
   TaskRecord,
   CapacityLogRecord,
+  KpiScoreRecord,
+  ExtraNoteRecord,
+  PerformancePeriodType,
   UserRole,
 } from '../types/database';
-import { getRoleInfo } from '../data/roles';
+import { getRoleInfo, AppModuleId } from '../data/roles';
+import { isPendingEmployee } from '../lib/permissions';
+import { isTeamLeadRole, resolveCapacityLimit, getUserCapacityData as getSharedUserCapacityData } from '../lib/capacity';
+import { EmployeePerformancePage } from './EmployeePerformancePage';
 
 interface CapacityManagementProps {
   users: UserRecord[];
@@ -43,10 +50,33 @@ interface CapacityManagementProps {
   currentUser?: UserRecord;
   onUpdateUserCapacity: (userId: string, newLimit: number) => Promise<void>;
   onLogCapacity?: (agentId: string, date: string, count: number) => Promise<void>;
+  onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
+  kpiScores?: KpiScoreRecord[];
+  onGenerateKpiScore?: (userId: string, periodType: PerformancePeriodType, referenceDate: Date) => Promise<void>;
+  extraNotes?: ExtraNoteRecord[];
 }
 
 export type CapacityStatus = 'all' | 'available' | 'near_capacity' | 'over_capacity';
 export type ViewMode = 'cards' | 'matrix' | 'logs';
+
+// Same relationship direct_report_visible() (RLS) grants: the employee's
+// actual direct team lead, or Head of Technical/Executive. Deliberately NOT
+// isTeamLeadRole(viewer) generically — a team lead who can see another team
+// lead's card (cross-department) or a shared graphic_designer/video_editor
+// card isn't that person's manager, and the RLS would reject the read/write
+// even if this button let them try.
+const DIRECT_LEAD_PAIRS: Partial<Record<UserRole, UserRole>> = {
+  am_team_lead: 'am_agent',
+  media_buying_team_lead: 'media_buying_agent',
+  seo_team_lead: 'seo_agent',
+  social_media_team_lead: 'social_media_agent',
+};
+
+const canViewPerformance = (viewerRole: UserRole | undefined, employee: UserRecord): boolean => {
+  if (!viewerRole) return false;
+  if (viewerRole === 'executive' || viewerRole === 'head_of_technical') return true;
+  return DIRECT_LEAD_PAIRS[viewerRole] === employee.role;
+};
 
 export const CapacityManagement: React.FC<CapacityManagementProps> = ({
   users,
@@ -56,7 +86,12 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
   currentUser,
   onUpdateUserCapacity,
   onLogCapacity,
+  onNavigateToModule,
+  kpiScores = [],
+  onGenerateKpiScore,
+  extraNotes = [],
 }) => {
+  const [performanceEmployeeId, setPerformanceEmployeeId] = useState<string | null>(null);
   // View mode
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
 
@@ -113,34 +148,69 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     'video_editor',
   ];
 
+  // Other team-lead roles besides the viewer's own — every team lead can see
+  // every other team lead's card (cross-department), the same way they can
+  // already see the shared graphic_designer/video_editor pool, so the
+  // "Assign via Task Board" reverse link (point 4) has a card to render on.
+  const OTHER_TEAM_LEAD_ROLES: Record<string, UserRole[]> = {
+    am_team_lead: ['media_buying_team_lead', 'seo_team_lead', 'social_media_team_lead'],
+    media_buying_team_lead: ['am_team_lead', 'seo_team_lead', 'social_media_team_lead'],
+    seo_team_lead: ['am_team_lead', 'media_buying_team_lead', 'social_media_team_lead'],
+    social_media_team_lead: ['am_team_lead', 'media_buying_team_lead', 'seo_team_lead'],
+  };
+
   const operationalUsers = useMemo(() => {
     // Under Supabase RLS, `users` is scoped by the backend data access layer.
     // For Team Leaders, the Detailed Team Matrix & Employee Cards reflect:
-    // Team Leader -> Team Agents + Graphic Designers + Video Editors
+    // Team Leader -> Team Agents + Graphic Designers + Video Editors + other Team Leads
     const role = currentUser?.role;
+    let result: UserRecord[];
     if (role === 'am_team_lead') {
-      return users.filter(
-        (u) => u.role === 'am_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
+      result = users.filter(
+        (u) =>
+          u.role === 'am_agent' ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          OTHER_TEAM_LEAD_ROLES.am_team_lead.includes(u.role)
+      );
+    } else if (role === 'media_buying_team_lead') {
+      result = users.filter(
+        (u) =>
+          u.role === 'media_buying_agent' ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          OTHER_TEAM_LEAD_ROLES.media_buying_team_lead.includes(u.role)
+      );
+    } else if (role === 'seo_team_lead') {
+      result = users.filter(
+        (u) =>
+          u.role === 'seo_agent' ||
+          // programming_agent has no dedicated team lead of its own — exclusively managed by
+          // seo_team_lead (not a shared pool like graphic_designer/video_editor below).
+          u.role === 'programming_agent' ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          OTHER_TEAM_LEAD_ROLES.seo_team_lead.includes(u.role)
+      );
+    } else if (role === 'social_media_team_lead') {
+      result = users.filter(
+        (u) =>
+          u.role === 'social_media_agent' ||
+          u.role === 'graphic_designer' ||
+          u.role === 'video_editor' ||
+          OTHER_TEAM_LEAD_ROLES.social_media_team_lead.includes(u.role)
+      );
+    } else {
+      result = users.filter(
+        (u) => operationalRoles.includes(u.role) || (u.capacity_limit && u.capacity_limit > 0)
       );
     }
-    if (role === 'media_buying_team_lead') {
-      return users.filter(
-        (u) => u.role === 'media_buying_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
-      );
-    }
-    if (role === 'seo_team_lead') {
-      return users.filter(
-        (u) => u.role === 'seo_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
-      );
-    }
-    if (role === 'social_media_team_lead') {
-      return users.filter(
-        (u) => u.role === 'social_media_agent' || u.role === 'graphic_designer' || u.role === 'video_editor'
-      );
-    }
-    return users.filter(
-      (u) => operationalRoles.includes(u.role) || (u.capacity_limit && u.capacity_limit > 0)
-    );
+    // Executive and Head of Technical never receive task assignments, so they
+    // never belong in a capacity/workload employee list — even when the
+    // viewer is one of them. Pending employees (no Auth account yet, added via
+    // the Add Employee admin screen) are excluded too — they can't be assigned
+    // capacity or workload until scripts/provisionAuthUsers.ts activates them.
+    return result.filter((u) => u.role !== 'executive' && u.role !== 'head_of_technical' && !isPendingEmployee(u));
   }, [users, currentUser]);
 
   // Dynamically derived departments list reflecting only visible employees under RLS
@@ -154,17 +224,17 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
 
   const departments = useMemo(() => {
     const list: { id: string; label: string }[] = [
-      { id: 'all', label: 'جميع الأقسام والفرق المتاحة' },
+      { id: 'all', label: 'All Available Departments & Teams' },
     ];
-    if (availableTeams.has('Executive')) list.push({ id: 'Executive', label: 'الإدارة التنفيذية العليا' });
-    if (availableTeams.has('Technical')) list.push({ id: 'Technical', label: 'القسم الفني والعمليات' });
-    if (availableTeams.has('Sales')) list.push({ id: 'Sales', label: 'فريق المبيعات' });
-    if (availableTeams.has('Account Management')) list.push({ id: 'Account Management', label: 'إدارة الحسابات (AM)' });
-    if (availableTeams.has('Media Buying')) list.push({ id: 'Media Buying', label: 'الميديا باينج (Media Buying)' });
-    if (availableTeams.has('SEO')) list.push({ id: 'SEO', label: 'تحسين محركات البحث (SEO)' });
-    if (availableTeams.has('Social Media')) list.push({ id: 'Social Media', label: 'السوشيال ميديا (Social)' });
-    if (availableTeams.has('Creative & Design')) list.push({ id: 'Creative & Design', label: 'التصميم (مورد مشترك)' });
-    if (availableTeams.has('Video Production')) list.push({ id: 'Video Production', label: 'المونتاج وإنتاج الفيديو (مورد مشترك)' });
+    if (availableTeams.has('Executive')) list.push({ id: 'Executive', label: 'Executive Management' });
+    if (availableTeams.has('Technical')) list.push({ id: 'Technical', label: 'Technical & Operations' });
+    if (availableTeams.has('Sales')) list.push({ id: 'Sales', label: 'Sales Team' });
+    if (availableTeams.has('Account Management')) list.push({ id: 'Account Management', label: 'Account Management (AM)' });
+    if (availableTeams.has('Media Buying')) list.push({ id: 'Media Buying', label: 'Media Buying' });
+    if (availableTeams.has('SEO')) list.push({ id: 'SEO', label: 'Search Engine Optimization (SEO)' });
+    if (availableTeams.has('Social Media')) list.push({ id: 'Social Media', label: 'Social Media' });
+    if (availableTeams.has('Creative & Design')) list.push({ id: 'Creative & Design', label: 'Design (shared resource)' });
+    if (availableTeams.has('Video Production')) list.push({ id: 'Video Production', label: 'Video Editing & Production (shared resource)' });
     return list;
   }, [availableTeams]);
 
@@ -188,44 +258,21 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
       { id: 'seo_agent', label: 'SEO Agent' },
       { id: 'social_media_team_lead', label: 'Social Media Team Leader' },
       { id: 'social_media_agent', label: 'Social Media Agent' },
-      { id: 'graphic_designer', label: 'Graphic Designer (مورد مشترك)' },
-      { id: 'video_editor', label: 'Video Editor (مورد مشترك)' },
+      { id: 'graphic_designer', label: 'Graphic Designer (shared resource)' },
+      { id: 'video_editor', label: 'Video Editor (shared resource)' },
     ];
     return [
-      { id: 'all', label: `جميع الأدوار المتاحة (${operationalUsers.length} موظف)` },
+      { id: 'all', label: `All Available Roles (${operationalUsers.length} employees)` },
       ...allDefs.filter((d) => availableRoles.has(d.id)),
     ];
   }, [operationalUsers, availableRoles]);
 
-  // Helper to calculate workload and status for each user
+  // Helper to calculate workload and status for each user — delegates to the
+  // shared definition (src/lib/capacity.ts) that CrossTeamTaskBoard, AMQueue
+  // and ServiceBriefsRoutingView also use, adding this screen's own
+  // date-scoped capacity log lookup on top.
   const getUserCapacityData = (user: UserRecord) => {
-    // 1. Assigned active clients (mainly for AM agents)
-    const assignedClients = clients.filter(
-      (c) => c.am_agent_id === user.id && c.status !== 'churned'
-    );
-
-    // 2. Active tasks assigned
-    const activeTasks = tasks.filter(
-      (t) => t.assigned_to === user.id && t.status !== 'completed'
-    );
-
-    // 3. Workload calculation
-    const isAm = user.role === 'am_agent' || user.role === 'am_team_lead';
-    const usedCapacity = isAm ? assignedClients.length : activeTasks.length;
-    const capacityLimit = user.capacity_limit || 8;
-    const remainingCapacity = Math.max(0, capacityLimit - usedCapacity);
-    const utilizationRate = capacityLimit > 0 ? Math.round((usedCapacity / capacityLimit) * 100) : 0;
-
-    // Status classification according to required criteria:
-    // Available: < 75%
-    // Near Capacity: 75% - 99%
-    // Over Capacity: >= 100%
-    let status: 'available' | 'near_capacity' | 'over_capacity' = 'available';
-    if (utilizationRate >= 100) {
-      status = 'over_capacity';
-    } else if (utilizationRate >= 75) {
-      status = 'near_capacity';
-    }
+    const base = getSharedUserCapacityData(user, clients, tasks);
 
     // Historical capacity log for this user if date selected
     const userLogs = capacityLogs.filter((log) => log.agent_id === user.id);
@@ -234,14 +281,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
       : undefined;
 
     return {
-      user,
-      assignedClients,
-      activeTasks,
-      usedCapacity,
-      capacityLimit,
-      remainingCapacity,
-      utilizationRate,
-      status,
+      ...base,
       userLogs,
       dateSpecificLog,
     };
@@ -293,27 +333,29 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
   const handleStartEdit = (user: UserRecord) => {
     if (!canModifyCapacity) {
       setStatusMessage({
-        text: 'صلاحيات RLS: تعديل القدرة الاستيعابية مقتصر على الإدارة التنفيذية ورؤساء الفرق.',
+        text: 'RLS permissions: capacity limit changes are restricted to executive management and team leads.',
         type: 'error',
       });
       setTimeout(() => setStatusMessage(null), 4000);
       return;
     }
     setEditingUserId(user.id);
-    setTempLimit(user.capacity_limit || 8);
+    setTempLimit(resolveCapacityLimit(user));
   };
 
   const handleSaveLimit = async (userId: string) => {
-    if (tempLimit < 1) return;
+    const targetUser = users.find((u) => u.id === userId);
+    const minLimit = isTeamLeadRole(targetUser?.role) ? 0 : 1;
+    if (tempLimit < minLimit) return;
     setIsSaving(true);
     try {
       await onUpdateUserCapacity(userId, tempLimit);
       setEditingUserId(null);
-      setStatusMessage({ text: 'تم تحديث الحد الأقصى للسعة بنجاح في قاعدة البيانات.', type: 'success' });
+      setStatusMessage({ text: 'Capacity limit updated successfully in the database.', type: 'success' });
       setTimeout(() => setStatusMessage(null), 3500);
     } catch (err: any) {
       console.error(err);
-      setStatusMessage({ text: 'حدث خطأ أثناء حفظ السعة.', type: 'error' });
+      setStatusMessage({ text: 'An error occurred while saving the capacity limit.', type: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -326,11 +368,11 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     try {
       await onLogCapacity(logAgentId, logDate, logCount);
       setIsLogModalOpen(false);
-      setStatusMessage({ text: 'تم تسجيل ومتابعة قراءة السعة بنجاح.', type: 'success' });
+      setStatusMessage({ text: 'Capacity reading logged successfully.', type: 'success' });
       setTimeout(() => setStatusMessage(null), 3500);
     } catch (err) {
       console.error(err);
-      setStatusMessage({ text: 'فشل تسجيل قراءة السعة.', type: 'error' });
+      setStatusMessage({ text: 'Failed to log the capacity reading.', type: 'error' });
     } finally {
       setIsLoggingSubmitting(false);
     }
@@ -339,10 +381,65 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
   const getRoleBadge = (role: UserRole) => {
     const info = getRoleInfo(role);
     return {
-      label: info.arabicTitle,
+      label: info.englishTitle,
       bg: info.badgeBg,
       text: info.badgeText,
     };
+  };
+
+  // Reverse link (point 4): from an employee's capacity card, jump straight
+  // into the screen where that employee is actually assigned work. Gated on
+  // BOTH the employee's role (what destination makes sense) AND the current
+  // viewer's role (whether they're actually allowed to act there):
+  //
+  // Employee role                                  Destination     Who sees it
+  // am_agent                                        AM Queue         am_team_lead, executive, head_of_technical
+  // seo_agent/media_buying_agent/social_media_agent  Service Briefs   only that department's own team lead
+  // graphic_designer/video_editor (shared resource)  Task Board       any team lead + executive + head_of_technical
+  // any team_lead role                               Task Board       any OTHER team lead (cross-dept) + exec + HoT
+  // sales / other                                    —                no button
+  const AGENT_TO_OWN_LEAD: Partial<Record<UserRole, UserRole>> = {
+    seo_agent: 'seo_team_lead',
+    media_buying_agent: 'media_buying_team_lead',
+    social_media_agent: 'social_media_team_lead',
+  };
+
+  const getAssignmentLink = (employee: UserRecord): { moduleId: AppModuleId; label: string; prefill?: string } | null => {
+    const viewerRole = currentUser?.role;
+    if (!viewerRole || !onNavigateToModule) return null;
+    const viewerIsExec = viewerRole === 'executive' || viewerRole === 'head_of_technical';
+    const viewerIsTeamLead = isTeamLeadRole(viewerRole);
+
+    if (employee.role === 'am_agent') {
+      if (viewerRole === 'am_team_lead' || viewerIsExec) {
+        return { moduleId: 'onboarding', label: 'Assign via AM Queue' };
+      }
+      return null;
+    }
+
+    const ownLeadRole = AGENT_TO_OWN_LEAD[employee.role];
+    if (ownLeadRole) {
+      if (viewerRole === ownLeadRole) {
+        return { moduleId: 'service_briefs', label: 'Assign via Service Briefs' };
+      }
+      return null;
+    }
+
+    if (employee.role === 'graphic_designer' || employee.role === 'video_editor') {
+      if (viewerIsTeamLead || viewerIsExec) {
+        return { moduleId: 'tasks', label: 'Assign via Task Board', prefill: employee.name };
+      }
+      return null;
+    }
+
+    if (isTeamLeadRole(employee.role)) {
+      if ((viewerIsTeamLead && viewerRole !== employee.role) || viewerIsExec) {
+        return { moduleId: 'tasks', label: 'Assign via Task Board', prefill: employee.name };
+      }
+      return null;
+    }
+
+    return null;
   };
 
   return (
@@ -382,7 +479,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
         >
           <div>
             <p className="text-xs font-semibold" style={{ color: 'var(--grey)' }}>
-              معدل الإشغال الإجمالي
+              Overall Utilization Rate
             </p>
             <p
               className="text-2xl font-bold mt-1"
@@ -398,7 +495,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
               {overallUtilization}%
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--lilac)' }}>
-              {totalUsedSum} مستخدم من أصل {totalCapacitySum} كحد أقصى
+              {totalUsedSum} used out of {totalCapacitySum} max capacity
             </p>
           </div>
           <div
@@ -420,13 +517,13 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
         >
           <div>
             <p className="text-xs font-semibold" style={{ color: 'var(--grey)' }}>
-              متاح (Available)
+              Available
             </p>
             <p className="text-2xl font-bold mt-1" style={{ color: 'var(--roas-good)' }}>
-              {availableCount} <span className="text-xs font-normal text-stone-400">موظفين</span>
+              {availableCount} <span className="text-xs font-normal text-stone-400">employees</span>
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--roas-good)' }}>
-              إشغال أقل من 75%
+              Utilization under 75%
             </p>
           </div>
           <div
@@ -448,13 +545,13 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
         >
           <div>
             <p className="text-xs font-semibold" style={{ color: 'var(--grey)' }}>
-              يقترب من السعة (Near)
+              Near Capacity
             </p>
             <p className="text-2xl font-bold mt-1" style={{ color: 'var(--roas-mid)' }}>
-              {nearCapacityCount} <span className="text-xs font-normal text-stone-400">موظفين</span>
+              {nearCapacityCount} <span className="text-xs font-normal text-stone-400">employees</span>
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--roas-mid)' }}>
-              إشغال بين 75% و 99%
+              Utilization between 75% and 99%
             </p>
           </div>
           <div
@@ -476,16 +573,16 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
         >
           <div>
             <p className="text-xs font-semibold" style={{ color: 'var(--grey)' }}>
-              تجاوز السعة (Over)
+              Over Capacity
             </p>
             <p
               className="text-2xl font-bold mt-1"
               style={{ color: overCapacityCount > 0 ? 'var(--roas-bad)' : 'var(--white)' }}
             >
-              {overCapacityCount} <span className="text-xs font-normal text-stone-400">موظفين</span>
+              {overCapacityCount} <span className="text-xs font-normal text-stone-400">employees</span>
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--roas-bad)' }}>
-              إشغال 100% وأكثر (ضغط)
+              100%+ utilization (overloaded)
             </p>
           </div>
           <div
@@ -507,13 +604,13 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
         >
           <div>
             <p className="text-xs font-semibold" style={{ color: 'var(--grey)' }}>
-              السعة الاحتياطية (Buffer)
+              Capacity Buffer
             </p>
             <p className="text-2xl font-bold mt-1" style={{ color: 'var(--purple-light)' }}>
-              {totalBuffer} <span className="text-xs font-normal text-stone-400">وحدة شاغرة</span>
+              {totalBuffer} <span className="text-xs font-normal text-stone-400">open slots</span>
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--lilac)' }}>
-              جاهزة لاستيعاب أعمال فوراً
+              Ready to take on work immediately
             </p>
           </div>
           <div
@@ -546,7 +643,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              <span>بطاقات الموظفين</span>
+              <span>Employee Cards</span>
             </button>
             <button
               onClick={() => setViewMode('matrix')}
@@ -557,7 +654,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
               }`}
             >
               <TableIcon className="w-3.5 h-3.5" />
-              <span>مصفوفة الفرق التفصيلية</span>
+              <span>Detailed Team Matrix</span>
             </button>
             <button
               onClick={() => setViewMode('logs')}
@@ -568,7 +665,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
               }`}
             >
               <History className="w-3.5 h-3.5" />
-              <span>سجلات السعة (Logs)</span>
+              <span>Capacity Logs</span>
             </button>
           </div>
 
@@ -584,15 +681,15 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                 }}
               >
                 <PlusCircle className="w-3.5 h-3.5 text-purple-300" />
-                <span>تسجيل متابعة سعة (Capacity Log)</span>
+                <span>Log Capacity Reading</span>
               </button>
             ) : (
               <div
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] text-stone-400 border border-stone-800 bg-stone-900/40"
-                title="سياسات RLS تقيد تعديل السعة للمديرين فقط"
+                title="RLS policies restrict capacity changes to managers only"
               >
                 <ShieldAlert className="w-3.5 h-3.5 text-stone-500" />
-                <span>وضع المشاهدة (صلاحية مستخدم)</span>
+                <span>View Mode (Standard User)</span>
               </div>
             )}
           </div>
@@ -603,7 +700,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
           {/* Department Filter */}
           <div>
             <label className="text-[11px] font-semibold block mb-1" style={{ color: 'var(--grey)' }}>
-              القسم / الفريق:
+              Department / Team:
             </label>
             <select
               value={selectedDepartment}
@@ -621,7 +718,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
           {/* Role Filter */}
           <div>
             <label className="text-[11px] font-semibold block mb-1" style={{ color: 'var(--grey)' }}>
-              الدور الوظيفي:
+              Role:
             </label>
             <select
               value={selectedRole}
@@ -639,24 +736,24 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
           {/* Capacity Status Filter */}
           <div>
             <label className="text-[11px] font-semibold block mb-1" style={{ color: 'var(--grey)' }}>
-              حالة السعة (Status):
+              Capacity Status:
             </label>
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value as CapacityStatus)}
               className="w-full px-3 py-1.5 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white focus:outline-none focus:border-purple-500"
             >
-              <option value="all" className="bg-stone-900 text-white">جميع الحالات</option>
-              <option value="available" className="bg-stone-900 text-white">متاح (Available - أقل من 75%)</option>
-              <option value="near_capacity" className="bg-stone-900 text-white">يقترب من السعة (75% - 99%)</option>
-              <option value="over_capacity" className="bg-stone-900 text-white">تجاوز السعة (Over - 100%+)</option>
+              <option value="all" className="bg-stone-900 text-white">All Statuses</option>
+              <option value="available" className="bg-stone-900 text-white">Available (under 75%)</option>
+              <option value="near_capacity" className="bg-stone-900 text-white">Near Capacity (75% - 99%)</option>
+              <option value="over_capacity" className="bg-stone-900 text-white">Over Capacity (100%+)</option>
             </select>
           </div>
 
           {/* Date Filter */}
           <div>
             <label className="text-[11px] font-semibold block mb-1" style={{ color: 'var(--grey)' }}>
-              تاريخ السجل (Date):
+              Log Date:
             </label>
             <div className="flex items-center gap-1">
               <input
@@ -669,7 +766,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                 <button
                   onClick={() => setSelectedDate('')}
                   className="p-1.5 rounded-lg text-stone-400 hover:text-white"
-                  title="مسح التاريخ"
+                  title="Clear date"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -680,7 +777,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
           {/* Search Employee Name / Team */}
           <div>
             <label className="text-[11px] font-semibold block mb-1" style={{ color: 'var(--grey)' }}>
-              بحث سريع:
+              Quick Search:
             </label>
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute right-3 top-2.5 text-stone-500" />
@@ -688,7 +785,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ابحث باسم الموظف أو الفريق..."
+                placeholder="Search by employee name or team..."
                 className="w-full pr-8 pl-3 py-1.5 rounded-xl text-xs bg-stone-900/80 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-500"
               />
             </div>
@@ -701,10 +798,10 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
         <div className="space-y-4">
           <div className="flex items-center justify-between text-xs text-stone-400 px-1">
             <span>
-              عرض {filteredUserData.length} موظفاً وفق معايير التصفية المختارة
+              Showing {filteredUserData.length} employees matching the selected filters
             </span>
             <span className="text-[11px] text-stone-500">
-              * يتم احتساب السعة بناءً على العملاء النشطين (لإدارة الحسابات) والمهام النشطة (للفرق الفنية).
+              * Capacity is calculated from active clients (for Account Management) and active tasks (for technical teams).
             </span>
           </div>
 
@@ -714,9 +811,9 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
               style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-soft)' }}
             >
               <Users className="w-10 h-10 mx-auto text-stone-600 mb-2" />
-              <p className="text-sm font-semibold text-white">لم يتم العثور على موظفين</p>
+              <p className="text-sm font-semibold text-white">No employees found</p>
               <p className="text-xs text-stone-400 mt-1">
-                جرب تعديل خيارات الفلترة أو مسح حقول البحث.
+                Try adjusting the filter options or clearing the search fields.
               </p>
             </div>
           ) : (
@@ -725,18 +822,18 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                 const roleBadge = getRoleBadge(item.user.role);
                 const isEditing = editingUserId === item.user.id;
 
-                let statusBadgeText = 'متاح (Available)';
+                let statusBadgeText = 'Available';
                 let statusBadgeBg = 'rgba(169, 245, 193, 0.15)';
                 let statusBadgeColor = 'var(--roas-good)';
                 let statusBadgeBorder = 'rgba(169, 245, 193, 0.3)';
 
                 if (item.status === 'over_capacity') {
-                  statusBadgeText = 'تجاوز السعة (Over Capacity)';
+                  statusBadgeText = 'Over Capacity';
                   statusBadgeBg = 'rgba(245, 163, 163, 0.15)';
                   statusBadgeColor = 'var(--roas-bad)';
                   statusBadgeBorder = 'rgba(245, 163, 163, 0.3)';
                 } else if (item.status === 'near_capacity') {
-                  statusBadgeText = 'يقترب من السعة (Near)';
+                  statusBadgeText = 'Near Capacity';
                   statusBadgeBg = 'rgba(245, 226, 154, 0.15)';
                   statusBadgeColor = 'var(--roas-mid)';
                   statusBadgeBorder = 'rgba(245, 226, 154, 0.3)';
@@ -803,13 +900,13 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                       {/* Capacity Metrics: Used vs Remaining vs Limit */}
                       <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-stone-900/60 border border-stone-800/80 text-center">
                         <div>
-                          <p className="text-[10px] text-stone-400">المستخدمة</p>
+                          <p className="text-[10px] text-stone-400">Used</p>
                           <p className="text-sm font-bold text-white mt-0.5">
                             {item.usedCapacity}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-stone-400">المتبقية (Buffer)</p>
+                          <p className="text-[10px] text-stone-400">Remaining (Buffer)</p>
                           <p
                             className="text-sm font-bold mt-0.5"
                             style={{
@@ -820,7 +917,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-stone-400">الحد الأقصى</p>
+                          <p className="text-[10px] text-stone-400">Limit</p>
                           <div className="flex items-center justify-center gap-1 mt-0.5">
                             <span className="text-sm font-bold text-purple-300">
                               {item.capacityLimit}
@@ -829,7 +926,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                               <button
                                 onClick={() => handleStartEdit(item.user)}
                                 className="text-stone-500 hover:text-purple-300 p-0.5 transition-colors"
-                                title="تعديل الحد الأقصى للسعة (RLS Authorized)"
+                                title="Edit capacity limit (RLS Authorized)"
                               >
                                 <Edit2 className="w-3 h-3" />
                               </button>
@@ -842,7 +939,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                       {isEditing && (
                         <div className="p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/40 space-y-2">
                           <div className="flex items-center justify-between text-xs text-purple-200">
-                            <span className="font-semibold">تعديل الحد الأقصى للسعة:</span>
+                            <span className="font-semibold">Edit capacity limit:</span>
                             <button
                               onClick={() => setEditingUserId(null)}
                               className="text-stone-400 hover:text-white"
@@ -853,10 +950,13 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                           <div className="flex items-center gap-2">
                             <input
                               type="number"
-                              min="1"
+                              min={isTeamLeadRole(item.user.role) ? 0 : 1}
                               max="30"
                               value={tempLimit}
-                              onChange={(e) => setTempLimit(parseInt(e.target.value) || 1)}
+                              onChange={(e) => {
+                                const parsed = parseInt(e.target.value, 10);
+                                setTempLimit(Number.isNaN(parsed) ? 0 : parsed);
+                              }}
                               className="w-20 px-2 py-1 rounded-lg text-xs bg-stone-900 border border-purple-400/50 text-white font-bold text-center focus:outline-none"
                             />
                             <button
@@ -866,28 +966,33 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                               style={{ background: 'var(--gradient-badge)' }}
                             >
                               <Save className="w-3 h-3" />
-                              <span>{isSaving ? 'جارٍ الحفظ...' : 'تأكيد السعة'}</span>
+                              <span>{isSaving ? 'Saving...' : 'Confirm Capacity'}</span>
                             </button>
                           </div>
+                          {isTeamLeadRole(item.user.role) && (
+                            <p className="text-[10px] text-stone-400">
+                              0 is valid for team leads — they don't need a tracked capacity buffer.
+                            </p>
+                          )}
                         </div>
                       )}
 
                       {/* Visual Progress Bar */}
                       <div>
                         <div className="flex items-center justify-between text-xs mb-1.5">
-                          <span className="text-stone-400 text-[11px]">معدل الإشغال الحالي:</span>
+                          <span className="text-stone-400 text-[11px]">Current utilization rate:</span>
                           <span
-                            className="font-bold text-xs"
-                            style={{ color: statusBadgeColor }}
+                            className={`font-bold text-xs ${item.isUntracked ? 'text-stone-400' : ''}`}
+                            style={item.isUntracked ? undefined : { color: statusBadgeColor }}
                           >
-                            {item.utilizationRate}%
+                            {item.isUntracked ? 'N/A' : `${item.utilizationRate}%`}
                           </span>
                         </div>
                         <div className="w-full h-2 rounded-full bg-stone-800 overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-500"
                             style={{
-                              width: `${Math.min(100, item.utilizationRate)}%`,
+                              width: item.isUntracked ? '0%' : `${Math.min(100, item.utilizationRate)}%`,
                               background:
                                 item.status === 'over_capacity'
                                   ? 'var(--roas-bad)'
@@ -906,7 +1011,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                             <div className="flex items-center justify-between text-[11px] text-stone-400 mb-1">
                               <span className="flex items-center gap-1">
                                 <Building2 className="w-3 h-3 text-purple-400" />
-                                <span>العملاء المسندون ({item.assignedClients.length}):</span>
+                                <span>Assigned Clients ({item.assignedClients.length}):</span>
                               </span>
                             </div>
                             {item.assignedClients.length > 0 ? (
@@ -922,7 +1027,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                               </div>
                             ) : (
                               <p className="text-[10px] text-stone-500 italic">
-                                لا يوجد عملاء مسندون حالياً (متاح تماماً)
+                                No clients currently assigned (fully available)
                               </p>
                             )}
                           </div>
@@ -931,7 +1036,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                             <div className="flex items-center justify-between text-[11px] text-stone-400 mb-1">
                               <span className="flex items-center gap-1">
                                 <CheckSquare className="w-3 h-3 text-purple-400" />
-                                <span>المهام النشطة الموكلة ({item.activeTasks.length}):</span>
+                                <span>Active Assigned Tasks ({item.activeTasks.length}):</span>
                               </span>
                             </div>
                             {item.activeTasks.length > 0 ? (
@@ -947,19 +1052,47 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                                 ))}
                                 {item.activeTasks.length > 2 && (
                                   <p className="text-[10px] text-purple-400">
-                                    + {item.activeTasks.length - 2} مهام أخرى قيد التنفيذ
+                                    + {item.activeTasks.length - 2} more tasks in progress
                                   </p>
                                 )}
                               </div>
                             ) : (
                               <p className="text-[10px] text-stone-500 italic">
-                                لا توجد مهام نشطة حالياً (متاح للعمل)
+                                No active tasks right now (available for work)
                               </p>
                             )}
                           </div>
                         )}
                       </div>
                     </div>
+
+                    {/* Reverse link (point 4): jump to where this employee is assigned work */}
+                    {(() => {
+                      const assignLink = getAssignmentLink(item.user);
+                      if (!assignLink) return null;
+                      return (
+                        <button
+                          onClick={() => onNavigateToModule?.(assignLink.moduleId, assignLink.prefill)}
+                          className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-purple-200 bg-purple-900/30 hover:bg-purple-800/50 hover:text-white border border-purple-700/40 transition-all"
+                        >
+                          <span>{assignLink.label}</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </button>
+                      );
+                    })()}
+
+                    {/* Employee Performance page — same audience as
+                        direct_report_visible() (RLS): the employee's actual
+                        direct team lead, Head of Technical, or Executive. */}
+                    {canViewPerformance(currentUser?.role, item.user) && onGenerateKpiScore && (
+                      <button
+                        onClick={() => setPerformanceEmployeeId(item.user.id)}
+                        className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-emerald-200 bg-emerald-900/20 hover:bg-emerald-800/40 hover:text-white border border-emerald-700/30 transition-all"
+                      >
+                        <Gauge className="w-3.5 h-3.5" />
+                        <span>View Performance</span>
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -978,31 +1111,31 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
             <table className="w-full text-right text-xs">
               <thead className="bg-stone-900/90 text-stone-300 border-b border-stone-800">
                 <tr>
-                  <th className="p-3.5">الموظف</th>
-                  <th className="p-3.5">القسم / الفريق</th>
-                  <th className="p-3.5">الدور الوظيفي</th>
-                  <th className="p-3.5 text-center">الحد الأقصى (Limit)</th>
-                  <th className="p-3.5 text-center">السعة المستخدمة</th>
-                  <th className="p-3.5 text-center">السعة الشاغرة (Buffer)</th>
-                  <th className="p-3.5 text-center">معدل الإشغال</th>
-                  <th className="p-3.5 text-center">الحالة (Status)</th>
-                  <th className="p-3.5 text-center">إجراءات RLS</th>
+                  <th className="p-3.5">Employee</th>
+                  <th className="p-3.5">Department / Team</th>
+                  <th className="p-3.5">Role</th>
+                  <th className="p-3.5 text-center">Limit</th>
+                  <th className="p-3.5 text-center">Used Capacity</th>
+                  <th className="p-3.5 text-center">Open Capacity (Buffer)</th>
+                  <th className="p-3.5 text-center">Utilization Rate</th>
+                  <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 text-center">RLS Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-800/60">
                 {filteredUserData.map((item) => {
                   const roleBadge = getRoleBadge(item.user.role);
 
-                  let statusBadgeText = 'متاح (Available)';
+                  let statusBadgeText = 'Available';
                   let statusBadgeBg = 'rgba(169, 245, 193, 0.15)';
                   let statusBadgeColor = 'var(--roas-good)';
 
                   if (item.status === 'over_capacity') {
-                    statusBadgeText = 'تجاوز السعة (Over)';
+                    statusBadgeText = 'Over Capacity';
                     statusBadgeBg = 'rgba(245, 163, 163, 0.15)';
                     statusBadgeColor = 'var(--roas-bad)';
                   } else if (item.status === 'near_capacity') {
-                    statusBadgeText = 'يقترب من السعة (Near)';
+                    statusBadgeText = 'Near Capacity';
                     statusBadgeBg = 'rgba(245, 226, 154, 0.15)';
                     statusBadgeColor = 'var(--roas-mid)';
                   }
@@ -1019,12 +1152,12 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                           </div>
                           <div>
                             <p className="font-bold text-white">{item.user.name}</p>
-                            <p className="text-[10px] text-stone-400">{item.user.email || 'نشط'}</p>
+                            <p className="text-[10px] text-stone-400">{item.user.email || 'Active'}</p>
                           </div>
                         </div>
                       </td>
                       <td className="p-3.5 text-stone-300 font-medium">
-                        {item.user.team || 'غير محدد'}
+                        {item.user.team || 'Not set'}
                       </td>
                       <td className="p-3.5">
                         <span
@@ -1046,8 +1179,11 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                       >
                         {item.remainingCapacity}
                       </td>
-                      <td className="p-3.5 text-center font-bold" style={{ color: statusBadgeColor }}>
-                        {item.utilizationRate}%
+                      <td
+                        className={`p-3.5 text-center font-bold ${item.isUntracked ? 'text-stone-400' : ''}`}
+                        style={item.isUntracked ? undefined : { color: statusBadgeColor }}
+                      >
+                        {item.isUntracked ? 'N/A' : `${item.utilizationRate}%`}
                       </td>
                       <td className="p-3.5 text-center">
                         <span
@@ -1063,10 +1199,10 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                             onClick={() => handleStartEdit(item.user)}
                             className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-stone-800 text-stone-200 hover:text-white hover:bg-purple-900/40 transition-colors"
                           >
-                            تعديل السعة
+                            Edit Capacity
                           </button>
                         ) : (
-                          <span className="text-[10px] text-stone-500">للقادة فقط</span>
+                          <span className="text-[10px] text-stone-500">Leads only</span>
                         )}
                       </td>
                     </tr>
@@ -1085,10 +1221,10 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
             <div>
               <h4 className="text-sm font-bold text-white flex items-center gap-2">
                 <History className="w-4 h-4 text-purple-400" />
-                <span>سجلات السعة والتوثيق اليومي (capacity_logs)</span>
+                <span>Capacity Logs & Daily Records (capacity_logs)</span>
               </h4>
               <p className="text-xs text-stone-400 mt-0.5">
-                قائمة القراءات التاريخية المسجلة في قاعدة بيانات Supabase لكل موظف.
+                List of historical readings recorded in the Supabase database for each employee.
               </p>
             </div>
             {canModifyCapacity && (
@@ -1097,7 +1233,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                 className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors flex items-center gap-1.5"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
-                <span>إضافة قراءة جديدة</span>
+                <span>Add New Reading</span>
               </button>
             )}
           </div>
@@ -1109,25 +1245,26 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
             <table className="w-full text-right text-xs">
               <thead className="bg-stone-900/90 text-stone-300 border-b border-stone-800">
                 <tr>
-                  <th className="p-3.5">معرف السجل</th>
-                  <th className="p-3.5">الموظف</th>
-                  <th className="p-3.5">التاريخ المسجل</th>
-                  <th className="p-3.5 text-center">العملاء/الأعباء النشطة</th>
-                  <th className="p-3.5 text-center">الحالة المقدرة</th>
+                  <th className="p-3.5">Log ID</th>
+                  <th className="p-3.5">Employee</th>
+                  <th className="p-3.5">Recorded Date</th>
+                  <th className="p-3.5 text-center">Active Clients/Workload</th>
+                  <th className="p-3.5 text-center">Estimated Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-800/60">
                 {capacityLogs.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-8 text-center text-stone-400">
-                      لا توجد سجلات سعة مدخلة حالياً.
+                      No capacity logs recorded yet.
                     </td>
                   </tr>
                 ) : (
                   capacityLogs.map((log) => {
                     const agent = users.find((u) => u.id === log.agent_id);
-                    const limit = agent?.capacity_limit || 8;
-                    const rate = Math.round((log.active_clients_count / limit) * 100);
+                    const limit = agent ? resolveCapacityLimit(agent) : 8;
+                    const isUntracked = limit === 0;
+                    const rate = isUntracked ? 0 : Math.round((log.active_clients_count / limit) * 100);
 
                     return (
                       <tr key={log.id} className="hover:bg-stone-900/40 transition-colors">
@@ -1137,19 +1274,21 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                         </td>
                         <td className="p-3.5 text-stone-300">{log.date}</td>
                         <td className="p-3.5 text-center font-bold text-white">
-                          {log.active_clients_count} من {limit}
+                          {log.active_clients_count} of {limit}
                         </td>
                         <td className="p-3.5 text-center">
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              rate >= 100
+                              isUntracked
+                                ? 'bg-stone-800/60 text-stone-400 border border-stone-700'
+                                : rate >= 100
                                 ? 'bg-red-950/60 text-red-400 border border-red-500/30'
                                 : rate >= 75
                                 ? 'bg-amber-950/60 text-amber-400 border border-amber-500/30'
                                 : 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/30'
                             }`}
                           >
-                            {rate}% إشغال
+                            {isUntracked ? 'N/A' : `${rate}% utilized`}
                           </span>
                         </td>
                       </tr>
@@ -1175,7 +1314,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
             <div className="flex items-center justify-between border-b border-stone-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Gauge className="w-5 h-5 text-purple-400" />
-                <span>تسجيل قراءة سعة جديدة (Capacity Log)</span>
+                <span>Log New Capacity Reading</span>
               </h3>
               <button
                 onClick={() => setIsLogModalOpen(false)}
@@ -1188,7 +1327,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
             <form onSubmit={handleLogCapacitySubmit} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-stone-300 block mb-1">
-                  الموظف / المسؤول:
+                  Employee / Responsible Party:
                 </label>
                 <select
                   value={logAgentId}
@@ -1198,7 +1337,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                 >
                   {operationalUsers.map((u) => (
                     <option key={u.id} value={u.id} className="bg-stone-900 text-white">
-                      {u.name} ({u.team || u.role}) - الحد الأقصى: {u.capacity_limit || 8}
+                      {u.name} ({u.team || u.role}) - Limit: {resolveCapacityLimit(u)}
                     </option>
                   ))}
                 </select>
@@ -1207,7 +1346,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-stone-300 block mb-1">
-                    تاريخ التسجيل:
+                    Log Date:
                   </label>
                   <input
                     type="date"
@@ -1220,7 +1359,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
 
                 <div>
                   <label className="text-xs font-semibold text-stone-300 block mb-1">
-                    الأعباء / العملاء النشطين:
+                    Active Workload / Clients:
                   </label>
                   <input
                     type="number"
@@ -1240,7 +1379,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                   onClick={() => setIsLogModalOpen(false)}
                   className="px-4 py-2 rounded-xl text-xs text-stone-400 hover:text-white"
                 >
-                  إلغاء
+                  Cancel
                 </button>
                 <button
                   type="submit"
@@ -1248,13 +1387,33 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
                   className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-lg transition-all"
                   style={{ background: 'var(--gradient-badge)' }}
                 >
-                  {isLoggingSubmitting ? 'جارٍ الحفظ...' : 'حفظ السجل في Supabase'}
+                  {isLoggingSubmitting ? 'Saving...' : 'Save Log to Supabase'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {performanceEmployeeId &&
+        onGenerateKpiScore &&
+        (() => {
+          const performanceEmployee = users.find((u) => u.id === performanceEmployeeId);
+          if (!performanceEmployee) return null;
+          return (
+            <EmployeePerformancePage
+              employee={performanceEmployee}
+              users={users}
+              clients={clients}
+              tasks={tasks}
+              capacityLogs={capacityLogs}
+              kpiScores={kpiScores}
+              extraNotes={extraNotes}
+              onGenerateKpiScore={onGenerateKpiScore}
+              onClose={() => setPerformanceEmployeeId(null)}
+            />
+          );
+        })()}
     </div>
   );
 };

@@ -18,25 +18,67 @@ import {
   Clock,
   LogOut,
   Target,
+  BarChart3,
+  Briefcase,
+  UserPlus,
 } from 'lucide-react';
-import { supabase, isSupabaseConfigured, setSupabaseSessionUser } from './lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  setSupabaseSessionUser,
+  buildAttachmentStoragePath,
+  buildMeetingRecordingStoragePath,
+  buildClientContractStoragePath,
+} from './lib/supabase';
+import { resolvePeriodRange, generateKpiScoreMetrics, suggestClassification } from './lib/performanceScore';
+import { isPendingEmployee } from './lib/permissions';
+import {
+  ComparisonGranularity,
+  ComparisonPeriod,
+  DateRange,
+  ReportMode,
+  ReportScope,
+  resolveComparisonPeriods,
+  customPeriod,
+  generateClientComparison,
+  generatePeriodSummary,
+  resolveClientsForSubject,
+  serviceFilterForRole,
+} from './lib/reportingEngine';
+import { ReportsHub } from './components/ReportsHub';
+import { EmployeeAdminHub, NewEmployeeInput } from './components/EmployeeAdminHub';
+import { DashboardHub } from './components/DashboardHub';
 import {
   ClientRecord,
-  PackageRecord,
+  ClientStatus,
   UserRecord,
   BriefRecord,
+  BriefRevisionRecord,
   TaskRecord,
+  TaskCommentRecord,
+  TaskAttachmentRecord,
   CapacityLogRecord,
   DailyLogRecord,
   ExtraNoteRecord,
+  KpiScoreRecord,
+  PerformancePeriodType,
   CampaignRecord,
+  AssignmentRecord,
   ServiceType,
   UserRole,
   TaskStatus,
   TaskPriority,
+  SocialInsightRecord,
+  ReportRecord,
+  ClientComparisonRecord,
+  ClientPortalUserRecord,
+  MeetingRecord,
+  PlatformConnectionRecord,
+  PlatformConnectionStatus,
+  PlatformCategory,
+  ClientContractRecord,
 } from './types/database';
 import {
-  INITIAL_PACKAGES,
   INITIAL_USERS,
   INITIAL_CLIENTS,
   INITIAL_BRIEFS,
@@ -45,6 +87,7 @@ import {
   INITIAL_DAILY_LOGS,
   INITIAL_EXTRA_NOTES,
   INITIAL_CAMPAIGNS,
+  INITIAL_ASSIGNMENTS,
 } from './data/initialData';
 import {
   getRoleInfo,
@@ -59,6 +102,8 @@ import { CapacityManagement } from './components/CapacityManagement';
 import { CrossTeamTaskBoard } from './components/CrossTeamTaskBoard';
 import { DailyOperationsModule } from './components/DailyOperationsModule';
 import { CampaignManagementModule } from './components/CampaignManagementModule';
+import { ServiceBriefsRoutingView } from './components/ServiceBriefsRoutingView';
+import { MyWorkHub } from './components/MyWorkHub';
 import { SalesPortalView } from './components/SalesPortalView';
 import { AccessDenied } from './components/AccessDenied';
 import { RolePortalHeader } from './components/RolePortalHeader';
@@ -72,17 +117,39 @@ export default function App() {
   // Active module tab
   const [activeTab, setActiveTab] = useState<AppModule>('onboarding');
   const [unauthorizedRoute, setUnauthorizedRoute] = useState<string | null>(null);
+  // Pre-fills CrossTeamTaskBoard's search box when arriving via a capacity
+  // card's "Assign via Task Board" link, so the target employee's tasks are
+  // already filtered into view.
+  const [taskBoardAssigneePrefill, setTaskBoardAssigneePrefill] = useState('');
+
+  const handleNavigateToModule = (module: AppModuleId, prefillAssigneeName?: string) => {
+    if (prefillAssigneeName !== undefined) {
+      setTaskBoardAssigneePrefill(prefillAssigneeName);
+    }
+    setActiveTab(module);
+  };
 
   // Data State
-  const [packages, setPackages] = useState<PackageRecord[]>(INITIAL_PACKAGES);
   const [users, setUsers] = useState<UserRecord[]>(INITIAL_USERS);
   const [clients, setClients] = useState<ClientRecord[]>(INITIAL_CLIENTS);
   const [briefs, setBriefs] = useState<BriefRecord[]>(INITIAL_BRIEFS);
+  const [briefRevisions, setBriefRevisions] = useState<BriefRevisionRecord[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>(INITIAL_TASKS);
+  const [taskComments, setTaskComments] = useState<TaskCommentRecord[]>([]);
+  const [taskAttachments, setTaskAttachments] = useState<TaskAttachmentRecord[]>([]);
   const [capacityLogs, setCapacityLogs] = useState<CapacityLogRecord[]>(INITIAL_CAPACITY_LOGS);
   const [dailyLogs, setDailyLogs] = useState<DailyLogRecord[]>(INITIAL_DAILY_LOGS);
   const [extraNotes, setExtraNotes] = useState<ExtraNoteRecord[]>(INITIAL_EXTRA_NOTES);
+  const [kpiScores, setKpiScores] = useState<KpiScoreRecord[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>(INITIAL_CAMPAIGNS);
+  const [assignments, setAssignments] = useState<AssignmentRecord[]>(INITIAL_ASSIGNMENTS);
+  const [socialInsights, setSocialInsights] = useState<SocialInsightRecord[]>([]);
+  const [reports, setReports] = useState<ReportRecord[]>([]);
+  const [clientComparisons, setClientComparisons] = useState<ClientComparisonRecord[]>([]);
+  const [clientPortalUsers, setClientPortalUsers] = useState<ClientPortalUserRecord[]>([]);
+  const [meetings, setMeetings] = useState<MeetingRecord[]>([]);
+  const [clientContracts, setClientContracts] = useState<ClientContractRecord[]>([]);
+  const [platformConnections, setPlatformConnections] = useState<PlatformConnectionRecord[]>([]);
 
   // Authenticated user state initialized from localStorage
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRecord | null>(() => {
@@ -210,7 +277,7 @@ export default function App() {
       }
 
       // Direct module hash format e.g. #onboarding or #capacity
-      const validModules: AppModuleId[] = ['onboarding', 'capacity', 'tasks', 'daily_operations', 'campaigns'];
+      const validModules: AppModuleId[] = ['onboarding', 'service_briefs', 'capacity', 'tasks', 'daily_operations', 'campaigns'];
       if (validModules.includes(parts[0] as AppModuleId)) {
         const mod = parts[0] as AppModuleId;
         if (!isModuleAllowed(authenticatedUser.role, mod)) {
@@ -300,12 +367,6 @@ export default function App() {
 
     if (configured) {
       try {
-        // Fetch packages
-        const { data: pkgData, error: pkgErr } = await supabase.from('packages').select('*');
-        if (!pkgErr && pkgData && pkgData.length > 0) {
-          setPackages(pkgData as PackageRecord[]);
-        }
-
         // Fetch clients
         const { data: clientData, error: clientErr } = await supabase.from('clients').select('*');
         if (!clientErr && clientData && clientData.length > 0) {
@@ -318,10 +379,34 @@ export default function App() {
           setBriefs(briefData as BriefRecord[]);
         }
 
+        // Fetch brief revision history
+        const { data: briefRevisionData, error: briefRevisionErr } = await supabase
+          .from('brief_revisions')
+          .select('*');
+        if (!briefRevisionErr && briefRevisionData && briefRevisionData.length > 0) {
+          setBriefRevisions(briefRevisionData as BriefRevisionRecord[]);
+        }
+
         // Fetch tasks
         const { data: taskData, error: taskErr } = await supabase.from('tasks').select('*');
         if (!taskErr && taskData && taskData.length > 0) {
           setTasks(taskData as TaskRecord[]);
+        }
+
+        // Fetch task comments
+        const { data: taskCommentData, error: taskCommentErr } = await supabase
+          .from('task_comments')
+          .select('*');
+        if (!taskCommentErr && taskCommentData && taskCommentData.length > 0) {
+          setTaskComments(taskCommentData as TaskCommentRecord[]);
+        }
+
+        // Fetch task attachment metadata (the files themselves stay in Storage)
+        const { data: taskAttachmentData, error: taskAttachmentErr } = await supabase
+          .from('task_attachments')
+          .select('*');
+        if (!taskAttachmentErr && taskAttachmentData && taskAttachmentData.length > 0) {
+          setTaskAttachments(taskAttachmentData as TaskAttachmentRecord[]);
         }
 
         // Fetch capacity_logs
@@ -342,10 +427,72 @@ export default function App() {
           setExtraNotes(noteData as ExtraNoteRecord[]);
         }
 
+        // Fetch kpi_scores
+        const { data: kpiData, error: kpiErr } = await supabase.from('kpi_scores').select('*');
+        if (!kpiErr && kpiData && kpiData.length > 0) {
+          setKpiScores(kpiData as KpiScoreRecord[]);
+        }
+
         // Fetch campaigns
         const { data: campaignData, error: campaignErr } = await supabase.from('campaigns').select('*');
         if (!campaignErr && campaignData && campaignData.length > 0) {
           setCampaigns(campaignData as CampaignRecord[]);
+        }
+
+        // Fetch assignments (service specialist delegation records)
+        const { data: assignmentData, error: assignmentErr } = await supabase.from('assignments').select('*');
+        if (!assignmentErr && assignmentData && assignmentData.length > 0) {
+          setAssignments(assignmentData as AssignmentRecord[]);
+        }
+
+        // Fetch social_insights (Reporting Engine: social media comparison indicators)
+        const { data: socialInsightData, error: socialInsightErr } = await supabase
+          .from('social_insights')
+          .select('*');
+        if (!socialInsightErr && socialInsightData && socialInsightData.length > 0) {
+          setSocialInsights(socialInsightData as SocialInsightRecord[]);
+        }
+
+        // Fetch reports (Reporting Engine)
+        const { data: reportData, error: reportErr } = await supabase.from('reports').select('*');
+        if (!reportErr && reportData && reportData.length > 0) {
+          setReports(reportData as ReportRecord[]);
+        }
+
+        // Fetch client_comparisons (Reporting Engine)
+        const { data: comparisonData, error: comparisonErr } = await supabase
+          .from('client_comparisons')
+          .select('*');
+        if (!comparisonErr && comparisonData && comparisonData.length > 0) {
+          setClientComparisons(comparisonData as ClientComparisonRecord[]);
+        }
+
+        // Fetch client_portal_users (Client Portal: invite/claim status for the AM-side UI)
+        const { data: portalUserData, error: portalUserErr } = await supabase
+          .from('client_portal_users')
+          .select('*');
+        if (!portalUserErr && portalUserData && portalUserData.length > 0) {
+          setClientPortalUsers(portalUserData as ClientPortalUserRecord[]);
+        }
+
+        // Fetch meetings (Module 9 scaffolding: AM meeting recordings/manual transcript notes)
+        const { data: meetingData, error: meetingErr } = await supabase.from('meetings').select('*');
+        if (!meetingErr && meetingData && meetingData.length > 0) {
+          setMeetings(meetingData as MeetingRecord[]);
+        }
+
+        // Fetch client_contracts (Module 12 Phase 6: Sales's signed-contract upload)
+        const { data: contractData, error: contractErr } = await supabase.from('client_contracts').select('*');
+        if (!contractErr && contractData && contractData.length > 0) {
+          setClientContracts(contractData as ClientContractRecord[]);
+        }
+
+        // Fetch platform_connections (Module 6 scaffolding: manual integration status tracker)
+        const { data: platformConnectionData, error: platformConnectionErr } = await supabase
+          .from('platform_connections')
+          .select('*');
+        if (!platformConnectionErr && platformConnectionData && platformConnectionData.length > 0) {
+          setPlatformConnections(platformConnectionData as PlatformConnectionRecord[]);
         }
       } catch (err) {
         console.warn('Supabase query error, relying on local cached state:', err);
@@ -359,26 +506,32 @@ export default function App() {
     loadData();
   }, [authenticatedUser, loadData]);
 
-  // 1. تسجيل عميل جديد من فريق المبيعات (مع تحويل تلقائي إلى Onboarding)
+  // 1. Register a new client from the Sales team (starts as a Lead, pending handoff to Account Management)
   const handleRegisterClient = async (clientData: {
     name: string;
     industry: string;
-    package_id: string;
+    services: ServiceType[];
+    phone_number?: string;
     contract_value: number;
     start_date: string;
+    renewal_date: string;
     am_team_lead_id?: string;
   }) => {
+    // Module 13: a ClientRecord is now only ever created at 'onboarding' — that creation IS the
+    // Sales -> AM Team Lead handoff, no separate 'lead' stage or handoff action before it.
     const newClientPayload: Partial<ClientRecord> = {
       id: `cl-${Date.now().toString().slice(-4)}`,
       name: clientData.name,
       industry: clientData.industry,
-      package_id: clientData.package_id,
-      status: 'onboarding', // تحويل تلقائي فوري لقسم إدارة الحسابات
+      services: clientData.services,
+      phone_number: clientData.phone_number || null,
+      status: 'onboarding',
       sales_owner_id: currentUser.id,
-      am_agent_id: null, // بانتظار تعيين مدير الحساب
+      am_agent_id: null, // Awaiting Account Manager assignment
       am_team_lead_id: clientData.am_team_lead_id || 'usr-am-lead',
       contract_value: clientData.contract_value,
       start_date: clientData.start_date,
+      renewal_date: clientData.renewal_date,
       created_at: new Date().toISOString(),
     };
 
@@ -402,18 +555,52 @@ export default function App() {
       setClients((prev) => [newClientPayload as ClientRecord, ...prev]);
     }
 
-    showNotification(
-      `تم تسجيل العميل «${clientData.name}» وتحويله تلقائياً لقائمة انتظار مسؤول إدارة الحسابات بنجاح!`
-    );
+    showNotification(`Client "${clientData.name}" registered and routed to Account Management.`);
   };
 
-  // 2. إسناد العميل لموظف إدارة حسابات (AM Agent)
+  // 1b. Add a new employee (Add Employee admin screen: single form or bulk CSV/Excel upload) —
+  // creates a pending employee row (auth_id null). Real Supabase Auth account creation needs the
+  // service-role key, which never touches the browser, so it happens separately via
+  // scripts/provisionAuthUsers.ts. Unlike most local-fallback handlers in this file, a real
+  // Supabase error here is re-thrown rather than swallowed: the bulk uploader in
+  // EmployeeAdminHub.tsx depends on catching per-row failures (e.g. a duplicate email hitting
+  // users_email_unique) to report them individually instead of silently "succeeding" locally.
+  const handleAddEmployee = async (employee: NewEmployeeInput) => {
+    const newUserPayload: UserRecord = {
+      id: `usr-${Date.now().toString().slice(-4)}-${Math.random().toString(36).slice(2, 6)}`,
+      name: employee.name,
+      email: employee.email,
+      role: employee.role,
+      team: employee.team,
+      manager_id: employee.manager_id || null,
+      capacity_limit: employee.capacity_limit ?? null,
+      auth_id: null,
+      created_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      const { data, error } = await supabase.from('users').insert([newUserPayload]).select();
+      if (error) throw error;
+      setUsers((prev) => [...prev, (data?.[0] as UserRecord) || newUserPayload]);
+    } else {
+      setUsers((prev) => [...prev, newUserPayload]);
+    }
+  };
+
+  // 2. Assign the client to an Account Manager (AM Agent)
   const handleAssignAMAgent = async (clientId: string, agentId: string) => {
+    // Module 13 Phase 4: only bump am_agent_assigned_at on an actual change of agent — a no-op
+    // resubmission of the same agent shouldn't re-date the "gained" moment. Mirrors the
+    // reassignment-clears-viewed_at convention from Module 12 Phase 5.
+    const existing = clients.find((c) => c.id === clientId);
+    const isReassignment = existing?.am_agent_id !== agentId;
+    const assignedAt = isReassignment ? new Date().toISOString() : existing?.am_agent_assigned_at;
+
     if (supabaseActive) {
       try {
         const { error } = await supabase
           .from('clients')
-          .update({ am_agent_id: agentId })
+          .update({ am_agent_id: agentId, am_agent_assigned_at: assignedAt })
           .eq('id', clientId);
         if (error) throw error;
       } catch (err: any) {
@@ -422,14 +609,231 @@ export default function App() {
     }
 
     setClients((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, am_agent_id: agentId } : c))
+      prev.map((c) => (c.id === clientId ? { ...c, am_agent_id: agentId, am_agent_assigned_at: assignedAt } : c))
     );
 
     const agent = users.find((u) => u.id === agentId);
-    showNotification(`تم إسناد العميل لمسؤول إدارة الحسابات: ${agent?.name || agentId}`);
+    showNotification(`Client assigned to Account Manager: ${agent?.name || agentId}`);
   };
 
-  // 3. حفظ نموذج البريف الديناميكي (SEO، سوشيال ميديا، ميديا باينج)
+  // 2b. Transition a client's lifecycle status (Onboarding -> Active <-> Paused -> Renewal -> Closed)
+  const handleUpdateClientStatus = async (
+    clientId: string,
+    newStatus: ClientStatus,
+    options?: { churn_reason?: string; renewal_date?: string }
+  ) => {
+    const updatePayload: Partial<ClientRecord> = { status: newStatus };
+    // Field names kept as churn_reason/churned_at (Module 13 only renamed the status VALUE
+    // 'churned' -> 'closed', not these columns — see types/database.ts).
+    if (newStatus === 'closed') {
+      updatePayload.churn_reason = options?.churn_reason || null;
+      updatePayload.churned_at = new Date().toISOString();
+    }
+    if (options?.renewal_date) {
+      updatePayload.renewal_date = options.renewal_date;
+    }
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('clients')
+          .update(updatePayload)
+          .eq('id', clientId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase update client status error:', err);
+      }
+    }
+
+    setClients((prev) =>
+      prev.map((c) => (c.id === clientId ? { ...c, ...updatePayload } : c))
+    );
+
+    const client = clients.find((c) => c.id === clientId);
+    showNotification(`Client "${client?.name || clientId}" status updated to ${newStatus}.`);
+  };
+
+  // 2a-2. AM Team Lead payment tracking (Module 12 Phase 7) — manually-editable, never
+  // auto-computed from anything. Distinct handler from handleUpdateClientStatus since it edits
+  // an unrelated field group and shouldn't carry that function's status-transition side effects.
+  const handleUpdatePaymentTracking = async (
+    clientId: string,
+    updates: { due_value?: number | null; remaining_value?: number | null; contract_duration_months?: number | null }
+  ) => {
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('clients').update(updates).eq('id', clientId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase update payment tracking error:', err);
+        showNotification('Unable to save payment tracking.', 'info');
+        return;
+      }
+    }
+
+    setClients((prev) => prev.map((c) => (c.id === clientId ? { ...c, ...updates } : c)));
+    showNotification('Payment tracking updated.');
+  };
+
+  // 2b-2. Invite a client to the Client Portal: creates the placeholder client_portal_users row
+  // (auth_id null). The client finishes setup themselves via ClientPortalLogin.tsx's "First Time?"
+  // path, which claims this row by matching its own session email — see
+  // client_portal_users_claim_rls in the client_portal migration.
+  const handleCreatePortalLogin = async (clientId: string, email: string) => {
+    const newPortalUserPayload: ClientPortalUserRecord = {
+      id: `cpu-${Date.now().toString().slice(-6)}`,
+      client_id: clientId,
+      auth_id: null,
+      email,
+      created_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      const { data, error } = await supabase
+        .from('client_portal_users')
+        .insert([newPortalUserPayload])
+        .select();
+      if (error) throw error;
+      setClientPortalUsers((prev) => [...prev, (data?.[0] as ClientPortalUserRecord) || newPortalUserPayload]);
+    } else {
+      setClientPortalUsers((prev) => [...prev, newPortalUserPayload]);
+    }
+
+    const client = clients.find((c) => c.id === clientId);
+    showNotification(`Portal invite sent to ${email} for "${client?.name || clientId}".`);
+  };
+
+  // 2c. Mark a client as viewed by its assigned AM Team Lead (clears the "New" indicator)
+  const handleMarkClientViewedByAMLead = async (clientId: string) => {
+    const viewedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('clients')
+          .update({ am_team_lead_viewed_at: viewedAt })
+          .eq('id', clientId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase mark client viewed error:', err);
+      }
+    }
+
+    setClients((prev) =>
+      prev.map((c) => (c.id === clientId ? { ...c, am_team_lead_viewed_at: viewedAt } : c))
+    );
+  };
+
+  // 2d. Mark an assignment as viewed by its assigned agent (Module 12 Phase 5 — clears the
+  // "New" indicator for seo_agent/media_buying_agent/social_media_agent)
+  const handleMarkAssignmentViewed = async (assignmentId: string) => {
+    const viewedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('assignments')
+          .update({ viewed_at: viewedAt })
+          .eq('id', assignmentId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase mark assignment viewed error:', err);
+      }
+    }
+
+    setAssignments((prev) =>
+      prev.map((a) => (a.id === assignmentId ? { ...a, viewed_at: viewedAt } : a))
+    );
+  };
+
+  // 2e. Mark a task as viewed by its assignee (Module 12 Phase 5 — same notification concept as
+  // handleMarkAssignmentViewed, for programming_agent, which has no assignments row to hang it on)
+  const handleMarkTaskViewed = async (taskId: string) => {
+    const viewedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .update({ assignee_viewed_at: viewedAt })
+          .eq('id', taskId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase mark task viewed error:', err);
+      }
+    }
+
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, assignee_viewed_at: viewedAt } : t))
+    );
+  };
+
+  // Assign a service specialist (SEO / Social Media / Media Buying) to a client, by that team's lead
+  const handleAssignServiceAgent = async (
+    clientId: string,
+    serviceType: ServiceType,
+    agentId: string,
+    reasonNotes?: string
+  ) => {
+    const existing = assignments.find((a) => a.client_id === clientId && a.service_type === serviceType);
+    const teamLeadId = users.find((u) => u.id === agentId)?.manager_id || currentUser.id;
+
+    if (existing) {
+      // Reassigning to a different agent is a fresh "new client" for them — clears the
+      // notification badge so it re-flags as unseen (Module 12 Phase 5).
+      const viewedAt = existing.agent_id !== agentId ? null : existing.viewed_at;
+      if (supabaseActive) {
+        try {
+          const { error } = await supabase
+            .from('assignments')
+            .update({ agent_id: agentId, reason_notes: reasonNotes || existing.reason_notes, viewed_at: viewedAt })
+            .eq('id', existing.id);
+          if (error) throw error;
+        } catch (err: any) {
+          console.error('Supabase assignment update error:', err);
+        }
+      }
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a.id === existing.id
+            ? { ...a, agent_id: agentId, reason_notes: reasonNotes || a.reason_notes, viewed_at: viewedAt }
+            : a
+        )
+      );
+    } else {
+      const newAssignment: AssignmentRecord = {
+        id: `asg-${Date.now().toString().slice(-4)}`,
+        client_id: clientId,
+        service_type: serviceType,
+        team_lead_id: teamLeadId,
+        agent_id: agentId,
+        assigned_at: new Date().toISOString(),
+        reason_notes: reasonNotes || null,
+      };
+
+      if (supabaseActive) {
+        try {
+          const { data, error } = await supabase.from('assignments').insert([newAssignment]).select();
+          if (error) throw error;
+          if (data && data[0]) {
+            setAssignments((prev) => [data[0] as AssignmentRecord, ...prev]);
+          } else {
+            setAssignments((prev) => [newAssignment, ...prev]);
+          }
+        } catch (err: any) {
+          console.error('Supabase assignment insert error:', err);
+          setAssignments((prev) => [newAssignment, ...prev]);
+        }
+      } else {
+        setAssignments((prev) => [newAssignment, ...prev]);
+      }
+    }
+
+    const agent = users.find((u) => u.id === agentId);
+    showNotification(`Service brief assigned to specialist: ${agent?.name || agentId}`);
+  };
+
+  // 3. Save the dynamic brief form (SEO, Social Media, Media Buying)
   const handleSaveBrief = async (briefData: {
     client_id: string;
     service_type: ServiceType;
@@ -442,6 +846,7 @@ export default function App() {
     );
 
     let updatedBriefs: BriefRecord[] = [];
+    let savedBrief: BriefRecord;
 
     if (existingIndex >= 0) {
       const existing = briefs[existingIndex];
@@ -450,6 +855,9 @@ export default function App() {
         fields: briefData.fields,
         version: existing.version + 1,
         submitted_by: briefData.submitted_by,
+        // A materially edited brief should re-flag as unread for the relevant Team Lead, even
+        // if they'd already seen an earlier version.
+        team_lead_viewed_at: null,
         updated_at: new Date().toISOString(),
       };
 
@@ -461,6 +869,7 @@ export default function App() {
               fields: updated.fields,
               version: updated.version,
               submitted_by: updated.submitted_by,
+              team_lead_viewed_at: updated.team_lead_viewed_at,
               updated_at: updated.updated_at,
             })
             .eq('id', existing.id);
@@ -471,6 +880,7 @@ export default function App() {
 
       updatedBriefs = [...briefs];
       updatedBriefs[existingIndex] = updated;
+      savedBrief = updated;
     } else {
       const newBrief: BriefRecord = {
         id: `brf-${Date.now().toString().slice(-4)}`,
@@ -479,6 +889,7 @@ export default function App() {
         fields: briefData.fields,
         version: 1,
         submitted_by: briefData.submitted_by,
+        team_lead_viewed_at: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -495,13 +906,60 @@ export default function App() {
       }
 
       updatedBriefs = [newBrief, ...briefs];
+      savedBrief = newBrief;
     }
 
     setBriefs(updatedBriefs);
-    showNotification('تم توثيق وحفظ البريف كنسخة رسمية في قاعدة البيانات بنجاح.');
+
+    // Append-only revision snapshot — one row per save, including this first one.
+    const revision: BriefRevisionRecord = {
+      id: `brfrev-${Date.now().toString().slice(-4)}`,
+      brief_id: savedBrief.id,
+      client_id: savedBrief.client_id,
+      service_type: savedBrief.service_type,
+      version: savedBrief.version,
+      fields: savedBrief.fields,
+      edited_by: savedBrief.submitted_by,
+      edited_at: savedBrief.updated_at || new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data } = await supabase.from('brief_revisions').insert([revision]).select();
+        if (data && data[0]) {
+          revision.id = data[0].id;
+        }
+      } catch (err) {
+        console.error('Supabase brief revision insert error:', err);
+      }
+    }
+
+    setBriefRevisions((prev) => [revision, ...prev]);
+    showNotification('Brief documented and saved as an official version successfully.');
   };
 
-  // 4. تحديث السعة القصوى للموظف (Capacity Limit)
+  // 3b. Mark a brief as viewed by the relevant service Team Lead (clears its "New" indicator)
+  const handleMarkBriefViewedByTeamLead = async (briefId: string) => {
+    const viewedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('briefs')
+          .update({ team_lead_viewed_at: viewedAt })
+          .eq('id', briefId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase mark brief viewed error:', err);
+      }
+    }
+
+    setBriefs((prev) =>
+      prev.map((b) => (b.id === briefId ? { ...b, team_lead_viewed_at: viewedAt } : b))
+    );
+  };
+
+  // 4. Update the employee's capacity limit
   const handleUpdateUserCapacity = async (userId: string, newLimit: number) => {
     if (supabaseActive) {
       try {
@@ -518,10 +976,10 @@ export default function App() {
       prev.map((u) => (u.id === userId ? { ...u, capacity_limit: newLimit } : u))
     );
 
-    showNotification('تم تحديث السعة الاستيعابية للموظف بنجاح.');
+    showNotification('Employee capacity limit updated successfully.');
   };
 
-  // تسجيل قراءة سعة استيعابية جديدة
+  // Log a new capacity reading
   const handleLogCapacity = async (newLog: CapacityLogRecord) => {
     if (supabaseActive) {
       try {
@@ -531,31 +989,17 @@ export default function App() {
       }
     }
     setCapacityLogs((prev) => [newLog, ...prev]);
-    showNotification('تم توثيق قراءة السعة الاستيعابية بنجاح.');
+    showNotification('Capacity reading logged successfully.');
   };
 
-  // 5. تحديث حالة المهمة في اللوحة المشتركة
+  // 5. Update task status on the shared board
   const handleUpdateTaskStatus = async (taskId: string, newStatus: TaskStatus) => {
-    if (supabaseActive) {
-      try {
-        await supabase
-          .from('tasks')
-          .update({ status: newStatus })
-          .eq('id', taskId);
-      } catch (err) {
-        console.error('Supabase task update error:', err);
-      }
-    }
+    // completed_at is the only reliable signal for "completed today" (the
+    // Daily Work Log's auto-suggestion) — status alone carries no timing
+    // information, so it's set/cleared here rather than left to drift.
+    const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
+    const updates = { status: newStatus, completed_at: completedAt };
 
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-    );
-
-    showNotification('تم نقل حالة المهمة وتحديث اللوحة المشتركة.');
-  };
-
-  // تحديث تفاصيل وساعات المهمة
-  const handleUpdateTask = async (taskId: string, updates: Partial<TaskRecord>) => {
     if (supabaseActive) {
       try {
         await supabase
@@ -571,10 +1015,46 @@ export default function App() {
       prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
     );
 
-    showNotification('تم تحديث بيانات المهمة بنجاح.');
+    showNotification('Task status moved and the shared board updated.');
   };
 
-  // 6. إضافة مهمة مشتركة جديدة
+  // Update task details and hours
+  const handleUpdateTask = async (taskId: string, updates: Partial<TaskRecord>) => {
+    // Same completed_at bookkeeping as handleUpdateTaskStatus, but only when
+    // this edit actually touches status — editing title/description alone
+    // shouldn't disturb it.
+    const finalUpdates: Partial<TaskRecord> = { ...updates };
+    if ('status' in updates) {
+      finalUpdates.completed_at = updates.status === 'completed' ? new Date().toISOString() : null;
+    }
+    // Reassigning a task to a different person is a fresh "new task" for them (Module 12
+    // Phase 5's programming_agent notification badge, since that role has no assignments row).
+    if ('assigned_to' in updates) {
+      const existingTask = tasks.find((t) => t.id === taskId);
+      if (existingTask && existingTask.assigned_to !== updates.assigned_to) {
+        finalUpdates.assignee_viewed_at = null;
+      }
+    }
+
+    if (supabaseActive) {
+      try {
+        await supabase
+          .from('tasks')
+          .update(finalUpdates)
+          .eq('id', taskId);
+      } catch (err) {
+        console.error('Supabase task update error:', err);
+      }
+    }
+
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, ...finalUpdates } : t))
+    );
+
+    showNotification('Task data updated successfully.');
+  };
+
+  // 6. Add a new shared task (or a subtask, when parent_task_id is set)
   const handleCreateTask = async (taskData: {
     client_id: string;
     title: string;
@@ -586,6 +1066,7 @@ export default function App() {
     priority: TaskPriority;
     estimated_hours?: number | null;
     actual_hours?: number | null;
+    parent_task_id?: string | null;
   }) => {
     const newTaskPayload: TaskRecord = {
       id: `tsk-${Date.now().toString().slice(-4)}`,
@@ -601,6 +1082,7 @@ export default function App() {
       estimated_hours: taskData.estimated_hours ?? 8,
       actual_hours: taskData.actual_hours ?? 0,
       created_at: new Date().toISOString(),
+      parent_task_id: taskData.parent_task_id || null,
     };
 
     if (supabaseActive) {
@@ -620,15 +1102,156 @@ export default function App() {
       setTasks((prev) => [newTaskPayload, ...prev]);
     }
 
-    showNotification(`تمت إضافة المهمة «${taskData.title}» إلى لوحة المهام المشتركة بنجاح!`);
+    showNotification(`Task "${taskData.title}" added to the shared task board successfully!`);
   };
 
-  // 7. توثيق تقرير النشاط اليومي (Daily Log)
+  // 6b. Post a task comment or reply (parent_comment_id set for a reply,
+  // capped at 3 levels total by a DB trigger)
+  const handleAddTaskComment = async (
+    taskId: string,
+    body: string,
+    parentCommentId?: string | null
+  ) => {
+    const newCommentPayload: TaskCommentRecord = {
+      id: `cmt-${Date.now().toString().slice(-4)}`,
+      task_id: taskId,
+      parent_comment_id: parentCommentId || null,
+      author_id: currentUser.id,
+      body,
+      created_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = await supabase
+          .from('task_comments')
+          .insert([newCommentPayload])
+          .select();
+        if (error) throw error;
+        if (data && data[0]) {
+          setTaskComments((prev) => [...prev, data[0] as TaskCommentRecord]);
+        } else {
+          setTaskComments((prev) => [...prev, newCommentPayload]);
+        }
+      } catch (err) {
+        console.error('Supabase task comment insert error:', err);
+        setTaskComments((prev) => [...prev, newCommentPayload]);
+      }
+    } else {
+      setTaskComments((prev) => [...prev, newCommentPayload]);
+    }
+  };
+
+  // 6c. Edit your own comment's body (sets edited_at)
+  const handleEditTaskComment = async (commentId: string, body: string) => {
+    const updates: Partial<TaskCommentRecord> = { body, edited_at: new Date().toISOString() };
+
+    if (supabaseActive) {
+      try {
+        await supabase.from('task_comments').update(updates).eq('id', commentId);
+      } catch (err) {
+        console.error('Supabase task comment update error:', err);
+      }
+    }
+
+    setTaskComments((prev) =>
+      prev.map((c) => (c.id === commentId ? { ...c, ...updates } : c))
+    );
+  };
+
+  // 6d. Soft-delete your own comment (sets deleted_at — never a real DELETE,
+  // so any replies stay attached to a real row instead of orphaning)
+  const handleDeleteTaskComment = async (commentId: string) => {
+    const updates: Partial<TaskCommentRecord> = { deleted_at: new Date().toISOString() };
+
+    if (supabaseActive) {
+      try {
+        await supabase.from('task_comments').update(updates).eq('id', commentId);
+      } catch (err) {
+        console.error('Supabase task comment delete error:', err);
+      }
+    }
+
+    setTaskComments((prev) =>
+      prev.map((c) => (c.id === commentId ? { ...c, ...updates } : c))
+    );
+  };
+
+  // 6e. Upload a file attachment to a task. Unlike every other entity in
+  // this app, there is no local/demo-mode fallback for this — file bytes
+  // can't be represented in the in-memory mock-data system, only a real
+  // Supabase Storage bucket can hold them.
+  const handleUploadTaskAttachment = async (taskId: string, file: File) => {
+    if (!supabaseActive) {
+      showNotification('File attachments require a connected Supabase backend.', 'info');
+      return;
+    }
+
+    const attachmentId = `att-${Date.now().toString().slice(-4)}`;
+    const storagePath = buildAttachmentStoragePath(taskId, attachmentId, file.name);
+
+    const { error: uploadError } = await supabase.storage
+      .from('task-attachments')
+      .upload(storagePath, file, { contentType: file.type });
+    if (uploadError) {
+      console.error('Supabase attachment upload error:', uploadError);
+      throw uploadError;
+    }
+
+    const newAttachmentPayload: TaskAttachmentRecord = {
+      id: attachmentId,
+      task_id: taskId,
+      storage_path: storagePath,
+      filename: file.name,
+      file_size: file.size,
+      mime_type: file.type,
+      uploaded_by: currentUser.id,
+      uploaded_at: new Date().toISOString(),
+    };
+
+    const { data, error: insertError } = await supabase
+      .from('task_attachments')
+      .insert([newAttachmentPayload])
+      .select();
+    if (insertError) {
+      console.error('Supabase attachment metadata insert error:', insertError);
+      // The file itself uploaded successfully — clean it up rather than
+      // leaving an orphaned Storage object with no matching metadata row.
+      await supabase.storage.from('task-attachments').remove([storagePath]);
+      throw insertError;
+    }
+
+    setTaskAttachments((prev) => [...prev, (data?.[0] as TaskAttachmentRecord) || newAttachmentPayload]);
+    showNotification(`"${file.name}" attached successfully.`);
+  };
+
+  // 6f. Delete your own attachment — removes both the Storage object and
+  // its metadata row (a real delete, not soft: nothing references an
+  // attachment as a parent, so there's no orphaning concern like comments
+  // have).
+  const handleDeleteTaskAttachment = async (attachmentId: string) => {
+    const attachment = taskAttachments.find((a) => a.id === attachmentId);
+    if (!attachment) return;
+
+    if (supabaseActive) {
+      try {
+        await supabase.storage.from('task-attachments').remove([attachment.storage_path]);
+        await supabase.from('task_attachments').delete().eq('id', attachmentId);
+      } catch (err) {
+        console.error('Supabase attachment delete error:', err);
+      }
+    }
+
+    setTaskAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+  };
+
+  // 7. Document a daily activity report (Daily Log)
   const handleCreateDailyLog = async (logData: {
     user_id: string;
     date: string;
     summary_text: string;
     linked_task_ids: string[];
+    client_id?: string | null;
   }) => {
     const newLogPayload: DailyLogRecord = {
       id: `log-${Date.now().toString().slice(-4)}`,
@@ -636,6 +1259,7 @@ export default function App() {
       date: logData.date,
       summary_text: logData.summary_text,
       linked_task_ids: logData.linked_task_ids,
+      client_id: logData.client_id ?? null,
       created_at: new Date().toISOString(),
     };
 
@@ -656,10 +1280,10 @@ export default function App() {
       setDailyLogs((prev) => [newLogPayload, ...prev]);
     }
 
-    showNotification('تم تسجيل وحفظ تقرير النشاط اليومي في قاعدة البيانات بنجاح.');
+    showNotification('Daily activity report logged and saved successfully.');
   };
 
-  // 8. توثيق ملاحظة إضافية أو تعثر (Extra Notes)
+  // 8. Document an extra note or blocker (Extra Notes)
   const handleCreateExtraNote = async (noteData: {
     user_id: string;
     date: string;
@@ -693,16 +1317,498 @@ export default function App() {
     }
   };
 
-  // 9. إنشاء وتحديث الحملات الإعلانية (Campaign Management)
+  // 8b. Generate (or regenerate) an employee's KPI score for a period —
+  // upserts by (user_id, period), so re-running the same period overwrites
+  // rather than accumulating duplicate rows.
+  const handleGenerateKpiScore = async (
+    userId: string,
+    periodType: PerformancePeriodType,
+    referenceDate: Date
+  ) => {
+    const targetUser = users.find((u) => u.id === userId);
+    if (!targetUser) return;
+
+    const range = resolvePeriodRange(periodType, referenceDate);
+    const { metrics, overallScore } = generateKpiScoreMetrics(targetUser, range, tasks, clients, extraNotes);
+
+    const existing = kpiScores.find((k) => k.user_id === userId && k.period === range.period);
+    const scorePayload: KpiScoreRecord = {
+      id: existing?.id || `kpi-${Date.now().toString().slice(-4)}`,
+      user_id: userId,
+      period: range.period,
+      metrics,
+      overall_score: overallScore,
+      reviewed_by: currentUser.id,
+      created_at: existing?.created_at || new Date().toISOString(),
+    };
+
+    // Classification suggestion (advisory only — see performanceScore.ts): judged against this
+    // period and whatever came before it, never periods that hadn't happened yet from this
+    // period's point of view, so backfilling an earlier period can't retroactively borrow trend
+    // evidence from a later one.
+    const classificationHistory = [...kpiScores.filter((k) => k.user_id === userId && k.period !== range.period), scorePayload]
+      .filter((k) => (k.metrics?.period_start || '') <= range.start)
+      .sort((a, b) => (a.metrics?.period_start || '').localeCompare(b.metrics?.period_start || ''));
+    scorePayload.suggested_status = suggestClassification(classificationHistory).suggestedStatus;
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = await supabase
+          .from('kpi_scores')
+          .upsert([scorePayload], { onConflict: 'user_id,period' })
+          .select();
+        if (error) throw error;
+        const saved = (data?.[0] as KpiScoreRecord) || scorePayload;
+        setKpiScores((prev) => [...prev.filter((k) => k.id !== saved.id), saved]);
+      } catch (err) {
+        console.error('Supabase kpi_scores upsert error:', err);
+        showNotification('Unable to save the performance score.', 'info');
+        return;
+      }
+    } else {
+      setKpiScores((prev) => [...prev.filter((k) => k.id !== scorePayload.id), scorePayload]);
+    }
+
+    showNotification(`Performance score generated for ${targetUser.name} (${range.period}).`);
+  };
+
+  // 8b. Generate a period-over-period comparison (Reporting Engine) — either a single client, or
+  // an agent's pooled client set (that agent's own "all my clients" report, or a team lead
+  // generating one for a specific direct report).
+  const handleGenerateComparison = async (
+    scope: ReportScope,
+    mode: ReportMode,
+    granularity: ComparisonGranularity | 'custom',
+    custom?: { currentRange: DateRange; previousRange?: DateRange }
+  ) => {
+    let current: ComparisonPeriod;
+    let previous: ComparisonPeriod | undefined;
+
+    if (granularity === 'custom' && custom) {
+      current = customPeriod(custom.currentRange);
+      previous = custom.previousRange ? customPeriod(custom.previousRange) : undefined;
+    } else {
+      const resolved = resolveComparisonPeriods(granularity as ComparisonGranularity);
+      current = resolved.current;
+      previous = resolved.previous;
+    }
+
+    if (mode === 'comparison' && !previous) return;
+
+    let scopedClients: ClientRecord[];
+    let serviceFilter: ServiceType[] | undefined;
+    let scopeLabel: string;
+
+    if (scope.type === 'client') {
+      const client = clients.find((c) => c.id === scope.clientId);
+      if (!client) return;
+      scopedClients = [client];
+      scopeLabel = client.name;
+    } else {
+      const subject = users.find((u) => u.id === scope.agentId);
+      if (!subject) return;
+      scopedClients = resolveClientsForSubject(subject, clients, assignments);
+      serviceFilter = serviceFilterForRole(subject.role);
+      scopeLabel = subject.name;
+    }
+
+    if (scopedClients.length === 0) {
+      showNotification('No clients found for this scope — nothing to report on.', 'info');
+      return;
+    }
+
+    const result =
+      mode === 'comparison'
+        ? generateClientComparison(scopedClients, current, previous!, campaigns, tasks, socialInsights, serviceFilter)
+        : generatePeriodSummary(scopedClients, current, campaigns, tasks, socialInsights, serviceFilter);
+
+    // created_at is preserved from whatever's already in local state (cheap, synchronous) for
+    // both write paths below; the network round trip only decides insert-vs-update targeting.
+    const localExisting = clientComparisons.find(
+      (c) =>
+        (scope.type === 'client' ? c.client_id === scope.clientId : c.agent_id === scope.agentId) &&
+        c.period_current === result.period_current &&
+        c.period_previous === result.period_previous
+    );
+
+    const comparisonPayload: ClientComparisonRecord = {
+      id: localExisting?.id || `cmp-${Date.now().toString().slice(-4)}`,
+      ...result,
+      client_id: scope.type === 'client' ? scope.clientId : null,
+      agent_id: scope.type === 'agent' ? scope.agentId : null,
+      covered_client_ids: scope.type === 'client' ? null : result.covered_client_ids,
+      created_at: localExisting?.created_at || new Date().toISOString(),
+    };
+
+    // Only the client-scoped comparison case sits behind the original, non-partial unique
+    // constraint (client_id, period_current, period_previous) — PostgREST's upsert(onConflict)
+    // can target that in one round trip. Every other combination (agent-scoped, or any
+    // period_summary row) sits behind a partial unique index instead (added across the last two
+    // migrations), which Postgres's ON CONFLICT arbiter inference generally won't match via a
+    // bare column list — those look up any existing row explicitly first, then update or insert.
+    const canOneShotUpsert = scope.type === 'client' && mode === 'comparison';
+
+    if (supabaseActive) {
+      try {
+        let data: ClientComparisonRecord[] | null;
+        let error: unknown;
+
+        if (canOneShotUpsert) {
+          ({ data, error } = await supabase
+            .from('client_comparisons')
+            .upsert([comparisonPayload], { onConflict: 'client_id,period_current,period_previous' })
+            .select());
+        } else {
+          let lookup = supabase.from('client_comparisons').select('id').eq('period_current', result.period_current);
+          lookup = scope.type === 'client' ? lookup.eq('client_id', scope.clientId) : lookup.eq('agent_id', scope.agentId);
+          lookup = result.period_previous === null ? lookup.is('period_previous', null) : lookup.eq('period_previous', result.period_previous);
+          const { data: existingRow, error: lookupError } = await lookup.maybeSingle();
+          if (lookupError) throw lookupError;
+
+          ({ data, error } = existingRow
+            ? await supabase.from('client_comparisons').update(comparisonPayload).eq('id', existingRow.id).select()
+            : await supabase.from('client_comparisons').insert([comparisonPayload]).select());
+        }
+
+        if (error) throw error;
+        const saved = data?.[0] || comparisonPayload;
+        setClientComparisons((prev) => [...prev.filter((c) => c.id !== saved.id), saved]);
+      } catch (err) {
+        console.error('Supabase client_comparisons write error:', err);
+        showNotification('Unable to save the report.', 'info');
+        return;
+      }
+    } else {
+      setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
+    }
+
+    const periodLabel = mode === 'comparison' ? `${result.period_current} vs ${result.period_previous}` : result.period_current;
+    const kindLabel = mode === 'comparison' ? 'Comparison' : 'Period report';
+    showNotification(`${kindLabel} generated for ${scopeLabel} (${periodLabel}).`);
+  };
+
+  // 8c. File a monthly/period report against an existing comparison (Reporting Engine). The
+  // report's scope always follows its comparison via comparison_id — client_id here is purely a
+  // display convenience, denormalized from the comparison at filing time.
+  const handleGenerateReport = async (comparisonId: string, period: string) => {
+    const comparison = clientComparisons.find((c) => c.id === comparisonId);
+
+    const reportPayload: ReportRecord = {
+      id: `rpt-${Date.now().toString().slice(-4)}`,
+      client_id: comparison?.client_id ?? null,
+      type: 'internal',
+      period,
+      generated_by: currentUser.id,
+      comparison_id: comparisonId,
+      status: 'final',
+      created_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = await supabase.from('reports').insert([reportPayload]).select();
+        if (error) throw error;
+        const saved = (data?.[0] as ReportRecord) || reportPayload;
+        setReports((prev) => [...prev, saved]);
+      } catch (err) {
+        console.error('Supabase reports insert error:', err);
+        showNotification('Unable to file the report.', 'info');
+        return;
+      }
+    } else {
+      setReports((prev) => [...prev, reportPayload]);
+    }
+
+    showNotification(`Report filed for ${period}.`);
+  };
+
+  // 8d. Generate (or regenerate) a client's monthly report draft (Module 9, point 4): a period
+  // summary comparison plus a `reports` row in 'draft' status pointing at it. Deliberately not
+  // routed through handleGenerateComparison — that function's upsert/agent-scope branching
+  // doesn't apply here (this is always client-scoped, always a period_summary), so the always-
+  // single-client case is simpler to write directly. type is 'client' (not 'internal', like every
+  // other report filed today) since a monthly report draft is, by nature, meant to become a
+  // client-facing document once approved.
+  const handleGenerateMonthlyReportDraft = async (clientId: string) => {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    const period = resolveComparisonPeriods('monthly').current;
+    const result = generatePeriodSummary([client], period, campaigns, tasks, socialInsights);
+
+    const localExistingComparison = clientComparisons.find(
+      (c) => c.client_id === clientId && c.row_kind === 'period_summary' && c.period_current === result.period_current
+    );
+    const comparisonPayload: ClientComparisonRecord = {
+      id: localExistingComparison?.id || `cmp-${Date.now().toString().slice(-4)}`,
+      ...result,
+      client_id: clientId,
+      agent_id: null,
+      covered_client_ids: null,
+      created_at: localExistingComparison?.created_at || new Date().toISOString(),
+    };
+
+    let savedComparison: ClientComparisonRecord = comparisonPayload;
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = localExistingComparison
+          ? await supabase.from('client_comparisons').update(comparisonPayload).eq('id', localExistingComparison.id).select()
+          : await supabase.from('client_comparisons').insert([comparisonPayload]).select();
+        if (error) throw error;
+        savedComparison = (data?.[0] as ClientComparisonRecord) || comparisonPayload;
+        setClientComparisons((prev) => [...prev.filter((c) => c.id !== savedComparison.id), savedComparison]);
+      } catch (err) {
+        console.error('Supabase client_comparisons write error:', err);
+        showNotification('Unable to generate the monthly report draft.', 'info');
+        return;
+      }
+    } else {
+      setClientComparisons((prev) => [...prev.filter((c) => c.id !== comparisonPayload.id), comparisonPayload]);
+    }
+
+    // Reuse an existing draft report for this exact comparison if one already exists (so
+    // regenerating a draft updates it in place rather than accumulating duplicate report rows).
+    const existingDraftReport = reports.find((r) => r.comparison_id === savedComparison.id && r.status === 'draft');
+
+    const reportPayload: ReportRecord = {
+      id: existingDraftReport?.id || `rpt-${Date.now().toString().slice(-4)}`,
+      client_id: clientId,
+      type: 'client',
+      period: result.period_current,
+      generated_by: currentUser.id,
+      comparison_id: savedComparison.id,
+      status: 'draft',
+      created_at: existingDraftReport?.created_at || new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = existingDraftReport
+          ? await supabase.from('reports').update(reportPayload).eq('id', existingDraftReport.id).select()
+          : await supabase.from('reports').insert([reportPayload]).select();
+        if (error) throw error;
+        const saved = (data?.[0] as ReportRecord) || reportPayload;
+        setReports((prev) => [...prev.filter((r) => r.id !== saved.id), saved]);
+      } catch (err) {
+        console.error('Supabase reports insert error:', err);
+        showNotification('Unable to save the monthly report draft.', 'info');
+        return;
+      }
+    } else {
+      setReports((prev) => [...prev.filter((r) => r.id !== reportPayload.id), reportPayload]);
+    }
+
+    showNotification(`Monthly report draft generated for ${client.name} (${result.period_current}).`);
+  };
+
+  // 8e. Approve a draft report, marking it final and attributing the approval.
+  const handleApproveReport = async (reportId: string) => {
+    const updates: Partial<ReportRecord> = {
+      status: 'final',
+      approved_by: currentUser.id,
+      approved_at: new Date().toISOString(),
+    };
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('reports').update(updates).eq('id', reportId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase report approve error:', err);
+        showNotification('Unable to approve the report.', 'info');
+        return;
+      }
+    }
+
+    setReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, ...updates } : r)));
+    showNotification('Report approved and marked final.');
+  };
+
+  // 8f. Upload a meeting recording (Module 9 scaffolding, point 5). Unlike every other entity in
+  // this app, there is no local/demo-mode fallback for the file itself — same reasoning as
+  // handleUploadTaskAttachment: file bytes can't be represented in the in-memory mock-data
+  // system, only a real Supabase Storage bucket can hold them. transcript_text/ai_summary_text
+  // start empty — there is no real transcription/summarization yet, they're filled in manually
+  // afterward via handleSaveMeetingNotes.
+  const handleUploadMeetingRecording = async (clientId: string, meetingDate: string, file: File) => {
+    if (!supabaseActive) {
+      showNotification('Meeting recordings require a connected Supabase backend.', 'info');
+      return;
+    }
+
+    const client = clients.find((c) => c.id === clientId);
+    const meetingId = `mtg-${Date.now().toString().slice(-4)}`;
+    const storagePath = buildMeetingRecordingStoragePath(clientId, meetingId, file.name);
+
+    const { error: uploadError } = await supabase.storage
+      .from('meeting-recordings')
+      .upload(storagePath, file, { contentType: file.type });
+    if (uploadError) {
+      console.error('Supabase meeting recording upload error:', uploadError);
+      throw uploadError;
+    }
+
+    const newMeetingPayload: MeetingRecord = {
+      id: meetingId,
+      client_id: clientId,
+      am_agent_id: client?.am_agent_id || currentUser.id,
+      meeting_date: meetingDate,
+      recording_url: storagePath,
+      transcript_text: null,
+      ai_summary_text: null,
+      created_at: new Date().toISOString(),
+    };
+
+    const { data, error: insertError } = await supabase.from('meetings').insert([newMeetingPayload]).select();
+    if (insertError) {
+      console.error('Supabase meetings insert error:', insertError);
+      // The file itself uploaded successfully — clean it up rather than leaving an orphaned
+      // Storage object with no matching metadata row.
+      await supabase.storage.from('meeting-recordings').remove([storagePath]);
+      throw insertError;
+    }
+
+    setMeetings((prev) => [...prev, (data?.[0] as MeetingRecord) || newMeetingPayload]);
+    showNotification('Meeting recording uploaded successfully.');
+  };
+
+  // 8g. Save manually-entered transcript/summary notes for a meeting (Module 9 scaffolding) —
+  // plain text today, not a model call.
+  const handleSaveMeetingNotes = async (
+    meetingId: string,
+    updates: { transcript_text?: string; ai_summary_text?: string }
+  ) => {
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('meetings').update(updates).eq('id', meetingId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase meeting notes update error:', err);
+        showNotification('Unable to save meeting notes.', 'info');
+        return;
+      }
+    }
+
+    setMeetings((prev) => prev.map((m) => (m.id === meetingId ? { ...m, ...updates } : m)));
+    showNotification('Meeting notes saved.');
+  };
+
+  // 8g. Upload a signed contract document for a client (Module 12 Phase 6) — same private-bucket
+  // upload-then-insert-metadata pattern as handleUploadMeetingRecording/handleUploadTaskAttachment.
+  const handleUploadClientContract = async (clientId: string, file: File) => {
+    if (!supabaseActive) {
+      showNotification('Contract uploads require a connected Supabase backend.', 'info');
+      return;
+    }
+
+    const contractId = `ctr-${Date.now().toString().slice(-4)}`;
+    const storagePath = buildClientContractStoragePath(clientId, contractId, file.name);
+
+    const { error: uploadError } = await supabase.storage
+      .from('client-contracts')
+      .upload(storagePath, file, { contentType: file.type });
+    if (uploadError) {
+      console.error('Supabase contract upload error:', uploadError);
+      throw uploadError;
+    }
+
+    const newContractPayload: ClientContractRecord = {
+      id: contractId,
+      client_id: clientId,
+      storage_path: storagePath,
+      filename: file.name,
+      file_size: file.size,
+      mime_type: file.type,
+      uploaded_by: currentUser.id,
+      uploaded_at: new Date().toISOString(),
+    };
+
+    const { data, error: insertError } = await supabase
+      .from('client_contracts')
+      .insert([newContractPayload])
+      .select();
+    if (insertError) {
+      console.error('Supabase contract metadata insert error:', insertError);
+      // The file itself uploaded successfully — clean it up rather than leaving an orphaned
+      // Storage object with no matching metadata row.
+      await supabase.storage.from('client-contracts').remove([storagePath]);
+      throw insertError;
+    }
+
+    setClientContracts((prev) => [...prev, (data?.[0] as ClientContractRecord) || newContractPayload]);
+    showNotification(`"${file.name}" uploaded successfully.`);
+  };
+
+  // Delete your own contract upload — removes both the Storage object and its metadata row.
+  const handleDeleteClientContract = async (contractId: string) => {
+    const contract = clientContracts.find((c) => c.id === contractId);
+    if (!contract) return;
+
+    if (supabaseActive) {
+      try {
+        await supabase.storage.from('client-contracts').remove([contract.storage_path]);
+        await supabase.from('client_contracts').delete().eq('id', contractId);
+      } catch (err) {
+        console.error('Supabase contract delete error:', err);
+      }
+    }
+
+    setClientContracts((prev) => prev.filter((c) => c.id !== contractId));
+    showNotification('Contract document removed.');
+  };
+
+  // 8h. Manually set a platform's connection status (Module 6 scaffolding, point 1). This is a
+  // real tracker of the human process of getting API access from a client — never a live
+  // connection, never a real OAuth flow, and no credentials are read or written here at all.
+  const handleSetPlatformConnectionStatus = async (
+    clientId: string,
+    platformName: string,
+    platformCategory: PlatformCategory,
+    status: PlatformConnectionStatus,
+    notes: string
+  ) => {
+    const existing = platformConnections.find((p) => p.client_id === clientId && p.platform_name === platformName);
+    const now = new Date().toISOString();
+    const payload: PlatformConnectionRecord = {
+      id: existing?.id || `pc-${Date.now().toString().slice(-4)}`,
+      client_id: clientId,
+      platform_category: platformCategory,
+      platform_name: platformName,
+      status,
+      connected_by: currentUser.id,
+      connected_at: now,
+      last_synced_at: existing?.last_synced_at || null,
+      notes: notes || null,
+      created_at: existing?.created_at || now,
+      updated_at: now,
+    };
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('platform_connections').upsert([payload], { onConflict: 'client_id,platform_name' });
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase platform_connections upsert error:', err);
+        showNotification('Unable to update the connection status.', 'info');
+        return;
+      }
+    }
+
+    setPlatformConnections((prev) => [...prev.filter((p) => p.id !== payload.id), payload]);
+    showNotification(`${platformName.replace(/_/g, ' ')} marked as ${status.replace('_', ' ')}.`);
+  };
+
+  // 9. Create and update ad campaigns (Campaign Management)
   const handleCreateCampaign = async (campaignData: Partial<CampaignRecord>) => {
     const newId = `cmp-${Date.now().toString().slice(-4)}`;
     const newRecord: CampaignRecord = {
       id: newId,
       client_id: campaignData.client_id || '',
-      name: campaignData.name || 'حملة إعلانية ممولة',
+      name: campaignData.name || 'Sponsored Ad Campaign',
       platform: campaignData.platform || 'meta',
       campaign_id_external: campaignData.campaign_id_external || null,
-      objective: campaignData.objective || 'التحويلات والمبيعات',
+      objective: campaignData.objective || 'Conversions & Sales',
       status: campaignData.status || 'active',
       budget: campaignData.budget || 0,
       spend: campaignData.spend || 0,
@@ -732,7 +1838,7 @@ export default function App() {
       setCampaigns((prev) => [newRecord, ...prev]);
     }
 
-    showNotification(`تم إنشاء وتفعيل الحملة «${newRecord.name}» بنجاح!`);
+    showNotification(`Campaign "${newRecord.name}" created and activated successfully!`);
   };
 
   const handleUpdateCampaign = async (id: string, updates: Partial<CampaignRecord>) => {
@@ -749,7 +1855,7 @@ export default function App() {
       prev.map((c) => (c.id === id ? { ...c, ...updates, results: { ...(c.results || {}), ...(updates.results || {}) } } : c))
     );
 
-    showNotification('تم تحديث بيانات الحملة الإعلانية بنجاح.');
+    showNotification('Campaign data updated successfully.');
   };
 
   // Stats for badge counters
@@ -769,7 +1875,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen text-[#e9d9fb] pb-16 font-['Tajawal',sans-serif]" dir="rtl" style={{ background: 'var(--gradient-page)' }}>
+    <div className="min-h-screen text-[#e9d9fb] pb-16" dir="ltr" style={{ background: 'var(--gradient-page)' }}>
       {/* Top Navigation Bar adhering to Kesra Brand Identity */}
       <header
         className="sticky top-0 z-40 backdrop-blur-md px-6 py-3.5 border-b"
@@ -810,7 +1916,7 @@ export default function App() {
                     border: '1px solid var(--border-soft)',
                   }}
                 >
-                  نظام تشغيلي
+                  Operational System
                 </span>
               </div>
               <p className="text-xs" style={{ color: 'var(--grey)' }}>
@@ -837,6 +1943,16 @@ export default function App() {
                 {supabaseActive ? 'Supabase Connected (RLS Active)' : 'Supabase Configured'}
               </span>
             </div>
+
+            {/* Global Refresh (moved here from the old nav bar — refreshes every module's data) */}
+            <button
+              onClick={loadData}
+              className="p-1.5 rounded-lg text-stone-300 hover:text-white transition-colors shrink-0"
+              style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-soft)' }}
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
 
             {/* Authenticated Employee Badge & Portal Indicator */}
             <div
@@ -897,21 +2013,62 @@ export default function App() {
         </div>
       </header>
 
-      {/* Primary Navigation Tabs - Filtered strictly by Employee's Role Permissions */}
-      <div
-        className="border-b px-6 sticky top-[65px] z-30 backdrop-blur-md"
-        style={{
-          background: 'rgba(15, 12, 22, 0.95)',
-          borderColor: 'var(--border-soft)',
-        }}
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 overflow-x-auto py-2">
-          <nav className="flex items-center gap-2">
+      {/* Sidebar + Content shell */}
+      <div className="flex">
+        {/* Left Sidebar Navigation - Filtered strictly by Employee's Role Permissions */}
+        <aside
+          className="w-60 shrink-0 border-r sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto backdrop-blur-md"
+          style={{
+            background: 'rgba(15, 12, 22, 0.95)',
+            borderColor: 'var(--border-soft)',
+          }}
+        >
+          <nav className="flex flex-col gap-1.5 p-4">
+            {/* Tab -1: My Work (personal landing view — clients/tasks/deadlines/daily log/performance) */}
+            {userRoleInfo.allowedModules.includes('my_work') && (
+              <button
+                onClick={() => handleTabChange('my_work')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'my_work'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'my_work' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'my_work' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'my_work' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <Briefcase className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">My Work</span>
+              </button>
+            )}
+
+            {/* Tab 0: Leadership Dashboard */}
+            {userRoleInfo.allowedModules.includes('dashboard') && (
+              <button
+                onClick={() => handleTabChange('dashboard')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'dashboard'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'dashboard' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'dashboard' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'dashboard' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <Gauge className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Dashboard</span>
+              </button>
+            )}
+
             {/* Tab 1: Onboarding & Briefs */}
             {userRoleInfo.allowedModules.includes('onboarding') && (
               <button
                 onClick={() => handleTabChange('onboarding')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'onboarding'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -922,10 +2079,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'onboarding' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <FileText className="w-4 h-4" />
-                <span>Client Onboarding</span>
+                <FileText className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Client Onboarding</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'onboarding' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(123, 47, 247, 0.25)',
                     color: 'var(--white)',
@@ -936,11 +2093,40 @@ export default function App() {
               </button>
             )}
 
+            {/* Tab: Service Briefs Routing (service teams + AM) */}
+            {userRoleInfo.allowedModules.includes('service_briefs') && (
+              <button
+                onClick={() => handleTabChange('service_briefs')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'service_briefs'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'service_briefs' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'service_briefs' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'service_briefs' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <Layers className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Service Briefs</span>
+                <span
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
+                  style={{
+                    background: activeTab === 'service_briefs' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(123, 47, 247, 0.25)',
+                    color: 'var(--white)',
+                  }}
+                >
+                  {briefs.length}
+                </span>
+              </button>
+            )}
+
             {/* Tab 2: Capacity Management */}
             {userRoleInfo.allowedModules.includes('capacity') && (
               <button
                 onClick={() => handleTabChange('capacity')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'capacity'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -951,10 +2137,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'capacity' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Gauge className="w-4 h-4" />
-                <span>Capacity Management</span>
+                <Gauge className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Capacity Management</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'capacity' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(169, 245, 193, 0.2)',
                     color: activeTab === 'capacity' ? 'var(--white)' : 'var(--roas-good)',
@@ -969,7 +2155,7 @@ export default function App() {
             {userRoleInfo.allowedModules.includes('tasks') && (
               <button
                 onClick={() => handleTabChange('tasks')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'tasks'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -980,10 +2166,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'tasks' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Kanban className="w-4 h-4" />
-                <span>Task Board</span>
+                <Kanban className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Task Board</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'tasks' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(245, 226, 154, 0.2)',
                     color: activeTab === 'tasks' ? 'var(--white)' : 'var(--roas-mid)',
@@ -998,7 +2184,7 @@ export default function App() {
             {userRoleInfo.allowedModules.includes('daily_operations') && (
               <button
                 onClick={() => handleTabChange('daily_operations')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'daily_operations'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -1009,15 +2195,15 @@ export default function App() {
                   border: `1px solid ${activeTab === 'daily_operations' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Clock className="w-4 h-4" />
-                <span>Daily Operations</span>
+                <Clock className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Daily Operations</span>
                 {blockedTasksCount > 0 ? (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-950 text-red-300 border border-red-500/40 font-mono">
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-950 text-red-300 border border-red-500/40 font-mono shrink-0">
                     {blockedTasksCount} blocked
                   </span>
                 ) : (
                   <span
-                    className="px-1.5 py-0.2 rounded-full text-[10px]"
+                    className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                     style={{
                       background: activeTab === 'daily_operations' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(169, 245, 193, 0.2)',
                       color: activeTab === 'daily_operations' ? 'var(--white)' : 'var(--roas-good)',
@@ -1033,7 +2219,7 @@ export default function App() {
             {userRoleInfo.allowedModules.includes('campaigns') && (
               <button
                 onClick={() => handleTabChange('campaigns')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
                   activeTab === 'campaigns'
                     ? 'ring-1 ring-purple-400 shadow-md'
                     : 'text-stone-400 hover:text-white'
@@ -1044,10 +2230,10 @@ export default function App() {
                   border: `1px solid ${activeTab === 'campaigns' ? 'var(--border-strong)' : 'transparent'}`,
                 }}
               >
-                <Target className="w-4 h-4" />
-                <span>Campaigns</span>
+                <Target className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Campaigns</span>
                 <span
-                  className="px-1.5 py-0.2 rounded-full text-[10px]"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] shrink-0"
                   style={{
                     background: activeTab === 'campaigns' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(14, 165, 233, 0.2)',
                     color: activeTab === 'campaigns' ? 'var(--white)' : '#38bdf8',
@@ -1057,21 +2243,50 @@ export default function App() {
                 </span>
               </button>
             )}
+
+            {/* Tab 6: Reports & Comparisons (Reporting Engine) */}
+            {userRoleInfo.allowedModules.includes('reports') && (
+              <button
+                onClick={() => handleTabChange('reports')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'reports'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'reports' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'reports' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'reports' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <BarChart3 className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Reports</span>
+              </button>
+            )}
+
+            {userRoleInfo.allowedModules.includes('employees') && (
+              <button
+                onClick={() => handleTabChange('employees')}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 ${
+                  activeTab === 'employees'
+                    ? 'ring-1 ring-purple-400 shadow-md'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                style={{
+                  background: activeTab === 'employees' ? 'var(--gradient-badge)' : 'transparent',
+                  color: activeTab === 'employees' ? 'var(--white)' : 'var(--lilac)',
+                  border: `1px solid ${activeTab === 'employees' ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                <UserPlus className="w-4 h-4 shrink-0" />
+                <span className="flex-1 text-left">Employees</span>
+              </button>
+            )}
           </nav>
+        </aside>
 
-          <button
-            onClick={loadData}
-            className="p-1.5 rounded-lg text-stone-300 hover:text-white transition-colors shrink-0"
-            style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-soft)' }}
-            title="Refresh data"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Main Workspace */}
-      <main className="max-w-7xl mx-auto px-6 pt-6 space-y-6">
+        {/* Main Workspace */}
+        <main className="flex-1 min-w-0 px-6 pt-6 space-y-6">
         {/* Floating Notification */}
         {notification && (
           <div
@@ -1090,7 +2305,7 @@ export default function App() {
               onClick={() => setNotification(null)}
               className="text-stone-400 hover:text-white text-xs px-2 py-0.5 rounded"
             >
-              إغلاق
+              Close
             </button>
           </div>
         )}
@@ -1118,6 +2333,47 @@ export default function App() {
               onOpenRegisterModal={userRoleInfo.canRegisterClients ? () => setIsRegisterModalOpen(true) : undefined}
             />
 
+            {/* Tab 0: Leadership Dashboard */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                <DashboardHub
+                  currentUser={currentUser}
+                  users={users}
+                  clients={clients}
+                  campaigns={campaigns}
+                  tasks={tasks}
+                  socialInsights={socialInsights}
+                  assignments={assignments}
+                  briefs={briefs}
+                  kpiScores={kpiScores}
+                  onNavigateToModule={handleNavigateToModule}
+                />
+              </div>
+            )}
+
+            {/* Tab -1: My Work (personal landing view) */}
+            {activeTab === 'my_work' && (
+              <div className="space-y-6">
+                <MyWorkHub
+                  currentUser={currentUser}
+                  users={users}
+                  clients={clients}
+                  assignments={assignments}
+                  tasks={tasks}
+                  dailyLogs={dailyLogs}
+                  extraNotes={extraNotes}
+                  kpiScores={kpiScores}
+                  capacityLogs={capacityLogs}
+                  onUpdateTaskStatus={handleUpdateTaskStatus}
+                  onCreateDailyLog={handleCreateDailyLog}
+                  onCreateExtraNote={handleCreateExtraNote}
+                  onGenerateKpiScore={handleGenerateKpiScore}
+                  onNavigateToModule={handleNavigateToModule}
+                  onMarkTaskViewed={handleMarkTaskViewed}
+                />
+              </div>
+            )}
+
             {/* Tab 1: Onboarding & Briefs or Sales Portal */}
             {activeTab === 'onboarding' && (
               <div className="space-y-6">
@@ -1125,22 +2381,81 @@ export default function App() {
                   <SalesPortalView
                     currentUser={currentUser}
                     clients={clients}
-                    packages={packages}
                     users={users}
                     onOpenRegisterModal={() => setIsRegisterModalOpen(true)}
+                    onUpdateClientStatus={handleUpdateClientStatus}
+                    clientContracts={clientContracts}
+                    onUploadClientContract={handleUploadClientContract}
+                    onDeleteClientContract={handleDeleteClientContract}
                   />
                 ) : (
                   <AMQueue
                     clients={clients}
-                    packages={packages}
                     users={users}
                     briefs={briefs}
+                    briefRevisions={briefRevisions}
+                    campaigns={campaigns}
+                    tasks={tasks}
+                    reports={reports}
+                    clientComparisons={clientComparisons}
+                    socialInsights={socialInsights}
+                    clientPortalUsers={clientPortalUsers}
                     currentUser={currentUser}
                     currentUserId={currentUser.id}
                     onAssignAMAgent={handleAssignAMAgent}
                     onSaveBrief={handleSaveBrief}
+                    onUpdateClientStatus={handleUpdateClientStatus}
+                    onMarkClientViewed={handleMarkClientViewedByAMLead}
+                    onNavigateToModule={handleNavigateToModule}
+                    onGenerateComparison={handleGenerateComparison}
+                    onGenerateReport={handleGenerateReport}
+                    onGenerateMonthlyReportDraft={handleGenerateMonthlyReportDraft}
+                    onApproveReport={handleApproveReport}
+                    onCreatePortalLogin={handleCreatePortalLogin}
+                    meetings={meetings}
+                    onUploadMeetingRecording={handleUploadMeetingRecording}
+                    onSaveMeetingNotes={handleSaveMeetingNotes}
+                    platformConnections={platformConnections}
+                    onSetPlatformConnectionStatus={handleSetPlatformConnectionStatus}
+                    clientContracts={clientContracts}
+                    onUploadClientContract={handleUploadClientContract}
+                    onDeleteClientContract={handleDeleteClientContract}
+                    onUpdatePaymentTracking={handleUpdatePaymentTracking}
                   />
                 )}
+              </div>
+            )}
+
+            {/* Tab: Service Briefs Routing (service teams review/assign; AM reviews across services) */}
+            {activeTab === 'service_briefs' && (
+              <div className="space-y-6">
+                <ServiceBriefsRoutingView
+                  currentUser={currentUser}
+                  clients={clients}
+                  briefs={briefs}
+                  briefRevisions={briefRevisions}
+                  assignments={assignments}
+                  users={users}
+                  campaigns={campaigns}
+                  tasks={tasks}
+                  dailyLogs={dailyLogs}
+                  extraNotes={extraNotes}
+                  reports={reports}
+                  clientComparisons={clientComparisons}
+                  socialInsights={socialInsights}
+                  clientPortalUsers={clientPortalUsers}
+                  onAssignServiceAgent={handleAssignServiceAgent}
+                  onMarkBriefViewed={handleMarkBriefViewedByTeamLead}
+                  onMarkAssignmentViewed={handleMarkAssignmentViewed}
+                  onNavigateToModule={handleNavigateToModule}
+                  onGenerateComparison={handleGenerateComparison}
+                  onGenerateReport={handleGenerateReport}
+                  onGenerateMonthlyReportDraft={handleGenerateMonthlyReportDraft}
+                  onApproveReport={handleApproveReport}
+                  onCreatePortalLogin={handleCreatePortalLogin}
+                  platformConnections={platformConnections}
+                  onSetPlatformConnectionStatus={handleSetPlatformConnectionStatus}
+                />
               </div>
             )}
 
@@ -1155,6 +2470,10 @@ export default function App() {
                   currentUser={currentUser}
                   onUpdateUserCapacity={handleUpdateUserCapacity}
                   onLogCapacity={handleLogCapacity}
+                  onNavigateToModule={handleNavigateToModule}
+                  kpiScores={kpiScores}
+                  onGenerateKpiScore={handleGenerateKpiScore}
+                  extraNotes={extraNotes}
                 />
               </div>
             )}
@@ -1171,6 +2490,14 @@ export default function App() {
                   onUpdateTaskStatus={handleUpdateTaskStatus}
                   onCreateTask={handleCreateTask}
                   onUpdateTask={handleUpdateTask}
+                  initialAssigneeFilter={taskBoardAssigneePrefill}
+                  taskComments={taskComments}
+                  onAddTaskComment={handleAddTaskComment}
+                  onEditTaskComment={handleEditTaskComment}
+                  onDeleteTaskComment={handleDeleteTaskComment}
+                  taskAttachments={taskAttachments}
+                  onUploadTaskAttachment={handleUploadTaskAttachment}
+                  onDeleteTaskAttachment={handleDeleteTaskAttachment}
                 />
               </div>
             )}
@@ -1202,22 +2529,63 @@ export default function App() {
                   clients={clients}
                   users={users}
                   currentUser={currentUser}
+                  briefs={briefs}
+                  briefRevisions={briefRevisions}
+                  tasks={tasks}
+                  dailyLogs={dailyLogs}
+                  extraNotes={extraNotes}
+                  assignments={assignments}
+                  reports={reports}
+                  clientComparisons={clientComparisons}
+                  socialInsights={socialInsights}
+                  clientPortalUsers={clientPortalUsers}
                   onCreateCampaign={handleCreateCampaign}
                   onUpdateCampaign={handleUpdateCampaign}
+                  onGenerateComparison={handleGenerateComparison}
+                  onGenerateReport={handleGenerateReport}
+                  onGenerateMonthlyReportDraft={handleGenerateMonthlyReportDraft}
+                  onApproveReport={handleApproveReport}
+                  onCreatePortalLogin={handleCreatePortalLogin}
+                  platformConnections={platformConnections}
+                  onSetPlatformConnectionStatus={handleSetPlatformConnectionStatus}
                   isLoading={loading}
                 />
               </div>
             )}
+
+            {/* Tab 6: Reports & Comparisons (Reporting Engine) */}
+            {activeTab === 'reports' && (
+              <div className="space-y-6">
+                <ReportsHub
+                  currentUser={currentUser}
+                  users={users}
+                  clients={clients}
+                  assignments={assignments}
+                  reports={reports}
+                  clientComparisons={clientComparisons}
+                  dailyLogs={dailyLogs}
+                  onGenerateComparison={handleGenerateComparison}
+                  onGenerateReport={handleGenerateReport}
+                />
+              </div>
+            )}
+
+            {/* Tab 7: Add Employee (admin) */}
+            {activeTab === 'employees' && (
+              <div className="space-y-6">
+                <EmployeeAdminHub currentUser={currentUser} users={users} onAddEmployee={handleAddEmployee} />
+              </div>
+            )}
           </>
         )}
-      </main>
+        </main>
+      </div>
 
       {/* Modal: Client Registration by Sales */}
       <ClientRegistrationModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
-        packages={packages}
-        amTeamLeaders={users.filter((u) => u.role === 'am_team_lead')}
+        amTeamLeaders={users.filter((u) => u.role === 'am_team_lead' && !isPendingEmployee(u))}
         onSubmit={handleRegisterClient}
       />
     </div>
