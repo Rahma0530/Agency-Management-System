@@ -12,6 +12,8 @@ import {
   ChevronRight,
   X,
   CheckCircle2,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import {
   UserRecord,
@@ -30,7 +32,7 @@ import {
 } from '../types/database';
 import { getRoleInfo, AppModuleId } from '../data/roles';
 import { getTodayStr, isTaskOverdue, isTaskDueToday, getSortedEmployeeTasks } from '../lib/employeeWork';
-import { resolveDepartmentClients } from '../lib/reportingEngine';
+import { resolveDepartmentClients, resolveComparisonPeriods } from '../lib/reportingEngine';
 import { canSeeContractValue } from '../lib/permissions';
 import { CLIENT_STATUS_META } from '../lib/clientStatus';
 import { EmployeePerformancePage } from './EmployeePerformancePage';
@@ -155,6 +157,8 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   const [extraEffortText, setExtraEffortText] = useState('');
   const [isSubmittingExtraEffort, setIsSubmittingExtraEffort] = useState(false);
 
+  const [clientMetricsPeriod, setClientMetricsPeriod] = useState<'month' | 'quarter' | 'all_time'>('month');
+
   const todayStr = useMemo(() => getTodayStr(), []);
 
   // ---------------------------------------------------------------------
@@ -197,6 +201,36 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
 
     return [];
   }, [showClients, currentUser.role, currentUser.id, clients, packages, assignments, tasks]);
+
+  // Module 13 Phase 4: per-agent gained/lost client metrics, period-scoped via the same
+  // resolveComparisonPeriods used for churn reporting elsewhere. "Gained" = clients whose
+  // am_agent_assigned_at (bumped only on an actual reassignment, see App.tsx's
+  // handleAssignAMAgent) falls in the period; "Lost" = clients currently on this agent's roster
+  // that closed (churned_at) within the period — am_agent_id is never cleared on close, so a
+  // closed client's last agent stays attributable for this metric.
+  const clientMetricsRange = useMemo(() => {
+    if (clientMetricsPeriod === 'all_time') return null;
+    const granularity = clientMetricsPeriod === 'month' ? 'monthly' : 'quarterly';
+    return resolveComparisonPeriods(granularity).current.range;
+  }, [clientMetricsPeriod]);
+
+  const gainedLostStats = useMemo(() => {
+    if (currentUser.role !== 'am_agent') return null;
+    const inRange = (dateStr: string) =>
+      !clientMetricsRange || (dateStr >= clientMetricsRange.start && dateStr <= clientMetricsRange.end);
+
+    const gained = clients.filter(
+      (c) => c.am_agent_id === currentUser.id && !!c.am_agent_assigned_at && inRange(c.am_agent_assigned_at.split('T')[0])
+    );
+    const lost = clients.filter(
+      (c) =>
+        c.am_agent_id === currentUser.id &&
+        c.status === 'closed' &&
+        !!c.churned_at &&
+        inRange(c.churned_at.split('T')[0])
+    );
+    return { gained: gained.length, lost: lost.length };
+  }, [currentUser.role, currentUser.id, clients, clientMetricsRange]);
 
   // Module 12 Phase 5: "New" notification badge for programming_agent's task-derived clients.
   // They have no assignments row (see TASK_DERIVED_CLIENT_ROLES above), so there's no
@@ -346,6 +380,44 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
         </div>
         <span className="text-[11px] text-stone-400 font-mono">{myClients.length}</span>
       </div>
+
+      {gainedLostStats && (
+        <div className="p-3 rounded-xl bg-stone-900/60 border border-stone-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Client Gains &amp; Losses</span>
+            <div className="flex items-center gap-1">
+              {(['month', 'quarter', 'all_time'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => setClientMetricsPeriod(opt)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                    clientMetricsPeriod === opt ? 'bg-purple-600/40 text-white' : 'text-stone-500 hover:text-white'
+                  }`}
+                >
+                  {opt === 'month' ? 'Month' : opt === 'quarter' ? 'Quarter' : 'All-Time'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5" style={{ color: 'var(--roas-good)' }} />
+              <span className="text-sm font-bold font-mono" style={{ color: 'var(--roas-good)' }}>
+                {gainedLostStats.gained}
+              </span>
+              <span className="text-[10px] text-stone-500">gained</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <TrendingDown className="w-3.5 h-3.5" style={{ color: 'var(--roas-bad)' }} />
+              <span className="text-sm font-bold font-mono" style={{ color: 'var(--roas-bad)' }}>
+                {gainedLostStats.lost}
+              </span>
+              <span className="text-[10px] text-stone-500">lost</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {myClients.length === 0 ? (
         <p className="text-xs text-stone-500 py-4 text-center">No clients currently assigned to you.</p>
       ) : (
