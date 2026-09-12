@@ -176,15 +176,15 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   }
 
   // Strict Client Filtering:
-  // - Only clients that have been handed off by Sales (status !== 'lead') appear in the AM queue.
+  // - Module 13: every ClientRecord is created at 'onboarding' already (that creation IS the
+  //   Sales -> AM Team Lead handoff) — there's no more pre-handoff 'lead' stage to filter out.
   // - AM Agent: ONLY view clients assigned specifically to that AM Agent.
-  // - AM Team Leader: View all handed-off clients managed by the AM team (assigned + unassigned), unfiltered by am_team_lead_id.
+  // - AM Team Leader: View all clients managed by the AM team (assigned + unassigned), unfiltered by am_team_lead_id.
   const visibleClients = useMemo(() => {
-    const handedOff = clients.filter((c) => c.status !== 'lead');
     if (isAMAgent) {
-      return handedOff.filter((c) => c.am_agent_id === effectiveUserId);
+      return clients.filter((c) => c.am_agent_id === effectiveUserId);
     }
-    return handedOff;
+    return clients;
   }, [clients, isAMAgent, effectiveUserId]);
 
   // Module 12 Phase 8: clients due for renewal, within the same am_team_lead/am_agent scope

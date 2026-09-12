@@ -25,7 +25,11 @@ export type UserRole =
 
 export type ServiceType = 'seo' | 'social_media' | 'media_buying' | 'creative';
 
-export type ClientStatus = 'lead' | 'onboarding' | 'active' | 'renewal' | 'churned';
+// Module 13: 5-value lifecycle, replacing the old 4-value 'lead'|'onboarding'|'active'|'renewal'|
+// 'churned' set. 'lead' is gone — a ClientRecord is now only ever created at 'onboarding' (that
+// creation IS the Sales -> AM Team Lead handoff, no separate stage before it). 'churned' is
+// renamed 'closed'. 'paused' is new: a temporary halt, can return to 'active'.
+export type ClientStatus = 'onboarding' | 'active' | 'paused' | 'renewal' | 'closed';
 
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'completed' | 'blocked';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
@@ -49,6 +53,9 @@ export interface UserRecord {
 }
 
 // 2. packages
+// Module 13: deprecated — ClientRecord.services now stores a client's subscribed services
+// directly, no named-package indirection needed. Kept (table + type) for referential/backfill
+// safety on existing package_id references; no longer read or written by any new app code.
 export interface PackageRecord {
   id: string;
   name: string;
@@ -61,7 +68,14 @@ export interface ClientRecord {
   id: string;
   name: string;
   industry?: string | null;
+  // Module 13: deprecated in favor of `services` below — kept in the schema (never dropped) for
+  // referential/backfill safety, but no longer read or written by app code. Use `services`.
   package_id?: string | null;
+  // Module 13: which services this client is directly subscribed to — SEO, Social Media, Media
+  // Buying, Creative, any combination. Replaces the named-Package indirection (package_id ->
+  // packages.services); no "package" concept required. Never empty in practice, but the type
+  // allows it since a brand-new client mid-registration may transiently have none selected yet.
+  services: ServiceType[];
   status: ClientStatus;
   sales_owner_id?: string | null;
   am_agent_id?: string | null;
@@ -70,12 +84,13 @@ export interface ClientRecord {
   start_date?: string | null;
   renewal_date?: string | null;
   am_team_lead_viewed_at?: string | null;
+  // Field names kept as-is (Module 13 only renamed the status VALUE 'churned' -> 'closed', not
+  // these columns) — set automatically by handleUpdateClientStatus (App.tsx) the moment status
+  // transitions to 'closed'. Null for any client that closed before this column existed — not
+  // retroactively backfillable, since there's no reliable prior signal for when that happened.
+  // Consumers doing period-scoped math must treat a null churned_at on a closed client as
+  // "unknown date", not as "not closed" or "closed now".
   churn_reason?: string | null;
-  // Set automatically by handleUpdateClientStatus (App.tsx) the moment status transitions to
-  // 'churned'. Null for any client that churned before this column existed — not retroactively
-  // backfillable, since there's no reliable prior signal for when that happened. Consumers doing
-  // period-scoped churn math must treat a null churned_at on a churned client as "unknown date",
-  // not as "not churned" or "churned now".
   churned_at?: string | null;
   // Dedicated, rotatable client-portal URL identifier — deliberately not the same as `id`, so a
   // leaked or rotated portal link never touches the client's actual primary key. Null until a
@@ -87,6 +102,11 @@ export interface ClientRecord {
   due_value?: number | null;
   remaining_value?: number | null;
   contract_duration_months?: number | null;
+  // Module 13 Phase 4: cleared to null whenever am_agent_id changes, set to now() when it's
+  // assigned — mirrors the viewed_at-clearing convention from Module 12 Phase 5. Drives the
+  // period-scoped gained/lost client metrics in MyWorkHub; not a general "assigned since" display
+  // field beyond that.
+  am_agent_assigned_at?: string | null;
   created_at?: string;
 }
 

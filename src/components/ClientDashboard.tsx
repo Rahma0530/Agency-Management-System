@@ -69,6 +69,7 @@ import { ClientMeetingsPanel } from './ClientMeetingsPanel';
 import { ClientContractsPanel } from './ClientContractsPanel';
 import { ClientIntegrationsPanel } from './ClientIntegrationsPanel';
 import { canSeeContractValue, isPendingEmployee } from '../lib/permissions';
+import { CLIENT_STATUS_META, isPausedClient } from '../lib/clientStatus';
 import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
 
 interface ClientDashboardProps {
@@ -141,14 +142,6 @@ interface ClientDashboardProps {
 }
 
 type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'logs' | 'reports' | 'meetings' | 'integrations' | 'team_activity';
-
-const CLIENT_STATUS_META: Record<ClientStatus, { label: string; bg: string; color: string; border: string }> = {
-  lead: { label: 'Lead', bg: 'rgba(168, 155, 184, 0.15)', color: 'var(--lilac)', border: 'rgba(168, 155, 184, 0.3)' },
-  onboarding: { label: 'Onboarding', bg: 'rgba(123, 47, 247, 0.2)', color: 'var(--purple-light)', border: 'rgba(123, 47, 247, 0.35)' },
-  active: { label: 'Active', bg: 'rgba(169, 245, 193, 0.2)', color: 'var(--roas-good)', border: 'rgba(169, 245, 193, 0.3)' },
-  renewal: { label: 'Renewal', bg: 'rgba(245, 226, 154, 0.2)', color: 'var(--roas-mid)', border: 'rgba(245, 226, 154, 0.3)' },
-  churned: { label: 'Churned', bg: 'rgba(245, 163, 163, 0.2)', color: 'var(--roas-bad)', border: 'rgba(245, 163, 163, 0.3)' },
-};
 
 export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   client,
@@ -520,15 +513,12 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     currentUser.role === 'head_of_technical' ||
     (currentUser.role === 'am_agent' && client.am_agent_id === currentUser.id);
 
-  const canHandoffToAM =
-    currentUser.role === 'sales' && client.sales_owner_id === currentUser.id && client.status === 'lead';
-
   const handleTransition = async (newStatus: ClientStatus, options?: { churn_reason?: string; renewal_date?: string }) => {
     if (!onUpdateClientStatus) return;
     setIsUpdatingStatus(true);
     try {
       await onUpdateClientStatus(client.id, newStatus, options);
-      if (newStatus === 'churned') {
+      if (newStatus === 'closed') {
         setShowChurnConfirm(false);
         setChurnReasonInput('');
       }
@@ -947,9 +937,9 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   </span>
                 </div>
 
-                {client.status === 'churned' && (
+                {client.status === 'closed' && (
                   <div className="p-3 rounded-lg bg-red-950/30 border border-red-800/40 text-xs text-red-300">
-                    <strong className="block mb-0.5">Churn Reason</strong>
+                    <strong className="block mb-0.5">Closure Reason</strong>
                     <span>{client.churn_reason || 'No reason recorded.'}</span>
                   </div>
                 )}
@@ -964,18 +954,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   </div>
                 )}
 
-                {client.status !== 'churned' && !showChurnConfirm && (
+                {client.status !== 'closed' && !showChurnConfirm && (
                   <div className="flex items-center gap-2 flex-wrap">
-                    {client.status === 'lead' && canHandoffToAM && onUpdateClientStatus && (
-                      <button
-                        onClick={() => handleTransition('onboarding')}
-                        disabled={isUpdatingStatus}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-200 bg-emerald-900/40 hover:bg-emerald-800/60 hover:text-white border border-emerald-700/40 transition-all"
-                      >
-                        Hand Off to AM
-                      </button>
-                    )}
-
                     {client.status === 'onboarding' && canManageLifecycle && onUpdateClientStatus && (
                       <button
                         onClick={() => handleTransition('active')}
@@ -993,6 +973,26 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                         className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-200 bg-amber-900/40 hover:bg-amber-800/60 hover:text-white border border-amber-700/40 transition-all"
                       >
                         Move to Renewal
+                      </button>
+                    )}
+
+                    {client.status === 'active' && canManageLifecycle && onUpdateClientStatus && (
+                      <button
+                        onClick={() => handleTransition('paused')}
+                        disabled={isUpdatingStatus}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-lilac bg-stone-800/60 hover:bg-stone-700/60 hover:text-white border border-stone-600/40 transition-all"
+                      >
+                        Pause Client
+                      </button>
+                    )}
+
+                    {client.status === 'paused' && canManageLifecycle && onUpdateClientStatus && (
+                      <button
+                        onClick={() => handleTransition('active')}
+                        disabled={isUpdatingStatus}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-200 bg-emerald-900/40 hover:bg-emerald-800/60 hover:text-white border border-emerald-700/40 transition-all"
+                      >
+                        Resume Client
                       </button>
                     )}
 
@@ -1015,7 +1015,10 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                       </button>
                     )}
 
-                    {(client.status === 'onboarding' || client.status === 'active' || client.status === 'renewal') &&
+                    {(client.status === 'onboarding' ||
+                      client.status === 'active' ||
+                      client.status === 'renewal' ||
+                      client.status === 'paused') &&
                       canManageLifecycle &&
                       onUpdateClientStatus && (
                         <button
@@ -1023,22 +1026,16 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                           disabled={isUpdatingStatus}
                           className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-300 bg-red-950/30 hover:bg-red-900/50 hover:text-white border border-red-800/40 transition-all"
                         >
-                          Mark as Churned
+                          Mark as Closed
                         </button>
                       )}
-
-                    {client.status === 'lead' && !canHandoffToAM && (
-                      <span className="text-[11px] text-stone-400">
-                        Awaiting handoff from Sales to Account Management.
-                      </span>
-                    )}
                   </div>
                 )}
 
                 {showChurnConfirm && (
                   <div className="p-3 rounded-lg bg-red-950/20 border border-red-800/40 space-y-2">
                     <label className="block text-xs font-semibold text-red-300">
-                      Churn Reason <span className="text-red-400">*</span> (required, this action is permanent)
+                      Closure Reason <span className="text-red-400">*</span> (required, this action is permanent)
                     </label>
                     <textarea
                       value={churnReasonInput}
@@ -1058,11 +1055,11 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                         Cancel
                       </button>
                       <button
-                        onClick={() => handleTransition('churned', { churn_reason: churnReasonInput.trim() })}
+                        onClick={() => handleTransition('closed', { churn_reason: churnReasonInput.trim() })}
                         disabled={isUpdatingStatus || !churnReasonInput.trim()}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-red-700 hover:bg-red-600 disabled:opacity-50 transition-all"
                       >
-                        Confirm Churn
+                        Confirm Closure
                       </button>
                     </div>
                   </div>

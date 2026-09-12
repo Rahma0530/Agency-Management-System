@@ -519,18 +519,20 @@ export default function App() {
   const handleRegisterClient = async (clientData: {
     name: string;
     industry: string;
-    package_id: string;
+    services: ServiceType[];
     contract_value: number;
     start_date: string;
     renewal_date: string;
     am_team_lead_id?: string;
   }) => {
+    // Module 13: a ClientRecord is now only ever created at 'onboarding' — that creation IS the
+    // Sales -> AM Team Lead handoff, no separate 'lead' stage or handoff action before it.
     const newClientPayload: Partial<ClientRecord> = {
       id: `cl-${Date.now().toString().slice(-4)}`,
       name: clientData.name,
       industry: clientData.industry,
-      package_id: clientData.package_id,
-      status: 'lead',
+      services: clientData.services,
+      status: 'onboarding',
       sales_owner_id: currentUser.id,
       am_agent_id: null, // Awaiting Account Manager assignment
       am_team_lead_id: clientData.am_team_lead_id || 'usr-am-lead',
@@ -560,7 +562,7 @@ export default function App() {
       setClients((prev) => [newClientPayload as ClientRecord, ...prev]);
     }
 
-    showNotification(`Client "${clientData.name}" registered as a Lead successfully!`);
+    showNotification(`Client "${clientData.name}" registered and routed to Account Management.`);
   };
 
   // 1b. Add a new employee (Add Employee admin screen: single form or bulk CSV/Excel upload) —
@@ -594,11 +596,18 @@ export default function App() {
 
   // 2. Assign the client to an Account Manager (AM Agent)
   const handleAssignAMAgent = async (clientId: string, agentId: string) => {
+    // Module 13 Phase 4: only bump am_agent_assigned_at on an actual change of agent — a no-op
+    // resubmission of the same agent shouldn't re-date the "gained" moment. Mirrors the
+    // reassignment-clears-viewed_at convention from Module 12 Phase 5.
+    const existing = clients.find((c) => c.id === clientId);
+    const isReassignment = existing?.am_agent_id !== agentId;
+    const assignedAt = isReassignment ? new Date().toISOString() : existing?.am_agent_assigned_at;
+
     if (supabaseActive) {
       try {
         const { error } = await supabase
           .from('clients')
-          .update({ am_agent_id: agentId })
+          .update({ am_agent_id: agentId, am_agent_assigned_at: assignedAt })
           .eq('id', clientId);
         if (error) throw error;
       } catch (err: any) {
@@ -607,21 +616,23 @@ export default function App() {
     }
 
     setClients((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, am_agent_id: agentId } : c))
+      prev.map((c) => (c.id === clientId ? { ...c, am_agent_id: agentId, am_agent_assigned_at: assignedAt } : c))
     );
 
     const agent = users.find((u) => u.id === agentId);
     showNotification(`Client assigned to Account Manager: ${agent?.name || agentId}`);
   };
 
-  // 2b. Transition a client's lifecycle status (Lead -> Onboarding -> Active -> Renewal -> Churned)
+  // 2b. Transition a client's lifecycle status (Onboarding -> Active <-> Paused -> Renewal -> Closed)
   const handleUpdateClientStatus = async (
     clientId: string,
     newStatus: ClientStatus,
     options?: { churn_reason?: string; renewal_date?: string }
   ) => {
     const updatePayload: Partial<ClientRecord> = { status: newStatus };
-    if (newStatus === 'churned') {
+    // Field names kept as churn_reason/churned_at (Module 13 only renamed the status VALUE
+    // 'churned' -> 'closed', not these columns — see types/database.ts).
+    if (newStatus === 'closed') {
       updatePayload.churn_reason = options?.churn_reason || null;
       updatePayload.churned_at = new Date().toISOString();
     }

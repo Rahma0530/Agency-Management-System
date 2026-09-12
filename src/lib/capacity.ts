@@ -1,4 +1,5 @@
 import { UserRecord, ClientRecord, TaskRecord, UserRole } from '../types/database';
+import { isPausedClient } from './clientStatus';
 
 // Team leads don't carry a tracked capacity buffer the way agents do — a
 // capacity_limit of 0 is a normal, intentional value for these 4 roles
@@ -39,8 +40,10 @@ export function getUserCapacityData(
   clients: ClientRecord[],
   tasks: TaskRecord[] = []
 ): UserCapacityData {
+  // Decision (Module 13): paused clients don't count toward an agent's capacity/workload —
+  // they're intentionally on hold, same reasoning as their exclusion from "needs attention".
   const assignedClients = clients.filter(
-    (c) => c.am_agent_id === user.id && c.status !== 'churned'
+    (c) => c.am_agent_id === user.id && c.status !== 'closed' && !isPausedClient(c)
   );
   const activeTasks = tasks.filter((t) => t.assigned_to === user.id && t.status !== 'completed');
 

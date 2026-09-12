@@ -16,6 +16,7 @@ import { resolveClientsForSubject } from '../../lib/reportingEngine';
 import { getUserCapacityData } from '../../lib/capacity';
 import { STATUS_META } from '../../lib/performanceScore';
 import { isPendingEmployee } from '../../lib/permissions';
+import { isPausedClient } from '../../lib/clientStatus';
 
 interface DeptConfig {
   team: string;
@@ -81,7 +82,7 @@ export const TeamLeadDashboard: React.FC<{
   );
 
   const statusCounts = useMemo(() => {
-    const counts: Record<ClientRecord['status'], number> = { lead: 0, onboarding: 0, active: 0, renewal: 0, churned: 0 };
+    const counts: Record<ClientRecord['status'], number> = { onboarding: 0, active: 0, paused: 0, renewal: 0, closed: 0 };
     deptClients.forEach((c) => {
       counts[c.status] = (counts[c.status] || 0) + 1;
     });
@@ -99,14 +100,18 @@ export const TeamLeadDashboard: React.FC<{
     return services.some((s) => !clientHasBrief(client, s));
   };
 
+  // Decision (Module 13): paused clients are intentionally excluded from "needs attention" —
+  // missing-brief and renewal alerts shouldn't fire for a client that's deliberately on hold.
   const needsAttention = useMemo(
     () =>
-      deptClients.filter((c) => (c.status !== 'lead' && c.status !== 'churned') && (isRenewalApproaching(c) || isMissingBrief(c))).slice(0, 6),
+      deptClients
+        .filter((c) => c.status !== 'closed' && !isPausedClient(c) && (isRenewalApproaching(c) || isMissingBrief(c)))
+        .slice(0, 6),
     [deptClients, briefs, packages, config]
   );
 
   const pendingBriefsCount = useMemo(
-    () => deptClients.filter((c) => c.status !== 'lead' && c.status !== 'churned' && isMissingBrief(c)).length,
+    () => deptClients.filter((c) => c.status !== 'closed' && !isPausedClient(c) && isMissingBrief(c)).length,
     [deptClients, briefs, packages, config]
   );
 

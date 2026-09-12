@@ -149,7 +149,9 @@ export function resolveClientsForSubject(
     case 'executive':
     case 'head_of_technical':
     case 'am_team_lead':
-      return clients.filter((c) => c.status !== 'lead');
+      // Module 13: 'lead' no longer exists as a status — client creation is now the onboarding
+      // handoff itself, so every client is visible to these roles from creation onward.
+      return clients;
     case 'am_agent':
       return clients.filter((c) => c.am_agent_id === subject.id);
     case 'media_buying_team_lead':

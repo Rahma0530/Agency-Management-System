@@ -3,6 +3,7 @@ import { DollarSign, Users, TrendingDown, Building2, AlertCircle } from 'lucide-
 import { ClientRecord, PackageRecord, CampaignRecord, TaskRecord, SocialInsightRecord, UserRecord } from '../../types/database';
 import { ComparisonGranularity, resolveComparisonPeriods } from '../../lib/reportingEngine';
 import { DepartmentComparisonPanel } from './DepartmentComparisonPanel';
+import { isCurrentlyActiveClient } from '../../lib/clientStatus';
 
 const CHURN_GRANULARITY_OPTIONS: { value: ComparisonGranularity; label: string }[] = [
   { value: 'monthly', label: 'Monthly' },
@@ -42,17 +43,19 @@ export const ExecutiveDashboard: React.FC<{
   // Revenue and client counts are current-snapshot figures, not period-comparable — there's no
   // invoice/payment history in this schema, only each client's present contract_value/status.
   const statusCounts = useMemo(() => {
-    const counts: Record<ClientRecord['status'], number> = { lead: 0, onboarding: 0, active: 0, renewal: 0, churned: 0 };
+    const counts: Record<ClientRecord['status'], number> = { onboarding: 0, active: 0, paused: 0, renewal: 0, closed: 0 };
     clients.forEach((c) => {
       counts[c.status] = (counts[c.status] || 0) + 1;
     });
     return counts;
   }, [clients]);
 
+  // Decision (Module 13): paused clients still count toward MRR — they're intentionally halted,
+  // not de-billed — so this stays broader than isCurrentlyActiveClient (which excludes paused).
   const mrr = useMemo(
     () =>
       clients
-        .filter((c) => c.status === 'active' || c.status === 'renewal')
+        .filter((c) => c.status === 'active' || c.status === 'renewal' || c.status === 'paused')
         .reduce((sum, c) => sum + (c.contract_value || 0), 0),
     [clients]
   );
@@ -64,11 +67,11 @@ export const ExecutiveDashboard: React.FC<{
   // flagged elsewhere in this app (campaign date-range overlap, SEO's delivery-only proxy, etc.).
   const churnStats = useMemo(() => {
     const period = resolveComparisonPeriods(churnGranularity).current;
-    const existedAtStart = clients.filter((c) => c.status !== 'lead' && (c.created_at || '') < period.range.start);
+    const existedAtStart = clients.filter((c) => (c.created_at || '') < period.range.start);
     const churnedInPeriod = clients.filter(
-      (c) => c.status === 'churned' && c.churned_at && c.churned_at >= period.range.start && c.churned_at <= period.range.end
+      (c) => c.status === 'closed' && c.churned_at && c.churned_at >= period.range.start && c.churned_at <= period.range.end
     );
-    const legacyChurned = clients.filter((c) => c.status === 'churned' && !c.churned_at);
+    const legacyChurned = clients.filter((c) => c.status === 'closed' && !c.churned_at);
     const rate = existedAtStart.length > 0 ? Math.round((churnedInPeriod.length / existedAtStart.length) * 1000) / 10 : null;
     return { periodLabel: period.label, rate, churnedInPeriod: churnedInPeriod.length, base: existedAtStart.length, legacyChurned: legacyChurned.length };
   }, [clients, churnGranularity]);
@@ -81,19 +84,19 @@ export const ExecutiveDashboard: React.FC<{
           value={`${mrr.toLocaleString()} SAR`}
           icon={DollarSign}
           accent="var(--roas-good)"
-          caption="Active + Renewal contract value, current snapshot"
+          caption="Active + Renewal + Paused contract value, current snapshot"
         />
         <StatTile
           label="Active Clients"
-          value={statusCounts.active + statusCounts.renewal}
+          value={clients.filter(isCurrentlyActiveClient).length}
           icon={Building2}
-          caption={`${statusCounts.onboarding} onboarding, ${statusCounts.lead} leads`}
+          caption={`${statusCounts.onboarding} onboarding, ${statusCounts.paused} paused`}
         />
         <StatTile
           label="Total Clients"
           value={clients.length}
           icon={Users}
-          caption={`${statusCounts.churned} churned all-time`}
+          caption={`${statusCounts.closed} closed all-time`}
         />
         <div className="p-4 rounded-xl bg-stone-900/60 border border-stone-800">
           <div className="flex items-center justify-between text-stone-400 mb-1.5">
@@ -126,8 +129,8 @@ export const ExecutiveDashboard: React.FC<{
         <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-950/20 border border-amber-900/30">
           <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
           <p className="text-[10px] text-stone-400">
-            {churnStats.legacyChurned} churned client{churnStats.legacyChurned === 1 ? '' : 's'} predate churn-date tracking
-            (churned_at unknown) and are excluded from the period figure above — not counted as churned in any period,
+            {churnStats.legacyChurned} closed client{churnStats.legacyChurned === 1 ? '' : 's'} predate closure-date tracking
+            (churned_at unknown) and are excluded from the period figure above — not counted as closed in any period,
             not counted as active either.
           </p>
         </div>

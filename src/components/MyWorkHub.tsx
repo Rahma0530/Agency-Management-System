@@ -172,8 +172,9 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
     if (role === 'am_team_lead') {
       return clients;
     }
-    // am_agent: a lead has no am_agent_id yet, so this already excludes
-    // pre-handoff clients without needing an explicit status filter.
+    // am_agent: a client only gets an am_agent_id at the onboarding->active
+    // handoff, so this already excludes pre-handoff clients without needing
+    // an explicit status filter.
     if (role === 'am_agent') {
       return clients.filter((c) => c.am_agent_id === currentUser.id);
     }
