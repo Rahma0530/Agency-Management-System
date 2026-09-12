@@ -24,7 +24,6 @@ import {
 import {
   ClientRecord,
   ClientStatus,
-  PackageRecord,
   UserRecord,
   BriefRecord,
   BriefRevisionRecord,
@@ -55,7 +54,6 @@ import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../li
 
 interface AMQueueProps {
   clients: ClientRecord[];
-  packages: PackageRecord[];
   users: UserRecord[];
   briefs: BriefRecord[];
   briefRevisions?: BriefRevisionRecord[];
@@ -121,7 +119,6 @@ interface AMQueueProps {
 
 export const AMQueue: React.FC<AMQueueProps> = ({
   clients,
-  packages,
   users,
   briefs,
   briefRevisions = [],
@@ -249,8 +246,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
       };
     }
 
-    const pkg = packages.find((p) => p.id === client.package_id);
-    const services = pkg?.services || [];
+    const services = client.services || [];
     const clientBriefs = getClientBriefs(client.id);
     const hasAllBriefs =
       services.length > 0 &&
@@ -366,9 +362,8 @@ export const AMQueue: React.FC<AMQueueProps> = ({
               {isAMTeamLead
                 ? visibleClients.filter((c) => !c.am_agent_id).length
                 : visibleClients.filter((c) => {
-                    const pkg = packages.find((p) => p.id === c.package_id);
                     const brfs = getClientBriefs(c.id);
-                    return (pkg?.services || []).some((s) => !brfs.some((b) => b.service_type === s));
+                    return (c.services || []).some((s) => !brfs.some((b) => b.service_type === s));
                   }).length}
             </p>
           </div>
@@ -481,7 +476,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
                 <tr className="border-b border-purple-900/30 text-[11px] font-semibold text-stone-400 uppercase tracking-wider bg-black/20">
                   <th className="py-3 px-4">Client Name</th>
                   <th className="py-3 px-4">Industry</th>
-                  <th className="py-3 px-4">Package & Services</th>
+                  <th className="py-3 px-4">Services</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Assigned AM</th>
                   <th className="py-3 px-4 text-right">Actions</th>
@@ -491,8 +486,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
                 {displayedClients.map((client) => {
                   const assignedAgent = amAgents.find((u) => u.id === client.am_agent_id);
                   const lifecycle = getClientLifecycleStatus(client);
-                  const clientPkg = packages.find((p) => p.id === client.package_id);
-                  const services = clientPkg?.services || [];
+                  const services = client.services || [];
 
                   return (
                     <tr
@@ -529,9 +523,9 @@ export const AMQueue: React.FC<AMQueueProps> = ({
 
                       <td className="py-3.5 px-4">
                         <div className="space-y-1">
-                          <span className="text-white font-medium block">
-                            {clientPkg?.name || 'Custom Plan'}
-                          </span>
+                          {services.length === 0 && (
+                            <span className="text-white font-medium block">Custom Plan</span>
+                          )}
                           <div className="flex flex-wrap gap-1">
                             {services.map((s) => (
                               <span
@@ -643,8 +637,6 @@ export const AMQueue: React.FC<AMQueueProps> = ({
       {activeDashboardClient && (
         <ClientDashboard
           client={activeDashboardClient}
-          packageRecord={packages.find((p) => p.id === activeDashboardClient.package_id)}
-          allPackages={packages}
           users={users}
           currentUser={resolvedUser}
           briefs={briefs}

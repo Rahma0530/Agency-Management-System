@@ -1,12 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Building2, Search, Clock, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
-import { ClientRecord, PackageRecord, BriefRecord, BriefRevisionRecord, UserRecord, ServiceType } from '../types/database';
+import { ClientRecord, BriefRecord, BriefRevisionRecord, UserRecord, ServiceType } from '../types/database';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
 
 interface BriefRepositoryViewProps {
   clients: ClientRecord[];
-  packages: PackageRecord[];
   briefs: BriefRecord[];
   briefRevisions: BriefRevisionRecord[];
   users: UserRecord[];
@@ -40,7 +39,6 @@ const timeAgo = (iso: string): string => {
  */
 export const BriefRepositoryView: React.FC<BriefRepositoryViewProps> = ({
   clients,
-  packages,
   briefs,
   briefRevisions,
   users,
@@ -70,7 +68,7 @@ export const BriefRepositoryView: React.FC<BriefRepositoryViewProps> = ({
           (c.industry || '').toLowerCase().includes(searchQuery.toLowerCase())
       )
       .map((client) => {
-        const services = packages.find((p) => p.id === client.package_id)?.services || [];
+        const services = client.services || [];
         const serviceRows = services
           .filter((s) => serviceFilter === 'all' || s === serviceFilter)
           .map((s) => {
@@ -85,7 +83,7 @@ export const BriefRepositoryView: React.FC<BriefRepositoryViewProps> = ({
         return { client, serviceRows };
       })
       .filter((entry) => entry.serviceRows.length > 0);
-  }, [clients, packages, briefs, searchQuery, serviceFilter, statusFilter]);
+  }, [clients, briefs, searchQuery, serviceFilter, statusFilter]);
 
   return (
     <div className="space-y-4">

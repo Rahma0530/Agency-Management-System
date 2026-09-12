@@ -52,17 +52,6 @@ export interface UserRecord {
   created_at?: string;
 }
 
-// 2. packages
-// Module 13: deprecated — ClientRecord.services now stores a client's subscribed services
-// directly, no named-package indirection needed. Kept (table + type) for referential/backfill
-// safety on existing package_id references; no longer read or written by any new app code.
-export interface PackageRecord {
-  id: string;
-  name: string;
-  services: ServiceType[];
-  created_at?: string;
-}
-
 // 3. clients
 export interface ClientRecord {
   id: string;
@@ -72,13 +61,11 @@ export interface ClientRecord {
   // formats). Optional at registration — collected via ClientRegistrationModal, searchable
   // alongside name via lib/clientSearch.ts's shared predicate.
   phone_number?: string | null;
-  // Module 13: deprecated in favor of `services` below — kept in the schema (never dropped) for
-  // referential/backfill safety, but no longer read or written by app code. Use `services`.
-  package_id?: string | null;
-  // Module 13: which services this client is directly subscribed to — SEO, Social Media, Media
-  // Buying, Creative, any combination. Replaces the named-Package indirection (package_id ->
-  // packages.services); no "package" concept required. Never empty in practice, but the type
-  // allows it since a brand-new client mid-registration may transiently have none selected yet.
+  // Module 13 Phase 5: which services this client is directly subscribed to — SEO, Social Media,
+  // Media Buying, Creative, any combination. Replaces the old named-Package indirection
+  // (package_id -> packages.services); no "package" concept exists in this schema anymore.
+  // Never empty in practice, but the type allows it since a brand-new client mid-registration may
+  // transiently have none selected yet.
   services: ServiceType[];
   status: ClientStatus;
   sales_owner_id?: string | null;
@@ -505,7 +492,6 @@ export interface Database {
   public: {
     Tables: {
       users: { Row: UserRecord; Insert: Partial<UserRecord>; Update: Partial<UserRecord>; Relationships: any[] };
-      packages: { Row: PackageRecord; Insert: Partial<PackageRecord>; Update: Partial<PackageRecord>; Relationships: any[] };
       clients: { Row: ClientRecord; Insert: Partial<ClientRecord>; Update: Partial<ClientRecord>; Relationships: any[] };
       briefs: { Row: BriefRecord; Insert: Partial<BriefRecord>; Update: Partial<BriefRecord>; Relationships: any[] };
       brief_revisions: { Row: BriefRevisionRecord; Insert: Partial<BriefRevisionRecord>; Update: Partial<BriefRevisionRecord>; Relationships: any[] };

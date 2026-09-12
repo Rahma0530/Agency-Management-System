@@ -29,7 +29,6 @@ import {
 import {
   ClientRecord,
   ClientStatus,
-  PackageRecord,
   UserRecord,
   BriefRecord,
   BriefRevisionRecord,
@@ -74,8 +73,6 @@ import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
 
 interface ClientDashboardProps {
   client: ClientRecord;
-  packageRecord?: PackageRecord;
-  allPackages: PackageRecord[];
   users: UserRecord[];
   currentUser: UserRecord;
   briefs: BriefRecord[];
@@ -145,8 +142,6 @@ type DashboardTab = 'overview' | 'team' | 'briefs' | 'campaigns' | 'tasks' | 'lo
 
 export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   client,
-  packageRecord,
-  allPackages,
   users,
   currentUser,
   briefs,
@@ -207,9 +202,8 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   });
   const [isSavingPaymentTracking, setIsSavingPaymentTracking] = useState(false);
 
-  // Resolve client services from package
-  const pkg = packageRecord || allPackages.find((p) => p.id === client.package_id);
-  const services: ServiceType[] = pkg?.services || [];
+  // Module 13 Phase 5: services lives directly on the client row — no more package lookup.
+  const services: ServiceType[] = client.services || [];
 
   // Initialize active brief service
   React.useEffect(() => {
@@ -730,8 +724,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               {/* Contract Card */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
-                  <span className="text-xs text-stone-400 block mb-1">Contracted Package</span>
-                  <p className="text-sm font-bold text-white mb-2">{pkg?.name || 'Custom Agency Plan'}</p>
+                  <span className="text-xs text-stone-400 block mb-2">Contracted Services</span>
                   <div className="flex flex-wrap gap-1.5">
                     {services.map((s) => (
                       <span

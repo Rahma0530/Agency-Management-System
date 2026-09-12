@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { BarChart3, TrendingUp, FileText, Users, AlertTriangle, ClipboardList, Search } from 'lucide-react';
 import {
   ClientRecord,
-  PackageRecord,
   UserRecord,
   AssignmentRecord,
   ReportRecord,
@@ -36,7 +35,6 @@ interface ReportsHubProps {
   currentUser: UserRecord;
   users: UserRecord[];
   clients: ClientRecord[];
-  packages: PackageRecord[];
   assignments: AssignmentRecord[];
   reports: ReportRecord[];
   clientComparisons: ClientComparisonRecord[];
@@ -61,7 +59,6 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
   currentUser,
   users,
   clients,
-  packages,
   assignments,
   reports,
   clientComparisons,
@@ -93,8 +90,8 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
   );
 
   const myClients = useMemo(
-    () => resolveClientsForSubject(currentUser, clients, packages, assignments),
-    [currentUser, clients, packages, assignments]
+    () => resolveClientsForSubject(currentUser, clients, assignments),
+    [currentUser, clients, assignments]
   );
 
   const directReports = useMemo(

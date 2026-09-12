@@ -3,7 +3,6 @@ import { Building2, LogOut, UserCheck, TrendingUp, FileText, ClipboardList } fro
 import { supabase } from '../../lib/supabase';
 import {
   ClientRecord,
-  PackageRecord,
   BriefRecord,
   ClientComparisonRecord,
   ReportRecord,
@@ -29,7 +28,6 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
 // simply omitted here) and BriefFieldsReadOnly for the same read-only brief rendering the
 // specialist queues already use — no client-portal-specific display logic needed for either.
 export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSignOut }) => {
-  const [pkg, setPkg] = useState<PackageRecord | null>(null);
   const [amAgentName, setAmAgentName] = useState<string | null>(null);
   const [briefs, setBriefs] = useState<BriefRecord[]>([]);
   const [comparisons, setComparisons] = useState<ClientComparisonRecord[]>([]);
@@ -41,8 +39,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSi
     let cancelled = false;
 
     const load = async () => {
-      const [pkgRes, amNameRes, briefsRes, comparisonsRes, reportsRes] = await Promise.all([
-        client.package_id ? supabase.from('packages').select('*').eq('id', client.package_id).maybeSingle() : Promise.resolve({ data: null }),
+      const [amNameRes, briefsRes, comparisonsRes, reportsRes] = await Promise.all([
         supabase.rpc('portal_am_agent_name'),
         supabase.from('briefs').select('*').eq('client_id', client.id),
         supabase.from('client_comparisons').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
@@ -50,7 +47,6 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSi
       ]);
 
       if (cancelled) return;
-      setPkg((pkgRes.data as PackageRecord) || null);
       setAmAgentName((amNameRes.data as string) || null);
       setBriefs((briefsRes.data as BriefRecord[]) || []);
       setComparisons((comparisonsRes.data as ClientComparisonRecord[]) || []);
@@ -62,9 +58,11 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSi
     return () => {
       cancelled = true;
     };
-  }, [client.id, client.package_id]);
+  }, [client.id]);
 
-  const services = useMemo(() => pkg?.services || [], [pkg]);
+  // Module 13 Phase 5: services now lives directly on the client row the portal fetch already
+  // returned — no more package lookup needed.
+  const services = useMemo(() => client.services || [], [client.services]);
 
   useEffect(() => {
     if (services.length > 0 && !activeBriefService) setActiveBriefService(services[0]);
@@ -86,7 +84,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSi
             <div>
               <h1 className="text-lg font-bold text-white">{client.name}</h1>
               <p className="text-xs text-stone-400">
-                {pkg?.name || 'Your Plan'}
+                {services.length > 0 ? services.map((s) => SERVICE_LABELS[s] || s).join(' + ') : 'Your Plan'}
                 {amAgentName && (
                   <>
                     {' '}

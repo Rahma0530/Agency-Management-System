@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { DollarSign, Users, TrendingDown, Building2, AlertCircle } from 'lucide-react';
-import { ClientRecord, PackageRecord, CampaignRecord, TaskRecord, SocialInsightRecord, UserRecord } from '../../types/database';
+import { ClientRecord, CampaignRecord, TaskRecord, SocialInsightRecord, UserRecord } from '../../types/database';
 import { ComparisonGranularity, resolveComparisonPeriods } from '../../lib/reportingEngine';
 import { DepartmentComparisonPanel } from './DepartmentComparisonPanel';
 import { isCurrentlyActiveClient } from '../../lib/clientStatus';
@@ -32,12 +32,11 @@ const StatTile: React.FC<{
 
 export const ExecutiveDashboard: React.FC<{
   clients: ClientRecord[];
-  packages: PackageRecord[];
   campaigns: CampaignRecord[];
   tasks: TaskRecord[];
   socialInsights: SocialInsightRecord[];
   users: UserRecord[];
-}> = ({ clients, packages, campaigns, tasks, socialInsights, users }) => {
+}> = ({ clients, campaigns, tasks, socialInsights, users }) => {
   const [churnGranularity, setChurnGranularity] = useState<ComparisonGranularity>('monthly');
 
   // Revenue and client counts are current-snapshot figures, not period-comparable — there's no
@@ -138,7 +137,6 @@ export const ExecutiveDashboard: React.FC<{
 
       <DepartmentComparisonPanel
         clients={clients}
-        packages={packages}
         campaigns={campaigns}
         tasks={tasks}
         socialInsights={socialInsights}

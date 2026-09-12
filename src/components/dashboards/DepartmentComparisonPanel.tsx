@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { BarChart3, Gauge, Clock } from 'lucide-react';
 import {
   ClientRecord,
-  PackageRecord,
   CampaignRecord,
   TaskRecord,
   SocialInsightRecord,
@@ -55,13 +54,12 @@ interface DepartmentRow {
 
 export const DepartmentComparisonPanel: React.FC<{
   clients: ClientRecord[];
-  packages: PackageRecord[];
   campaigns: CampaignRecord[];
   tasks: TaskRecord[];
   socialInsights: SocialInsightRecord[];
   users: UserRecord[];
   services?: ServiceType[]; // omit to show all 3 technical departments
-}> = ({ clients, packages, campaigns, tasks, socialInsights, users, services }) => {
+}> = ({ clients, campaigns, tasks, socialInsights, users, services }) => {
   const [granularity, setGranularity] = useState<ComparisonGranularity>('monthly');
   const period = useMemo(() => resolveComparisonPeriods(granularity).current, [granularity]);
 
@@ -76,7 +74,7 @@ export const DepartmentComparisonPanel: React.FC<{
     };
 
     return departments.map(({ service, team, label, accent }) => {
-      const deptClients = resolveDepartmentClients(service, clients, packages);
+      const deptClients = resolveDepartmentClients(service, clients);
       const clientIds = deptClients.map((c) => c.id);
 
       let headline: { label: string; value: string }[];
@@ -120,7 +118,7 @@ export const DepartmentComparisonPanel: React.FC<{
         avgCapacityUtilization: avg(capacityRates),
       };
     });
-  }, [departments, clients, packages, campaigns, tasks, socialInsights, users, period, granularity]);
+  }, [departments, clients, campaigns, tasks, socialInsights, users, period, granularity]);
 
   return (
     <div className="p-4 rounded-2xl border space-y-4" style={{ background: 'var(--gradient-card)', borderColor: 'var(--border-soft)' }}>

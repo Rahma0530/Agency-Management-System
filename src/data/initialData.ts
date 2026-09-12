@@ -1,5 +1,4 @@
 import {
-  PackageRecord,
   UserRecord,
   ClientRecord,
   BriefRecord,
@@ -10,34 +9,6 @@ import {
   ExtraNoteRecord,
   AssignmentRecord,
 } from '../types/database';
-
-export const INITIAL_PACKAGES: PackageRecord[] = [
-  {
-    id: 'pkg-1',
-    name: 'باقة النمو المتكاملة (SEO + سوشيال ميديا + ميديا باينج)',
-    services: ['seo', 'social_media', 'media_buying'],
-  },
-  {
-    id: 'pkg-2',
-    name: 'باقة الأداء الرقمي (سوشيال ميديا + ميديا باينج)',
-    services: ['social_media', 'media_buying'],
-  },
-  {
-    id: 'pkg-3',
-    name: 'باقة تحسين محركات البحث المتقدمة (SEO)',
-    services: ['seo'],
-  },
-  {
-    id: 'pkg-4',
-    name: 'باقة الحملات الإعلانية الممولة (Media Buying)',
-    services: ['media_buying'],
-  },
-  {
-    id: 'pkg-5',
-    name: 'باقة إدارة وتنمية السوشيال ميديا (Social Media)',
-    services: ['social_media'],
-  },
-];
 
 export const INITIAL_USERS: UserRecord[] = [
   // 1. Executive Management (C-level)
@@ -237,7 +208,6 @@ export const INITIAL_CLIENTS: ClientRecord[] = [
     id: 'cl-101',
     name: 'مجموعة الفطيم للحلول الذكية',
     industry: 'تقنية وتجارة إلكترونية',
-    package_id: 'pkg-1',
     services: ['seo', 'social_media', 'media_buying'],
     phone_number: '+966 50 123 4567',
     status: 'onboarding',
@@ -252,7 +222,6 @@ export const INITIAL_CLIENTS: ClientRecord[] = [
     id: 'cl-102',
     name: 'سلسلة عيادات النخبة الطبية',
     industry: 'رعاية صحية وتجميل',
-    package_id: 'pkg-2',
     services: ['social_media', 'media_buying'],
     phone_number: '+966 55 987 6543',
     status: 'onboarding',
@@ -267,7 +236,6 @@ export const INITIAL_CLIENTS: ClientRecord[] = [
     id: 'cl-103',
     name: 'منصة عقارات كابيتال',
     industry: 'عقارات واستثمار',
-    package_id: 'pkg-3',
     services: ['seo'],
     phone_number: '+966 54 222 1198',
     status: 'onboarding',
@@ -282,7 +250,6 @@ export const INITIAL_CLIENTS: ClientRecord[] = [
     id: 'cl-104',
     name: 'شركة الأفق للحلول السحابية',
     industry: 'تقنية وتجارة إلكترونية',
-    package_id: 'pkg-1',
     services: ['seo', 'social_media', 'media_buying'],
     status: 'onboarding',
     sales_owner_id: 'usr-sales-2',

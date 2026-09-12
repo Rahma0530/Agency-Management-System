@@ -8,7 +8,6 @@ import {
   ComparisonMediaBuyingMetrics,
   ComparisonSeoMetrics,
   ComparisonSocialMetrics,
-  PackageRecord,
   ServiceType,
   SocialInsightRecord,
   TaskRecord,
@@ -118,28 +117,25 @@ export type ReportScope = { type: 'client'; clientId: string } | { type: 'agent'
 // parameter, and the persisted row all agree with no translation step between them.
 export type ReportMode = 'comparison' | 'period_summary';
 
-// True if the client's package includes the given service. Standalone (not nested in
+// True if the client subscribes to the given service. Standalone (not nested in
 // resolveClientsForSubject below) so dashboards can ask "which clients belong to department X"
 // directly, without needing a fake team-lead subject to route through the resolver.
-export function clientHasService(client: ClientRecord, service: ServiceType, packages: PackageRecord[]): boolean {
-  return packages.find((p) => p.id === client.package_id)?.services.includes(service) ?? false;
+// Module 13 Phase 5: reads ClientRecord.services directly — no more package_id -> packages
+// indirection.
+export function clientHasService(client: ClientRecord, service: ServiceType): boolean {
+  return (client.services || []).includes(service);
 }
 
 // Every client subscribed to a given service — the same set a team lead for that department
 // already sees (resolveClientsForSubject's team-lead branches below), factored out for callers
 // that want "the whole department" without a subject user at all (DepartmentComparisonPanel).
-export function resolveDepartmentClients(
-  service: ServiceType,
-  clients: ClientRecord[],
-  packages: PackageRecord[]
-): ClientRecord[] {
-  return clients.filter((c) => clientHasService(c, service, packages));
+export function resolveDepartmentClients(service: ServiceType, clients: ClientRecord[]): ClientRecord[] {
+  return clients.filter((c) => clientHasService(c, service));
 }
 
 export function resolveClientsForSubject(
   subject: { id: string; role: UserRole },
   clients: ClientRecord[],
-  packages: PackageRecord[],
   assignments: AssignmentRecord[]
 ): ClientRecord[] {
   const isAssigned = (client: ClientRecord, service: ServiceType) =>
@@ -155,17 +151,17 @@ export function resolveClientsForSubject(
     case 'am_agent':
       return clients.filter((c) => c.am_agent_id === subject.id);
     case 'media_buying_team_lead':
-      return resolveDepartmentClients('media_buying', clients, packages);
+      return resolveDepartmentClients('media_buying', clients);
     case 'media_buying_agent':
-      return resolveDepartmentClients('media_buying', clients, packages).filter((c) => isAssigned(c, 'media_buying'));
+      return resolveDepartmentClients('media_buying', clients).filter((c) => isAssigned(c, 'media_buying'));
     case 'seo_team_lead':
-      return resolveDepartmentClients('seo', clients, packages);
+      return resolveDepartmentClients('seo', clients);
     case 'seo_agent':
-      return resolveDepartmentClients('seo', clients, packages).filter((c) => isAssigned(c, 'seo'));
+      return resolveDepartmentClients('seo', clients).filter((c) => isAssigned(c, 'seo'));
     case 'social_media_team_lead':
-      return resolveDepartmentClients('social_media', clients, packages);
+      return resolveDepartmentClients('social_media', clients);
     case 'social_media_agent':
-      return resolveDepartmentClients('social_media', clients, packages).filter((c) => isAssigned(c, 'social_media'));
+      return resolveDepartmentClients('social_media', clients).filter((c) => isAssigned(c, 'social_media'));
     default:
       return [];
   }
@@ -300,17 +296,14 @@ export function aggregateSocialMetrics(
 // ----------------------------------------------------------------------------
 export function generateClientComparisonMetrics(
   clients: ClientRecord[],
-  packages: PackageRecord[],
   range: DateRange,
   campaigns: CampaignRecord[],
   tasks: TaskRecord[],
   socialInsights: SocialInsightRecord[],
   serviceFilter?: ServiceType[]
 ): ClientComparisonMetrics {
-  const hasService = (client: ClientRecord, service: ServiceType) =>
-    packages.find((p) => p.id === client.package_id)?.services.includes(service) ?? false;
   const wantsService = (service: ServiceType) => !serviceFilter || serviceFilter.includes(service);
-  const clientIdsWith = (service: ServiceType) => clients.filter((c) => hasService(c, service)).map((c) => c.id);
+  const clientIdsWith = (service: ServiceType) => clients.filter((c) => clientHasService(c, service)).map((c) => c.id);
 
   const metrics: ClientComparisonMetrics = {};
 
@@ -473,7 +466,6 @@ export function generateComparisonNarrative(
 // ----------------------------------------------------------------------------
 export function generateClientComparison(
   clients: ClientRecord[],
-  packages: PackageRecord[],
   currentPeriod: ComparisonPeriod,
   previousPeriod: ComparisonPeriod,
   campaigns: CampaignRecord[],
@@ -492,7 +484,6 @@ export function generateClientComparison(
 } {
   const metrics_current = generateClientComparisonMetrics(
     clients,
-    packages,
     currentPeriod.range,
     campaigns,
     tasks,
@@ -501,7 +492,6 @@ export function generateClientComparison(
   );
   const metrics_previous = generateClientComparisonMetrics(
     clients,
-    packages,
     previousPeriod.range,
     campaigns,
     tasks,
@@ -531,7 +521,6 @@ export function generateClientComparison(
 // ----------------------------------------------------------------------------
 export function generatePeriodSummary(
   clients: ClientRecord[],
-  packages: PackageRecord[],
   period: ComparisonPeriod,
   campaigns: CampaignRecord[],
   tasks: TaskRecord[],
@@ -549,7 +538,6 @@ export function generatePeriodSummary(
 } {
   const metrics_current = generateClientComparisonMetrics(
     clients,
-    packages,
     period.range,
     campaigns,
     tasks,

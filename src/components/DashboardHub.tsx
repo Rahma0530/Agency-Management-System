@@ -2,7 +2,6 @@ import React from 'react';
 import {
   UserRecord,
   ClientRecord,
-  PackageRecord,
   CampaignRecord,
   TaskRecord,
   SocialInsightRecord,
@@ -25,7 +24,6 @@ interface DashboardHubProps {
   currentUser: UserRecord;
   users: UserRecord[];
   clients: ClientRecord[];
-  packages: PackageRecord[];
   campaigns: CampaignRecord[];
   tasks: TaskRecord[];
   socialInsights: SocialInsightRecord[];
@@ -39,7 +37,6 @@ export const DashboardHub: React.FC<DashboardHubProps> = ({
   currentUser,
   users,
   clients,
-  packages,
   campaigns,
   tasks,
   socialInsights,
@@ -52,7 +49,6 @@ export const DashboardHub: React.FC<DashboardHubProps> = ({
     return (
       <ExecutiveDashboard
         clients={clients}
-        packages={packages}
         campaigns={campaigns}
         tasks={tasks}
         socialInsights={socialInsights}
@@ -65,7 +61,6 @@ export const DashboardHub: React.FC<DashboardHubProps> = ({
     return (
       <HeadOfTechnicalDashboard
         clients={clients}
-        packages={packages}
         campaigns={campaigns}
         tasks={tasks}
         socialInsights={socialInsights}
@@ -85,7 +80,6 @@ export const DashboardHub: React.FC<DashboardHubProps> = ({
         currentUser={currentUser}
         users={users}
         clients={clients}
-        packages={packages}
         assignments={assignments}
         tasks={tasks}
         briefs={briefs}

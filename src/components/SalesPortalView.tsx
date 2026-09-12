@@ -16,7 +16,6 @@ import {
 import {
   ClientRecord,
   ClientStatus,
-  PackageRecord,
   UserRecord,
   BriefRecord,
   CampaignRecord,
@@ -33,7 +32,6 @@ import { matchesClientQuery } from '../lib/clientSearch';
 interface SalesPortalViewProps {
   currentUser: UserRecord;
   clients: ClientRecord[];
-  packages: PackageRecord[];
   users: UserRecord[];
   briefs?: BriefRecord[];
   campaigns?: CampaignRecord[];
@@ -55,7 +53,6 @@ interface SalesPortalViewProps {
 export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
   currentUser,
   clients,
-  packages,
   users,
   briefs = [],
   campaigns = [],
@@ -220,7 +217,7 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
                 <tr className="border-b border-purple-900/30 text-[11px] font-semibold text-stone-400 uppercase tracking-wider bg-black/20">
                   <th className="py-3 px-4">Client Name</th>
                   <th className="py-3 px-4">Industry</th>
-                  <th className="py-3 px-4">Package & Services</th>
+                  <th className="py-3 px-4">Services</th>
                   <th className="py-3 px-4">Contract Value</th>
                   <th className="py-3 px-4">Start Date</th>
                   <th className="py-3 px-4">Status</th>
@@ -229,7 +226,6 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
               </thead>
               <tbody className="divide-y divide-purple-900/20 text-xs">
                 {filteredClients.map((client) => {
-                  const pkg = packages.find((p) => p.id === client.package_id);
                   return (
                     <tr
                       key={client.id}
@@ -257,12 +253,9 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <span className="text-purple-300 font-medium block">
-                          {pkg?.name || 'Custom Plan'}
-                        </span>
-                        {pkg?.services && (
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {pkg.services.map((s) => (
+                        {client.services && client.services.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {client.services.map((s) => (
                               <span
                                 key={s}
                                 className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800/40 uppercase"
@@ -271,6 +264,8 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
                               </span>
                             ))}
                           </div>
+                        ) : (
+                          <span className="text-stone-500">Custom Plan</span>
                         )}
                       </td>
 
@@ -323,8 +318,6 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
       {activeDashboardClient && (
         <ClientDashboard
           client={activeDashboardClient}
-          packageRecord={packages.find((p) => p.id === activeDashboardClient.package_id)}
-          allPackages={packages}
           users={users}
           currentUser={currentUser}
           briefs={briefs}

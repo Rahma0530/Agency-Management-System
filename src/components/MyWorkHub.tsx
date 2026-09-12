@@ -19,7 +19,6 @@ import {
 import {
   UserRecord,
   ClientRecord,
-  PackageRecord,
   AssignmentRecord,
   TaskRecord,
   DailyLogRecord,
@@ -43,7 +42,6 @@ interface MyWorkHubProps {
   currentUser: UserRecord;
   users: UserRecord[];
   clients: ClientRecord[];
-  packages: PackageRecord[];
   assignments: AssignmentRecord[];
   tasks: TaskRecord[];
   dailyLogs: DailyLogRecord[];
@@ -121,7 +119,6 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   currentUser,
   users,
   clients,
-  packages,
   assignments,
   tasks,
   dailyLogs,
@@ -189,7 +186,7 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
 
     const service = SERVICE_BY_ROLE[role];
     if (service) {
-      const departmentClients = resolveDepartmentClients(service, clients, packages);
+      const departmentClients = resolveDepartmentClients(service, clients);
       if (SERVICE_TEAM_LEAD_ROLES.includes(role)) return departmentClients;
       // Agent: further narrowed to clients they're formally assigned to for
       // this exact service — mirrors resolveClientsForSubject's agent branch.
@@ -203,7 +200,7 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
     }
 
     return [];
-  }, [showClients, currentUser.role, currentUser.id, clients, packages, assignments, tasks]);
+  }, [showClients, currentUser.role, currentUser.id, clients, assignments, tasks]);
 
   // Module 14: search narrows only the rendered "My Clients" list — the gained/lost metrics
   // below stay scoped to the full myClients roster, not the search-narrowed view.

@@ -51,7 +51,6 @@ import { DashboardHub } from './components/DashboardHub';
 import {
   ClientRecord,
   ClientStatus,
-  PackageRecord,
   UserRecord,
   BriefRecord,
   BriefRevisionRecord,
@@ -80,7 +79,6 @@ import {
   ClientContractRecord,
 } from './types/database';
 import {
-  INITIAL_PACKAGES,
   INITIAL_USERS,
   INITIAL_CLIENTS,
   INITIAL_BRIEFS,
@@ -132,7 +130,6 @@ export default function App() {
   };
 
   // Data State
-  const [packages, setPackages] = useState<PackageRecord[]>(INITIAL_PACKAGES);
   const [users, setUsers] = useState<UserRecord[]>(INITIAL_USERS);
   const [clients, setClients] = useState<ClientRecord[]>(INITIAL_CLIENTS);
   const [briefs, setBriefs] = useState<BriefRecord[]>(INITIAL_BRIEFS);
@@ -370,12 +367,6 @@ export default function App() {
 
     if (configured) {
       try {
-        // Fetch packages
-        const { data: pkgData, error: pkgErr } = await supabase.from('packages').select('*');
-        if (!pkgErr && pkgData && pkgData.length > 0) {
-          setPackages(pkgData as PackageRecord[]);
-        }
-
         // Fetch clients
         const { data: clientData, error: clientErr } = await supabase.from('clients').select('*');
         if (!clientErr && clientData && clientData.length > 0) {
@@ -1416,7 +1407,7 @@ export default function App() {
     } else {
       const subject = users.find((u) => u.id === scope.agentId);
       if (!subject) return;
-      scopedClients = resolveClientsForSubject(subject, clients, packages, assignments);
+      scopedClients = resolveClientsForSubject(subject, clients, assignments);
       serviceFilter = serviceFilterForRole(subject.role);
       scopeLabel = subject.name;
     }
@@ -1428,8 +1419,8 @@ export default function App() {
 
     const result =
       mode === 'comparison'
-        ? generateClientComparison(scopedClients, packages, current, previous!, campaigns, tasks, socialInsights, serviceFilter)
-        : generatePeriodSummary(scopedClients, packages, current, campaigns, tasks, socialInsights, serviceFilter);
+        ? generateClientComparison(scopedClients, current, previous!, campaigns, tasks, socialInsights, serviceFilter)
+        : generatePeriodSummary(scopedClients, current, campaigns, tasks, socialInsights, serviceFilter);
 
     // created_at is preserved from whatever's already in local state (cheap, synchronous) for
     // both write paths below; the network round trip only decides insert-vs-update targeting.
@@ -1543,7 +1534,7 @@ export default function App() {
     if (!client) return;
 
     const period = resolveComparisonPeriods('monthly').current;
-    const result = generatePeriodSummary([client], packages, period, campaigns, tasks, socialInsights);
+    const result = generatePeriodSummary([client], period, campaigns, tasks, socialInsights);
 
     const localExistingComparison = clientComparisons.find(
       (c) => c.client_id === clientId && c.row_kind === 'period_summary' && c.period_current === result.period_current
@@ -2349,7 +2340,6 @@ export default function App() {
                   currentUser={currentUser}
                   users={users}
                   clients={clients}
-                  packages={packages}
                   campaigns={campaigns}
                   tasks={tasks}
                   socialInsights={socialInsights}
@@ -2368,7 +2358,6 @@ export default function App() {
                   currentUser={currentUser}
                   users={users}
                   clients={clients}
-                  packages={packages}
                   assignments={assignments}
                   tasks={tasks}
                   dailyLogs={dailyLogs}
@@ -2392,7 +2381,6 @@ export default function App() {
                   <SalesPortalView
                     currentUser={currentUser}
                     clients={clients}
-                    packages={packages}
                     users={users}
                     onOpenRegisterModal={() => setIsRegisterModalOpen(true)}
                     onUpdateClientStatus={handleUpdateClientStatus}
@@ -2403,7 +2391,6 @@ export default function App() {
                 ) : (
                   <AMQueue
                     clients={clients}
-                    packages={packages}
                     users={users}
                     briefs={briefs}
                     briefRevisions={briefRevisions}
@@ -2445,7 +2432,6 @@ export default function App() {
                 <ServiceBriefsRoutingView
                   currentUser={currentUser}
                   clients={clients}
-                  packages={packages}
                   briefs={briefs}
                   briefRevisions={briefRevisions}
                   assignments={assignments}
@@ -2543,7 +2529,6 @@ export default function App() {
                   clients={clients}
                   users={users}
                   currentUser={currentUser}
-                  packages={packages}
                   briefs={briefs}
                   briefRevisions={briefRevisions}
                   tasks={tasks}
@@ -2575,7 +2560,6 @@ export default function App() {
                   currentUser={currentUser}
                   users={users}
                   clients={clients}
-                  packages={packages}
                   assignments={assignments}
                   reports={reports}
                   clientComparisons={clientComparisons}
@@ -2601,7 +2585,6 @@ export default function App() {
       <ClientRegistrationModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
-        packages={packages}
         amTeamLeaders={users.filter((u) => u.role === 'am_team_lead' && !isPendingEmployee(u))}
         onSubmit={handleRegisterClient}
       />

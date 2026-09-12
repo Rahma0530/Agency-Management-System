@@ -4,7 +4,6 @@ import {
   UserRecord,
   UserRole,
   ClientRecord,
-  PackageRecord,
   AssignmentRecord,
   TaskRecord,
   BriefRecord,
@@ -67,18 +66,17 @@ export const TeamLeadDashboard: React.FC<{
   currentUser: UserRecord;
   users: UserRecord[];
   clients: ClientRecord[];
-  packages: PackageRecord[];
   assignments: AssignmentRecord[];
   tasks: TaskRecord[];
   briefs: BriefRecord[];
   kpiScores: KpiScoreRecord[];
   onNavigateToModule?: (module: AppModuleId, prefillAssigneeName?: string) => void;
-}> = ({ currentUser, users, clients, packages, assignments, tasks, briefs, kpiScores, onNavigateToModule }) => {
+}> = ({ currentUser, users, clients, assignments, tasks, briefs, kpiScores, onNavigateToModule }) => {
   const config = TEAM_LEAD_DEPT_CONFIG[currentUser.role];
 
   const deptClients = useMemo(
-    () => (config ? resolveClientsForSubject(currentUser, clients, packages, assignments) : []),
-    [config, currentUser, clients, packages, assignments]
+    () => (config ? resolveClientsForSubject(currentUser, clients, assignments) : []),
+    [config, currentUser, clients, assignments]
   );
 
   const statusCounts = useMemo(() => {
@@ -96,7 +94,7 @@ export const TeamLeadDashboard: React.FC<{
     if (config?.service) return !clientHasBrief(client, config.service);
     // Account Management spans every service a client subscribes to — missing if any of them
     // has no documented brief yet.
-    const services = packages.find((p) => p.id === client.package_id)?.services || [];
+    const services = client.services || [];
     return services.some((s) => !clientHasBrief(client, s));
   };
 
@@ -107,12 +105,12 @@ export const TeamLeadDashboard: React.FC<{
       deptClients
         .filter((c) => c.status !== 'closed' && !isPausedClient(c) && (isRenewalApproaching(c) || isMissingBrief(c)))
         .slice(0, 6),
-    [deptClients, briefs, packages, config]
+    [deptClients, briefs, config]
   );
 
   const pendingBriefsCount = useMemo(
     () => deptClients.filter((c) => c.status !== 'closed' && !isPausedClient(c) && isMissingBrief(c)).length,
-    [deptClients, briefs, packages, config]
+    [deptClients, briefs, config]
   );
 
   const deptAgents = useMemo(

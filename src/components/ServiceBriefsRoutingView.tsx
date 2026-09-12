@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 import {
   ClientRecord,
-  PackageRecord,
   UserRecord,
   BriefRecord,
   BriefRevisionRecord,
@@ -57,7 +56,6 @@ import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
 interface ServiceBriefsRoutingViewProps {
   currentUser: UserRecord;
   clients: ClientRecord[];
-  packages: PackageRecord[];
   briefs: BriefRecord[];
   briefRevisions?: BriefRevisionRecord[];
   assignments: AssignmentRecord[];
@@ -107,7 +105,6 @@ interface ServiceBriefsRoutingViewProps {
 const AMServiceBriefsPanel: React.FC<{
   currentUser: UserRecord;
   clients: ClientRecord[];
-  packages: PackageRecord[];
   briefs: BriefRecord[];
   briefRevisions: BriefRevisionRecord[];
   assignments: AssignmentRecord[];
@@ -141,7 +138,6 @@ const AMServiceBriefsPanel: React.FC<{
 }> = ({
   currentUser,
   clients,
-  packages,
   briefs,
   briefRevisions,
   assignments,
@@ -173,8 +169,7 @@ const AMServiceBriefsPanel: React.FC<{
 
   const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
 
-  const clientServices = (client: ClientRecord): ServiceType[] =>
-    packages.find((p) => p.id === client.package_id)?.services || [];
+  const clientServices = (client: ClientRecord): ServiceType[] => client.services || [];
 
   const clientBriefsDocumented = (client: ClientRecord) => {
     const services = clientServices(client);
@@ -254,7 +249,6 @@ const AMServiceBriefsPanel: React.FC<{
       ) : (
         <BriefRepositoryView
           clients={authorizedClients}
-          packages={packages}
           briefs={briefs}
           briefRevisions={briefRevisions}
           users={users}
@@ -266,8 +260,6 @@ const AMServiceBriefsPanel: React.FC<{
       {activeDashboardClient && (
         <ClientDashboard
           client={activeDashboardClient}
-          packageRecord={packages.find((p) => p.id === activeDashboardClient.package_id)}
-          allPackages={packages}
           users={users}
           currentUser={currentUser}
           briefs={briefs}
@@ -299,7 +291,6 @@ const AMServiceBriefsPanel: React.FC<{
 export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> = ({
   currentUser,
   clients,
-  packages,
   briefs,
   briefRevisions = [],
   assignments,
@@ -331,7 +322,6 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
       <AMServiceBriefsPanel
         currentUser={currentUser}
         clients={clients}
-        packages={packages}
         briefs={briefs}
         briefRevisions={briefRevisions}
         assignments={assignments}
@@ -439,8 +429,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   //   clientBriefs, which is never filtered by service_type). This queue itself still
   //   only lists clients subscribed to serviceType, via the hasService check below.
   const authorizedClients = clients.filter((c) => {
-    const pkg = packages.find((p) => p.id === c.package_id);
-    const hasService = pkg?.services.includes(serviceType);
+    const hasService = (c.services || []).includes(serviceType);
     if (!hasService) return false;
 
     if (isTeamLead) {
@@ -470,7 +459,6 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
 
   const selectedClient =
     authorizedClients.find((c) => c.id === selectedClientId) || authorizedClients[0] || null;
-  const selectedClientPackage = packages.find((p) => p.id === selectedClient?.package_id);
 
   const serviceBrief = briefs.find(
     (b) => b.client_id === selectedClient?.id && b.service_type === serviceType
@@ -889,9 +877,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                         {getLifecycleStatus(selectedClient).label}
                       </span>
                     </div>
-                    <p className="text-xs text-stone-400 mt-0.5">
-                      {selectedClient.industry || 'General'} • Package: <strong className="text-purple-300">{selectedClientPackage?.name}</strong>
-                    </p>
+                    <p className="text-xs text-stone-400 mt-0.5">{selectedClient.industry || 'General'}</p>
                   </div>
 
                   <button
@@ -979,8 +965,6 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
       {activeDashboardClient && (
         <ClientDashboard
           client={activeDashboardClient}
-          packageRecord={packages.find((p) => p.id === activeDashboardClient.package_id)}
-          allPackages={packages}
           users={users}
           currentUser={currentUser}
           briefs={briefs}

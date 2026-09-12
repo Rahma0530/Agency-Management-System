@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClientRecord, PackageRecord, CampaignRecord, TaskRecord, SocialInsightRecord, UserRecord } from '../../types/database';
+import { ClientRecord, CampaignRecord, TaskRecord, SocialInsightRecord, UserRecord } from '../../types/database';
 import { DepartmentComparisonPanel } from './DepartmentComparisonPanel';
 
 // Head of Technical owns the 3 technical delivery teams (SEO, Media Buying, Social Media), not
@@ -7,16 +7,14 @@ import { DepartmentComparisonPanel } from './DepartmentComparisonPanel';
 // with no revenue/client-count/churn tiles above it.
 export const HeadOfTechnicalDashboard: React.FC<{
   clients: ClientRecord[];
-  packages: PackageRecord[];
   campaigns: CampaignRecord[];
   tasks: TaskRecord[];
   socialInsights: SocialInsightRecord[];
   users: UserRecord[];
-}> = ({ clients, packages, campaigns, tasks, socialInsights, users }) => (
+}> = ({ clients, campaigns, tasks, socialInsights, users }) => (
   <div className="space-y-6">
     <DepartmentComparisonPanel
       clients={clients}
-      packages={packages}
       campaigns={campaigns}
       tasks={tasks}
       socialInsights={socialInsights}

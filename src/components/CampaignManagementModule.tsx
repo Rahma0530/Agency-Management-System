@@ -32,7 +32,6 @@ import {
   CampaignStatus,
   ClientRecord,
   UserRecord,
-  PackageRecord,
   BriefRecord,
   BriefRevisionRecord,
   TaskRecord,
@@ -59,7 +58,6 @@ interface CampaignManagementModuleProps {
   clients: ClientRecord[];
   users: UserRecord[];
   currentUser: UserRecord;
-  packages: PackageRecord[];
   briefs: BriefRecord[];
   briefRevisions?: BriefRevisionRecord[];
   tasks: TaskRecord[];
@@ -219,7 +217,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   clients,
   users,
   currentUser,
-  packages,
   briefs,
   briefRevisions = [],
   tasks,
@@ -1815,8 +1812,6 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
       {activeDashboardClient && (
         <ClientDashboard
           client={activeDashboardClient}
-          packageRecord={packages.find((p) => p.id === activeDashboardClient.package_id)}
-          allPackages={packages}
           users={users}
           currentUser={currentUser}
           briefs={briefs}
