@@ -45,6 +45,7 @@ import {
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { CLIENT_STATUS_META } from '../lib/clientStatus';
+import { matchesClientQuery } from '../lib/clientSearch';
 import { ClientDashboard } from './ClientDashboard';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
@@ -520,9 +521,10 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   };
 
   const displayedClients = authorizedClients.filter((c) => {
+    // Module 14: name-or-phone via the shared predicate, industry kept as this screen's own
+    // pre-existing extra match dimension.
     const matchesSearch =
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.industry || '').toLowerCase().includes(searchQuery.toLowerCase());
+      matchesClientQuery(c, searchQuery) || (c.industry || '').toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
 
     if (statusFilter === 'all') return true;
@@ -733,7 +735,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search clients or industry..."
+              placeholder="Search name, phone, or industry..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-stone-900/80 border border-stone-800 text-white placeholder-stone-500 focus:outline-none focus:border-purple-400"

@@ -520,6 +520,7 @@ export default function App() {
     name: string;
     industry: string;
     services: ServiceType[];
+    phone_number?: string;
     contract_value: number;
     start_date: string;
     renewal_date: string;
@@ -532,6 +533,7 @@ export default function App() {
       name: clientData.name,
       industry: clientData.industry,
       services: clientData.services,
+      phone_number: clientData.phone_number || null,
       status: 'onboarding',
       sales_owner_id: currentUser.id,
       am_agent_id: null, // Awaiting Account Manager assignment

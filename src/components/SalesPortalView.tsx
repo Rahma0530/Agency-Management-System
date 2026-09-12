@@ -28,6 +28,7 @@ import {
 } from '../types/database';
 import { ClientDashboard } from './ClientDashboard';
 import { CLIENT_STATUS_META } from '../lib/clientStatus';
+import { matchesClientQuery } from '../lib/clientSearch';
 
 interface SalesPortalViewProps {
   currentUser: UserRecord;
@@ -79,9 +80,11 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
   const filteredClients = useMemo(() => {
     if (!searchQuery.trim()) return personalClients;
     const q = searchQuery.toLowerCase().trim();
+    // Module 14: name-or-phone via the shared predicate, industry/id kept as this screen's own
+    // pre-existing extra match dimensions.
     return personalClients.filter(
       (c) =>
-        c.name.toLowerCase().includes(q) ||
+        matchesClientQuery(c, searchQuery) ||
         (c.industry && c.industry.toLowerCase().includes(q)) ||
         c.id.toLowerCase().includes(q)
     );
@@ -196,7 +199,7 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search clients or industry..."
+              placeholder="Search name, phone, industry, or ID..."
               className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-black/30 border border-purple-900/40 text-white outline-none focus:border-purple-400"
             />
           </div>

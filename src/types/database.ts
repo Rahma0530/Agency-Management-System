@@ -68,6 +68,10 @@ export interface ClientRecord {
   id: string;
   name: string;
   industry?: string | null;
+  // Module 14: plain free-text contact number, no format enforcement (spans multiple countries/
+  // formats). Optional at registration — collected via ClientRegistrationModal, searchable
+  // alongside name via lib/clientSearch.ts's shared predicate.
+  phone_number?: string | null;
   // Module 13: deprecated in favor of `services` below — kept in the schema (never dropped) for
   // referential/backfill safety, but no longer read or written by app code. Use `services`.
   package_id?: string | null;

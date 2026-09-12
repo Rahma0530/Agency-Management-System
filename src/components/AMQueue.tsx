@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Eye,
   Gauge,
+  Search,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -48,6 +49,7 @@ import {
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { isPendingEmployee, canSeeContractValue } from '../lib/permissions';
+import { matchesClientQuery } from '../lib/clientSearch';
 import { ClientDashboard } from './ClientDashboard';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
 
@@ -198,6 +200,15 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   const [assigningAgentId, setAssigningAgentId] = useState<Record<string, string>>({});
   const [isAssigning, setIsAssigning] = useState<string | null>(null);
   const [assignMessage, setAssignMessage] = useState<{ id: string; text: string } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Module 14: search narrows only the rendered list below — the stats bar and Renewal Queue
+  // above stay scoped to the full visibleClients portfolio, same precedent as SalesPortalView's
+  // stat cards staying on personalClients while only its table rows use filteredClients.
+  const displayedClients = useMemo(
+    () => visibleClients.filter((c) => matchesClientQuery(c, searchQuery)),
+    [visibleClients, searchQuery]
+  );
 
   const amAgents = users.filter((u) => u.role === 'am_agent' && !isPendingEmployee(u));
   const salesUsers = users.filter((u) => u.role === 'sales' && !isPendingEmployee(u));
@@ -431,20 +442,34 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           borderColor: 'var(--border-medium)',
         }}
       >
-        <div className="p-4 border-b border-purple-900/30 flex items-center justify-between">
+        <div className="p-4 border-b border-purple-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Building2 className="w-4 h-4 text-purple-400" />
             <h3 className="text-sm font-bold text-white">Client Portfolio</h3>
           </div>
-          <span className="text-xs text-stone-400">
-            Showing <strong className="text-white">{visibleClients.length}</strong> clients
-          </span>
+          <div className="flex items-center gap-3">
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search name or phone..."
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-black/30 border border-purple-900/40 text-white outline-none focus:border-purple-400"
+              />
+            </div>
+            <span className="text-xs text-stone-400 whitespace-nowrap">
+              Showing <strong className="text-white">{displayedClients.length}</strong> clients
+            </span>
+          </div>
         </div>
 
-        {visibleClients.length === 0 ? (
+        {displayedClients.length === 0 ? (
           <div className="p-8 text-center space-y-2">
             <p className="text-xs text-stone-400">
-              {isAMAgent
+              {searchQuery
+                ? 'No clients match your search.'
+                : isAMAgent
                 ? 'No clients currently assigned to your account. Your Team Leader will assign new clients upon intake.'
                 : 'No clients found in the onboarding queue.'}
             </p>
@@ -463,7 +488,7 @@ export const AMQueue: React.FC<AMQueueProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-purple-900/20 text-xs">
-                {visibleClients.map((client) => {
+                {displayedClients.map((client) => {
                   const assignedAgent = amAgents.find((u) => u.id === client.am_agent_id);
                   const lifecycle = getClientLifecycleStatus(client);
                   const clientPkg = packages.find((p) => p.id === client.package_id);

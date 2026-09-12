@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { BarChart3, TrendingUp, FileText, Users, AlertTriangle, ClipboardList } from 'lucide-react';
+import { BarChart3, TrendingUp, FileText, Users, AlertTriangle, ClipboardList, Search } from 'lucide-react';
 import {
   ClientRecord,
   PackageRecord,
@@ -19,6 +19,7 @@ import {
   ClientAnomalyResult,
 } from '../lib/reportingEngine';
 import { isPendingEmployee } from '../lib/permissions';
+import { matchesClientQuery } from '../lib/clientSearch';
 import { PeriodSelector } from './reporting/PeriodSelector';
 import { ComparisonCard, FiledReportsList, describeComparisonScope } from './reporting/ComparisonDisplay';
 
@@ -103,6 +104,14 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
 
   const [scope, setScope] = useState<ReportsHubScope>('own');
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+
+  // Module 14: narrows the "Specific Client" select's options only — myClients itself (used for
+  // the "All My Clients" count and the anomalies panel below) stays unfiltered.
+  const searchedClients = useMemo(
+    () => myClients.filter((c) => matchesClientQuery(c, clientSearchQuery)),
+    [myClients, clientSearchQuery]
+  );
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [reportMode, setReportMode] = useState<ReportMode>('comparison');
   const [granularity, setGranularity] = useState<ComparisonGranularity | 'custom'>('monthly');
@@ -287,18 +296,30 @@ export const ReportsHub: React.FC<ReportsHubProps> = ({
         </div>
 
         {scope === 'client' && (
-          <select
-            value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl text-xs bg-[#100c1c] border border-purple-900/50 text-white focus:outline-none focus:border-purple-400"
-          >
-            <option value="">-- Select a client --</option>
-            {myClients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={clientSearchQuery}
+                onChange={(e) => setClientSearchQuery(e.target.value)}
+                placeholder="Search name or phone..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl text-xs bg-[#100c1c] border border-purple-900/50 text-white placeholder-stone-500 focus:outline-none focus:border-purple-400"
+              />
+            </div>
+            <select
+              value={selectedClientId}
+              onChange={(e) => setSelectedClientId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl text-xs bg-[#100c1c] border border-purple-900/50 text-white focus:outline-none focus:border-purple-400"
+            >
+              <option value="">-- Select a client --</option>
+              {searchedClients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
 
         {scope === 'agent' && (

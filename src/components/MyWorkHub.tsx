@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   TrendingUp,
   TrendingDown,
+  Search,
 } from 'lucide-react';
 import {
   UserRecord,
@@ -35,6 +36,7 @@ import { getTodayStr, isTaskOverdue, isTaskDueToday, getSortedEmployeeTasks } fr
 import { resolveDepartmentClients, resolveComparisonPeriods } from '../lib/reportingEngine';
 import { canSeeContractValue } from '../lib/permissions';
 import { CLIENT_STATUS_META } from '../lib/clientStatus';
+import { matchesClientQuery } from '../lib/clientSearch';
 import { EmployeePerformancePage } from './EmployeePerformancePage';
 
 interface MyWorkHubProps {
@@ -158,6 +160,7 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
   const [isSubmittingExtraEffort, setIsSubmittingExtraEffort] = useState(false);
 
   const [clientMetricsPeriod, setClientMetricsPeriod] = useState<'month' | 'quarter' | 'all_time'>('month');
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
 
   const todayStr = useMemo(() => getTodayStr(), []);
 
@@ -201,6 +204,13 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
 
     return [];
   }, [showClients, currentUser.role, currentUser.id, clients, packages, assignments, tasks]);
+
+  // Module 14: search narrows only the rendered "My Clients" list — the gained/lost metrics
+  // below stay scoped to the full myClients roster, not the search-narrowed view.
+  const displayedMyClients = useMemo(
+    () => myClients.filter((c) => matchesClientQuery(c, clientSearchQuery)),
+    [myClients, clientSearchQuery]
+  );
 
   // Module 13 Phase 4: per-agent gained/lost client metrics, period-scoped via the same
   // resolveComparisonPeriods used for churn reporting elsewhere. "Gained" = clients whose
@@ -381,6 +391,19 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
         <span className="text-[11px] text-stone-400 font-mono">{myClients.length}</span>
       </div>
 
+      {myClients.length > 0 && (
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={clientSearchQuery}
+            onChange={(e) => setClientSearchQuery(e.target.value)}
+            placeholder="Search name or phone..."
+            className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-stone-900/60 border border-stone-800 text-white placeholder-stone-500 outline-none focus:border-purple-400"
+          />
+        </div>
+      )}
+
       {gainedLostStats && (
         <div className="p-3 rounded-xl bg-stone-900/60 border border-stone-800 space-y-2">
           <div className="flex items-center justify-between">
@@ -418,11 +441,13 @@ export const MyWorkHub: React.FC<MyWorkHubProps> = ({
         </div>
       )}
 
-      {myClients.length === 0 ? (
-        <p className="text-xs text-stone-500 py-4 text-center">No clients currently assigned to you.</p>
+      {displayedMyClients.length === 0 ? (
+        <p className="text-xs text-stone-500 py-4 text-center">
+          {clientSearchQuery ? 'No clients match your search.' : 'No clients currently assigned to you.'}
+        </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto">
-          {myClients.map((client) => {
+          {displayedMyClients.map((client) => {
             const showValue = canSeeContractValue(currentUser.role, client.sales_owner_id === currentUser.id);
             const isNewAssignment = newClientTaskIds.has(client.id);
             return (

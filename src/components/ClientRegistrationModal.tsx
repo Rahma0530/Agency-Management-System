@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UserCheck, Sparkles, Building2, Briefcase, DollarSign, Calendar, Users } from 'lucide-react';
+import { X, UserCheck, Sparkles, Building2, Briefcase, DollarSign, Calendar, Users, Phone } from 'lucide-react';
 import { PackageRecord, UserRecord } from '../types/database';
 
 interface ClientRegistrationModalProps {
@@ -11,6 +11,7 @@ interface ClientRegistrationModalProps {
     name: string;
     industry: string;
     package_id: string;
+    phone_number?: string;
     contract_value: number;
     start_date: string;
     renewal_date: string;
@@ -34,6 +35,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
 }) => {
   const [name, setName] = useState('');
   const [industry, setIndustry] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [packageId, setPackageId] = useState(packages[0]?.id || '');
   const [contractValue, setContractValue] = useState<number | ''>('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
@@ -63,6 +65,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
         name: name.trim(),
         industry: industry.trim() || 'General',
         package_id: packageId,
+        phone_number: phoneNumber.trim() || undefined,
         contract_value: contractValue ? Number(contractValue) : 0,
         start_date: startDate,
         renewal_date: renewalDate,
@@ -71,6 +74,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
       // reset
       setName('');
       setIndustry('');
+      setPhoneNumber('');
       setContractValue('');
       setRenewalDateTouched(false);
       onClose();
@@ -180,6 +184,29 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
 
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
+                Phone Number
+              </label>
+              <div className="relative">
+                <Phone className="w-4 h-4 absolute left-3 top-3 text-stone-400 pointer-events-none" />
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="e.g. +966 5X XXX XXXX"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm transition-all focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  style={{
+                    background: 'rgba(10, 10, 13, 0.8)',
+                    border: '1px solid var(--border-soft)',
+                    color: 'var(--white)',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
                 Monthly Retainer (USD/SAR)
               </label>
               <div className="relative">
@@ -198,9 +225,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                 />
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--lilac)' }}>
                 Service Package <span className="text-red-400">*</span>

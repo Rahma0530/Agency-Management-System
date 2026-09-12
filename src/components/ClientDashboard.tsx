@@ -570,6 +570,9 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               </div>
               <div className="flex items-center gap-4 text-xs text-stone-300 mt-1 flex-wrap">
                 <span>Industry: <strong className="text-white">{client.industry || 'General Business'}</strong></span>
+                {client.phone_number && (
+                  <span>Phone: <strong className="text-white">{client.phone_number}</strong></span>
+                )}
                 {showContractValue && (
                   <span>Contract: <strong className="text-emerald-400 font-mono">{client.contract_value ? `${client.contract_value.toLocaleString()} SAR/mo` : 'Custom'}</strong></span>
                 )}

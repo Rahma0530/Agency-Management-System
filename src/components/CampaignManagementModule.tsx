@@ -49,6 +49,7 @@ import {
 } from '../types/database';
 import { isPendingEmployee } from '../lib/permissions';
 import { CLIENT_STATUS_META } from '../lib/clientStatus';
+import { matchesClientQuery } from '../lib/clientSearch';
 import { getRoleInfo } from '../data/roles';
 import { ClientDashboard } from './ClientDashboard';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
@@ -467,8 +468,9 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
         const name = getCampaignName(c).toLowerCase();
         const extId = (c.campaign_id_external || '').toLowerCase();
         const client = clients.find((cl) => cl.id === c.client_id);
-        const clientName = (client?.name || '').toLowerCase();
-        if (!name.includes(query) && !extId.includes(query) && !clientName.includes(query)) {
+        // Module 14: client half of the match (name or phone) via the shared predicate.
+        const clientMatches = !!client && matchesClientQuery(client, searchQuery);
+        if (!name.includes(query) && !extId.includes(query) && !clientMatches) {
           return false;
         }
       }
@@ -955,7 +957,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by campaign name, platform ID, or client name..."
+              placeholder="Search by campaign name, platform ID, client name, or phone..."
               className="w-full pl-4 pr-9 py-2 rounded-xl text-xs outline-none transition-all"
               style={{
                 background: 'rgba(255, 255, 255, 0.05)',
