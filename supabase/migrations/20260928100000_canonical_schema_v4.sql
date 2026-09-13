@@ -75,6 +75,21 @@
 --       elsewhere), plus each department team lead scoped to only their
 --       own service_type. Read access is open to every authenticated user.
 --
+-- ALSO IN v4 (added after this file's initial version, folded straight in
+-- since it was still unrun against any database — not a v5): the
+-- marketing_manager role (16th UserRole value). NOT a team lead of
+-- graphic_designer/video_editor — that shared pool's existing
+-- "no dedicated manager, visible to everyone but sales" model
+-- (employee_visible()'s branch) is completely untouched. marketing_manager
+-- is a narrow, cross-cutting exception layered on top: task_visible() gets
+-- one new branch granting visibility into ONLY graphic_designer/
+-- video_editor's tasks (by assignee role, not team — those two roles have
+-- different team values), and app-layer code (CrossTeamTaskBoard.tsx,
+-- CapacityManagement.tsx) scopes task creation/assignment and read-only
+-- capacity visibility the same way. No employee-management rights
+-- anywhere: not added to users_update_profile_rls/users_deactivate_rls's
+-- role list, not added to direct_report_visible(), no 'employees' module.
+--
 -- EVERYTHING BELOW THIS POINT THAT ISN'T CALLED OUT ABOVE IS UNCHANGED FROM
 -- v3 — see v3's own header for the full Module 13/14 history (5-value
 -- clients.status, clients.services replacing package_id, clients.
@@ -187,7 +202,11 @@ alter table public.users add constraint users_role_check check (
     'media_buying_team_lead', 'media_buying_agent',
     'seo_team_lead', 'seo_agent', 'programming_agent',
     'social_media_team_lead', 'social_media_agent',
-    'graphic_designer', 'video_editor', 'ai_engineer'
+    'graphic_designer', 'video_editor', 'ai_engineer',
+    -- Not a team lead of graphic_designer/video_editor (that shared pool is unchanged) — a
+    -- narrow, cross-cutting exception: task visibility/assignment + read-only capacity
+    -- visibility over only those two roles. See task_visible() below and app-layer gating.
+    'marketing_manager'
   )
 );
 
@@ -868,6 +887,17 @@ as $$
         public.app_user_role() = 'am_agent'
         and p_client_id is not null
         and public.client_am_agent_is_caller(p_client_id)
+      )
+      or (
+        -- marketing_manager (v4): narrow, cross-cutting exception — visibility into ONLY
+        -- graphic_designer/video_editor's tasks (by assignee ROLE, not team, since those two
+        -- roles have different team values). Not a team lead: no broader access anywhere else
+        -- in this function. Does not touch employee_visible()'s separate shared-pool branch.
+        public.app_user_role() = 'marketing_manager'
+        and exists (
+          select 1 from public.users u
+          where u.id = p_assigned_to and u.role in ('graphic_designer', 'video_editor')
+        )
       )
       or (
         p_parent_task_id is not null

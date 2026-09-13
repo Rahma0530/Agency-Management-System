@@ -118,7 +118,12 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
 
   // Filters
   const [quickFilter, setQuickFilter] = useState<QuickTaskFilter>('all');
-  const [selectedTeam, setSelectedTeam] = useState<string>('all');
+  // marketing_manager lands pre-filtered to "Creative" — the only team value task_visible() ever
+  // hands them anyway, so arriving at "All Teams" would show the exact same rows with an extra
+  // click required to get there.
+  const [selectedTeam, setSelectedTeam] = useState<string>(
+    currentUser?.role === 'marketing_manager' ? 'Creative' : 'all'
+  );
   const [selectedClient, setSelectedClient] = useState<string>('all');
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -179,10 +184,19 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   // Technical, and Sales — sales has no task-based work (task_visible()/
   // isTaskAccessibleUnderRLS block them from tasks entirely), so they must
   // never appear as a selectable assignee here either.
+  //
+  // marketing_manager is additionally narrowed to ONLY graphic_designer/video_editor — they can
+  // create/assign tasks to the shared Creative pool and nothing else (not a team lead of any
+  // department, no broader assignment rights). task_visible()/isTaskAccessibleUnderRLS already
+  // enforce the matching read-side scope; this keeps the picker from ever offering an assignee
+  // whose task marketing_manager wouldn't be able to see afterward.
   const isOperationalAssignee = (u: UserRecord) => {
     if (!u) return false;
     if (u.role === 'executive' || u.role === 'head_of_technical' || u.role === 'sales') return false;
     if (!isActiveEmployee(u)) return false;
+    if (currentUser?.role === 'marketing_manager') {
+      return u.role === 'graphic_designer' || u.role === 'video_editor';
+    }
     return true;
   };
 
@@ -193,8 +207,18 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
   const isSharedCreativeResource =
     currentUser?.role === 'graphic_designer' || currentUser?.role === 'video_editor';
 
-  // Teams list
-  const teams = [
+  // Teams list. marketing_manager gets a single fixed "Creative" filter value instead of the
+  // full department list — task_visible() only ever hands them graphic_designer/video_editor's
+  // tasks anyway, so every other team's filter would just show zero results. "Creative" is
+  // assignee-ROLE-scoped (see filteredTasks below), not the literal task.team column — that
+  // column already splits across "Creative & Design"/"Video Production" for these two roles.
+  const teams =
+    currentUser?.role === 'marketing_manager'
+      ? [
+          { id: 'all', label: 'All Teams' },
+          { id: 'Creative', label: 'Creative' },
+        ]
+      : [
     { id: 'all', label: 'All Teams' },
     { id: 'SEO', label: 'SEO' },
     { id: 'Social Media', label: 'Social Media' },
@@ -283,8 +307,16 @@ export const CrossTeamTaskBoard: React.FC<CrossTeamTaskBoardProps> = ({
       if (quickFilter === 'unassigned' && t.assigned_to) return false;
       if (quickFilter === 'my_tasks' && t.assigned_to !== currentUserId) return false;
 
-      // Team filter
-      if (selectedTeam !== 'all' && t.team !== selectedTeam) return false;
+      // Team filter. 'Creative' is a synthetic, assignee-ROLE-scoped value (only ever offered to
+      // marketing_manager, see `teams` above) — the literal task.team column splits across
+      // "Creative & Design"/"Video Production" for graphic_designer/video_editor, so it can't be
+      // matched directly.
+      if (selectedTeam === 'Creative') {
+        const assignee = users.find((u) => u.id === t.assigned_to);
+        if (!assignee || (assignee.role !== 'graphic_designer' && assignee.role !== 'video_editor')) return false;
+      } else if (selectedTeam !== 'all' && t.team !== selectedTeam) {
+        return false;
+      }
 
       // Client filter
       if (selectedClient !== 'all' && t.client_id !== selectedClient) return false;

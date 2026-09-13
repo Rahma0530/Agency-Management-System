@@ -361,6 +361,8 @@ export function isCampaignAccessibleUnderRLS(
  * - Sales: Strictly FORBIDDEN (returns false)
  * - Executive & Head of Technical: All tasks (cross-team monitoring)
  * - Team Leads: Full team tasks
+ * - marketing_manager: NOT a team lead — narrow, cross-cutting visibility into ONLY
+ *   graphic_designer/video_editor's tasks (by assignee role). No broader access.
  * - graphic_designer / video_editor: Directly assigned ONLY — these are shared
  *   creative resources pooled across every requesting team, not a single
  *   department's own board, so the usual "same team as the assignee"
@@ -397,6 +399,16 @@ export function isTaskAccessibleUnderRLS(
   // 3. Team Leads: Full team tasks
   if (viewer.role.includes('lead')) {
     return true;
+  }
+
+  // 3.5. marketing_manager: NOT a team lead of graphic_designer/video_editor — narrow,
+  // cross-cutting visibility into ONLY those two roles' tasks (by assignee role, not team,
+  // since they have different team values). No broader access anywhere else in this function.
+  if (viewer.role === 'marketing_manager') {
+    const assignee = inMemoryUsers.find((u) => u.id === task.assigned_to);
+    if (assignee && (assignee.role === 'graphic_designer' || assignee.role === 'video_editor')) {
+      return true;
+    }
   }
 
   // 4. Shared creative resources: assigned-to-them only, no team fallback

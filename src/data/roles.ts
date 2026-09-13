@@ -281,6 +281,31 @@ export const AGENCY_ROLES: Record<UserRole, RoleMetadata> = {
     canAssignAM: false,
     description: 'AI-assisted automation, internal tooling, and technical support across cross-team task delivery.',
   },
+  // NOT a team lead of graphic_designer/video_editor — that shared pool keeps its existing
+  // "no dedicated manager, visible to everyone but sales" model untouched. This role is a narrow,
+  // cross-cutting exception: visibility into and task-assignment rights over ONLY those two
+  // roles' tasks, plus read-only capacity visibility for the same two — no employee-management
+  // rights (no 'employees' module, never added to any edit/deactivate-capable list). Lands
+  // directly on the Task Board (pre-filtered to Creative) rather than a dashboard, since they
+  // have no clients/employees of their own to manage — a TeamLeadDashboard-style landing would be
+  // mostly empty for them.
+  marketing_manager: {
+    role: 'marketing_manager',
+    englishTitle: 'Marketing Manager',
+    portalTitleEn: 'Marketing Manager Portal',
+    portalSlug: 'marketing-manager',
+    team: 'Marketing',
+    department: 'Marketing',
+    badgeBg: 'rgba(217, 70, 239, 0.2)',
+    badgeText: '#e879f9',
+    defaultModule: 'tasks',
+    allowedModules: ['tasks', 'capacity'],
+    canRegisterClients: false,
+    canCreateCampaign: false,
+    canManageCapacity: false,
+    canAssignAM: false,
+    description: 'Cross-cutting oversight of the shared Creative pool (Graphic Design & Video Production) — task assignment and read-only capacity visibility only.',
+  },
 };
 
 export const getRoleInfo = (role?: UserRole): RoleMetadata => {

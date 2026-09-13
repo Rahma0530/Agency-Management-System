@@ -21,7 +21,14 @@ export type UserRole =
   | 'social_media_agent'        // Social Media Agent
   | 'graphic_designer'          // Graphic Designer
   | 'video_editor'              // Video Editor
-  | 'ai_engineer';               // AI Engineer
+  | 'ai_engineer'                // AI Engineer
+  // NOT a team lead of graphic_designer/video_editor — that shared resource pool stays exactly
+  // as-is (no dedicated manager, visible to everyone but sales via employee_visible()'s existing
+  // branch). marketing_manager is a narrow, cross-cutting exception layered on top: visibility
+  // into and task-assignment rights over ONLY graphic_designer/video_editor's tasks, plus
+  // read-only capacity visibility for the same two roles. No employee-management rights
+  // (edit/deactivate/role-change) anywhere.
+  | 'marketing_manager';         // Marketing Manager
 
 export type ServiceType = 'seo' | 'social_media' | 'media_buying' | 'creative';
 

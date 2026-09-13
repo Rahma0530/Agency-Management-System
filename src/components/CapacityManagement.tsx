@@ -200,6 +200,12 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
           u.role === 'video_editor' ||
           OTHER_TEAM_LEAD_ROLES.social_media_team_lead.includes(u.role)
       );
+    } else if (role === 'marketing_manager') {
+      // NOT a team lead — narrow, read-only view of ONLY the shared creative pool (no other
+      // team lead cross-visibility the way the branches above get). canModifyCapacity's
+      // allowedRoles list below intentionally excludes marketing_manager, so this view never
+      // gets an edit affordance regardless.
+      result = users.filter((u) => u.role === 'graphic_designer' || u.role === 'video_editor');
     } else {
       result = users.filter(
         (u) => operationalRoles.includes(u.role) || (u.capacity_limit && u.capacity_limit > 0)
