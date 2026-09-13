@@ -201,6 +201,17 @@ export const INITIAL_USERS: UserRecord[] = [
     auth_id: 'auth-ai-eng-1',
     capacity_limit: 10,
   },
+  // 15. Marketing Manager
+  {
+    id: 'usr-mkt-mgr-1',
+    name: 'ياسمين العبدالله',
+    email: 'yasmine.marketing@agency.com',
+    password: 'agency123',
+    role: 'marketing_manager',
+    team: 'Marketing',
+    auth_id: 'auth-mkt-mgr-1',
+    capacity_limit: 10,
+  },
 ];
 
 export const INITIAL_CLIENTS: ClientRecord[] = [
