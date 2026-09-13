@@ -135,6 +135,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
   const operationalRoles: UserRole[] = [
     'executive',
     'head_of_technical',
+    'marketing_manager',
     'sales',
     'am_team_lead',
     'am_agent',
@@ -235,6 +236,11 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     if (availableTeams.has('Executive')) list.push({ id: 'Executive', label: 'Executive Management' });
     if (availableTeams.has('Technical')) list.push({ id: 'Technical', label: 'Technical & Operations' });
     if (availableTeams.has('Sales')) list.push({ id: 'Sales', label: 'Sales Team' });
+    // Only ever populated by a marketing_manager's own record surfacing under the generic
+    // capacity branch above (e.g. for an executive/head_of_technical viewer) — graphic_designer/
+    // video_editor (the roles marketing_manager actually oversees) sit in "Creative & Design"/
+    // "Video Production" below, not here.
+    if (availableTeams.has('Marketing')) list.push({ id: 'Marketing', label: 'Marketing' });
     if (availableTeams.has('Account Management')) list.push({ id: 'Account Management', label: 'Account Management (AM)' });
     if (availableTeams.has('Media Buying')) list.push({ id: 'Media Buying', label: 'Media Buying' });
     if (availableTeams.has('SEO')) list.push({ id: 'SEO', label: 'Search Engine Optimization (SEO)' });
@@ -255,6 +261,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     const allDefs: { id: UserRole; label: string }[] = [
       { id: 'executive', label: 'Executive Management (C-level)' },
       { id: 'head_of_technical', label: 'Head of Technical' },
+      { id: 'marketing_manager', label: 'Marketing Manager' },
       { id: 'sales', label: 'Sales Team (Sales)' },
       { id: 'am_team_lead', label: 'AM Team Leader' },
       { id: 'am_agent', label: 'AM Agent' },
