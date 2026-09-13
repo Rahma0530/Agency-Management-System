@@ -20,6 +20,7 @@ import {
   Info,
   Eye,
   Gauge,
+  ClipboardCheck,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -46,12 +47,13 @@ import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
 import { CLIENT_STATUS_META } from '../lib/clientStatus';
 import { matchesClientQuery } from '../lib/clientSearch';
 import { ClientDashboard } from './ClientDashboard';
-import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
-import { BriefEditHistory } from './BriefEditHistory';
 import { BriefRepositoryView } from './BriefRepositoryView';
+import { DynamicBriefForm } from './DynamicBriefForm';
+import { BriefFieldSchemaEditor } from './BriefFieldSchemaEditor';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
-import { canSeeContractValue, isPendingEmployee } from '../lib/permissions';
+import { canSeeContractValue, isActiveEmployee, canEditBriefFieldSchema } from '../lib/permissions';
 import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
+import { BriefFieldDef, BriefFieldSchemaRow } from '../types/database';
 
 interface ServiceBriefsRoutingViewProps {
   currentUser: UserRecord;
@@ -95,6 +97,20 @@ interface ServiceBriefsRoutingViewProps {
     status: PlatformConnectionStatus,
     notes: string
   ) => Promise<void>;
+  onSaveBrief?: (briefData: {
+    client_id: string;
+    service_type: ServiceType;
+    fields: Record<string, any>;
+    version: number;
+    submitted_by: string;
+    custom_field_defs: BriefFieldDef[];
+  }) => Promise<void>;
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
+  briefFieldSchemaRows: BriefFieldSchemaRow[];
+  onCreateBriefFieldSchema?: (row: Omit<BriefFieldSchemaRow, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onUpdateBriefFieldSchema?: (id: string, updates: Partial<BriefFieldSchemaRow>) => Promise<void>;
+  onDeleteBriefFieldSchema?: (id: string) => Promise<void>;
+  onDeleteClient?: (clientId: string) => Promise<void>;
 }
 
 // AM roles (am_team_lead, am_agent) don't work a single service — they need visibility into
@@ -135,6 +151,20 @@ const AMServiceBriefsPanel: React.FC<{
     status: PlatformConnectionStatus,
     notes: string
   ) => Promise<void>;
+  onSaveBrief?: (briefData: {
+    client_id: string;
+    service_type: ServiceType;
+    fields: Record<string, any>;
+    version: number;
+    submitted_by: string;
+    custom_field_defs: BriefFieldDef[];
+  }) => Promise<void>;
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
+  briefFieldSchemaRows: BriefFieldSchemaRow[];
+  onCreateBriefFieldSchema?: (row: Omit<BriefFieldSchemaRow, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onUpdateBriefFieldSchema?: (id: string, updates: Partial<BriefFieldSchemaRow>) => Promise<void>;
+  onDeleteBriefFieldSchema?: (id: string) => Promise<void>;
+  onDeleteClient?: (clientId: string) => Promise<void>;
 }> = ({
   currentUser,
   clients,
@@ -157,6 +187,13 @@ const AMServiceBriefsPanel: React.FC<{
   onCreatePortalLogin,
   platformConnections,
   onSetPlatformConnectionStatus,
+  onSaveBrief,
+  briefFieldSchemas,
+  briefFieldSchemaRows,
+  onCreateBriefFieldSchema,
+  onUpdateBriefFieldSchema,
+  onDeleteBriefFieldSchema,
+  onDeleteClient,
 }) => {
   const isTeamLead = currentUser.role === 'am_team_lead';
 
@@ -252,6 +289,7 @@ const AMServiceBriefsPanel: React.FC<{
           briefs={briefs}
           briefRevisions={briefRevisions}
           users={users}
+          briefFieldSchemas={briefFieldSchemas}
           onOpenFullDashboard={(clientId) => setDashboardClientId(clientId)}
         />
       )}
@@ -275,6 +313,13 @@ const AMServiceBriefsPanel: React.FC<{
           clientPortalUser={clientPortalUsers.find((cpu) => cpu.client_id === activeDashboardClient.id) || null}
           initialTab="briefs"
           onClose={() => setDashboardClientId(null)}
+          onSaveBrief={onSaveBrief}
+          briefFieldSchemas={briefFieldSchemas}
+          briefFieldSchemaRows={briefFieldSchemaRows}
+          onCreateBriefFieldSchema={onCreateBriefFieldSchema}
+          onUpdateBriefFieldSchema={onUpdateBriefFieldSchema}
+          onDeleteBriefFieldSchema={onDeleteBriefFieldSchema}
+          onDeleteClient={onDeleteClient}
           onGenerateComparison={onGenerateComparison}
           onGenerateReport={onGenerateReport}
           onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}
@@ -314,6 +359,13 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   onCreatePortalLogin,
   platformConnections = [],
   onSetPlatformConnectionStatus,
+  onSaveBrief,
+  briefFieldSchemas,
+  briefFieldSchemaRows,
+  onCreateBriefFieldSchema,
+  onUpdateBriefFieldSchema,
+  onDeleteBriefFieldSchema,
+  onDeleteClient,
 }) => {
   // AM roles get a dedicated cross-service overview instead of the single-service specialist
   // workflow below (they manage the overall client relationship, not one department's queue).
@@ -341,6 +393,13 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
         onCreatePortalLogin={onCreatePortalLogin}
         platformConnections={platformConnections}
         onSetPlatformConnectionStatus={onSetPlatformConnectionStatus}
+        onSaveBrief={onSaveBrief}
+        briefFieldSchemas={briefFieldSchemas}
+        briefFieldSchemaRows={briefFieldSchemaRows}
+        onCreateBriefFieldSchema={onCreateBriefFieldSchema}
+        onUpdateBriefFieldSchema={onUpdateBriefFieldSchema}
+        onDeleteBriefFieldSchema={onDeleteBriefFieldSchema}
+        onDeleteClient={onDeleteClient}
       />
     );
   }
@@ -454,8 +513,9 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
   const [assignmentNotes, setAssignmentNotes] = useState<string>('');
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSchemaEditorOpen, setIsSchemaEditorOpen] = useState(false);
 
-  const eligibleAgents = users.filter((u) => u.role === agentRole && !isPendingEmployee(u));
+  const eligibleAgents = users.filter((u) => u.role === agentRole && isActiveEmployee(u));
 
   const selectedClient =
     authorizedClients.find((c) => c.id === selectedClientId) || authorizedClients[0] || null;
@@ -539,27 +599,27 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
     }
   };
 
-  const renderBriefContent = (brief: BriefRecord | undefined) => {
-    if (!brief || !brief.fields || Object.keys(brief.fields).length === 0) {
-      return (
-        <div className="p-6 rounded-xl bg-amber-950/20 border border-amber-900/30 text-center space-y-2">
-          <Clock className="w-8 h-8 text-amber-400 mx-auto" />
-          <h4 className="text-sm font-bold text-amber-300">Brief Pending Submission</h4>
-          <p className="text-xs text-stone-300 max-w-md mx-auto">
-            The Account Management team is currently collecting requirements with the client. Full brief details will render once submitted.
-          </p>
-        </div>
-      );
-    }
+  // Broadened per the final brief-editing decision: a department team lead can edit their own
+  // service's brief for any of their clients; an agent only for a client they're formally
+  // assigned to for this service (mirrors briefs_update_rls's agent branch, which requires
+  // agent_assigned()) — matches currentAssignment computed above.
+  const canEditThisBrief = isTeamLead || currentAssignment?.agent_id === currentUser.id;
 
+  const renderBriefContent = (brief: BriefRecord | undefined) => {
+    if (!selectedClient) return null;
     return (
-      <div className="space-y-3">
-        <BriefFieldsReadOnly serviceType={serviceType} fields={brief.fields} />
-        <BriefEditHistory
-          revisions={briefRevisions.filter((r) => r.brief_id === brief.id)}
-          serviceType={serviceType}
-        />
-      </div>
+      <DynamicBriefForm
+        clientId={selectedClient.id}
+        clientName={selectedClient.name}
+        serviceType={serviceType}
+        fieldDefs={briefFieldSchemas[serviceType] || []}
+        existingBrief={brief}
+        allBriefs={briefs}
+        revisions={briefRevisions.filter((r) => r.client_id === selectedClient.id && r.service_type === serviceType)}
+        onSaveBrief={onSaveBrief || (async () => {})}
+        currentUserId={currentUser.id}
+        canEdit={canEditThisBrief && typeof onSaveBrief === 'function'}
+      />
     );
   };
 
@@ -745,7 +805,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                 const isNewBrief = isTeamLead && !!clientBrief && !clientBrief.team_lead_viewed_at;
                 // Module 12 Phase 5: "New" badge for the agent's own freshly (re)assigned client.
                 const isNewAssignment = !isTeamLead && !!asg && asg.agent_id === currentUser.id && !asg.viewed_at;
-                const briefIssueCount = clientBrief ? reviewBrief(clientBrief, briefs).length : 0;
+                const briefIssueCount = clientBrief ? reviewBrief(clientBrief, briefs, briefFieldSchemas[serviceType] || []).length : 0;
 
                 return (
                   <div
@@ -789,7 +849,7 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                                 }
                                 title={briefIssueCount > 0 ? `${briefIssueCount} review issue(s)` : 'No review issues'}
                               >
-                                {briefCompletenessScore(clientBrief)}%
+                                {briefCompletenessScore(clientBrief, briefFieldSchemas[serviceType] || [])}%
                               </span>
                             )}
                           </h4>
@@ -944,9 +1004,20 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
                     {icon}
                     <span>{serviceNameEn} Brief Details</span>
                   </h4>
-                  <span className="text-xs text-stone-400">
-                    Version: v{serviceBrief?.version || 1}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {canEditBriefFieldSchema(currentUser.role, serviceType) && (
+                      <button
+                        onClick={() => setIsSchemaEditorOpen(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold text-purple-200 bg-purple-900/40 hover:bg-purple-800/60 hover:text-white border border-purple-700/40 transition-all"
+                      >
+                        <ClipboardCheck className="w-3.5 h-3.5" />
+                        Manage Questions
+                      </button>
+                    )}
+                    <span className="text-xs text-stone-400">
+                      Version: v{serviceBrief?.version || 1}
+                    </span>
+                  </div>
                 </div>
                 {renderBriefContent(serviceBrief)}
               </div>
@@ -976,6 +1047,24 @@ export const ServiceBriefsRoutingView: React.FC<ServiceBriefsRoutingViewProps> =
           assignments={assignments}
           onMarkAssignmentViewed={onMarkAssignmentViewed}
           onClose={() => setDashboardClientId(null)}
+          onSaveBrief={onSaveBrief}
+          briefFieldSchemas={briefFieldSchemas}
+          briefFieldSchemaRows={briefFieldSchemaRows}
+          onCreateBriefFieldSchema={onCreateBriefFieldSchema}
+          onUpdateBriefFieldSchema={onUpdateBriefFieldSchema}
+          onDeleteBriefFieldSchema={onDeleteBriefFieldSchema}
+          onDeleteClient={onDeleteClient}
+        />
+      )}
+
+      {isSchemaEditorOpen && (
+        <BriefFieldSchemaEditor
+          serviceType={serviceType}
+          rows={briefFieldSchemaRows.filter((r) => r.service_type === serviceType)}
+          onCreate={onCreateBriefFieldSchema}
+          onUpdate={onUpdateBriefFieldSchema}
+          onDelete={onDeleteBriefFieldSchema}
+          onClose={() => setIsSchemaEditorOpen(false)}
         />
       )}
     </div>

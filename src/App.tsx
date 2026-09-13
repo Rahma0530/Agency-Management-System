@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Database,
   PlusCircle,
@@ -31,7 +31,8 @@ import {
   buildClientContractStoragePath,
 } from './lib/supabase';
 import { resolvePeriodRange, generateKpiScoreMetrics, suggestClassification } from './lib/performanceScore';
-import { isPendingEmployee } from './lib/permissions';
+import { isActiveEmployee } from './lib/permissions';
+import { groupBriefFieldSchemas } from './data/briefFieldSchemas';
 import {
   ComparisonGranularity,
   ComparisonPeriod,
@@ -77,6 +78,8 @@ import {
   PlatformConnectionStatus,
   PlatformCategory,
   ClientContractRecord,
+  BriefFieldDef,
+  BriefFieldSchemaRow,
 } from './types/database';
 import {
   INITIAL_USERS,
@@ -134,6 +137,12 @@ export default function App() {
   const [clients, setClients] = useState<ClientRecord[]>(INITIAL_CLIENTS);
   const [briefs, setBriefs] = useState<BriefRecord[]>(INITIAL_BRIEFS);
   const [briefRevisions, setBriefRevisions] = useState<BriefRevisionRecord[]>([]);
+  // Global per-service brief question list — moved here from a static import (data/briefFieldSchemas.ts)
+  // so it can be edited from the app. briefFieldSchemas below is the grouped Record<ServiceType,
+  // BriefFieldDef[]> shape every render call site needs; briefFieldSchemaRows is the raw rows (with
+  // id) the schema editor needs for update/delete.
+  const [briefFieldSchemaRows, setBriefFieldSchemaRows] = useState<BriefFieldSchemaRow[]>([]);
+  const briefFieldSchemas = useMemo(() => groupBriefFieldSchemas(briefFieldSchemaRows), [briefFieldSchemaRows]);
   const [tasks, setTasks] = useState<TaskRecord[]>(INITIAL_TASKS);
   const [taskComments, setTaskComments] = useState<TaskCommentRecord[]>([]);
   const [taskAttachments, setTaskAttachments] = useState<TaskAttachmentRecord[]>([]);
@@ -385,6 +394,14 @@ export default function App() {
           .select('*');
         if (!briefRevisionErr && briefRevisionData && briefRevisionData.length > 0) {
           setBriefRevisions(briefRevisionData as BriefRevisionRecord[]);
+        }
+
+        // Fetch the global brief field schema (source of truth moved here from a static import)
+        const { data: briefFieldSchemaData, error: briefFieldSchemaErr } = await supabase
+          .from('brief_field_schemas')
+          .select('*');
+        if (!briefFieldSchemaErr && briefFieldSchemaData) {
+          setBriefFieldSchemaRows(briefFieldSchemaData as BriefFieldSchemaRow[]);
         }
 
         // Fetch tasks
@@ -653,6 +670,27 @@ export default function App() {
     showNotification(`Client "${client?.name || clientId}" status updated to ${newStatus}.`);
   };
 
+  // 2a-3. Hard delete a client (point 6/7) — real DELETE, not deactivation, since clients have no
+  // login/auth identity concern the way employees do. clients_delete_rls scopes WHO can call this
+  // (executive/head_of_technical + all 5 team leads); the actual block-if-any-activity-exists rule
+  // is enforced by the DB itself (every one of the 13 referencing tables defaults to ON DELETE NO
+  // ACTION) — ClientDashboard.tsx's getClientActivitySummary() pre-checks this so the UI shows
+  // exactly what's blocking before ever calling this, but this still fails safely on its own if
+  // that pre-check ever misses something.
+  const handleDeleteClient = async (clientId: string) => {
+    if (supabaseActive) {
+      const { error } = await supabase.from('clients').delete().eq('id', clientId);
+      if (error) {
+        console.error('Supabase delete client error:', error);
+        showNotification('Unable to delete this client — it may still have related records.', 'info');
+        throw error;
+      }
+    }
+
+    setClients((prev) => prev.filter((c) => c.id !== clientId));
+    showNotification('Client deleted permanently.');
+  };
+
   // 2a-2. AM Team Lead payment tracking (Module 12 Phase 7) — manually-editable, never
   // auto-computed from anything. Distinct handler from handleUpdateClientStatus since it edits
   // an unrelated field group and shouldn't carry that function's status-transition side effects.
@@ -840,6 +878,7 @@ export default function App() {
     fields: Record<string, any>;
     version: number;
     submitted_by: string;
+    custom_field_defs: BriefFieldDef[];
   }) => {
     const existingIndex = briefs.findIndex(
       (b) => b.client_id === briefData.client_id && b.service_type === briefData.service_type
@@ -855,6 +894,7 @@ export default function App() {
         fields: briefData.fields,
         version: existing.version + 1,
         submitted_by: briefData.submitted_by,
+        custom_field_defs: briefData.custom_field_defs,
         // A materially edited brief should re-flag as unread for the relevant Team Lead, even
         // if they'd already seen an earlier version.
         team_lead_viewed_at: null,
@@ -869,6 +909,7 @@ export default function App() {
               fields: updated.fields,
               version: updated.version,
               submitted_by: updated.submitted_by,
+              custom_field_defs: updated.custom_field_defs,
               team_lead_viewed_at: updated.team_lead_viewed_at,
               updated_at: updated.updated_at,
             })
@@ -889,6 +930,7 @@ export default function App() {
         fields: briefData.fields,
         version: 1,
         submitted_by: briefData.submitted_by,
+        custom_field_defs: briefData.custom_field_defs,
         team_lead_viewed_at: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -938,6 +980,63 @@ export default function App() {
     showNotification('Brief documented and saved as an official version successfully.');
   };
 
+  // 3a-2. Global brief field schema CRUD (point 10) — brief_field_schemas_write_rls scopes who can
+  // call these (exec/HoT/am_team_lead/am_agent unconditionally, department team leads scoped to
+  // their own service_type). Editing here changes what every NEW brief for that service_type shows
+  // going forward; existing submitted briefs' `fields` are untouched.
+  const handleCreateBriefFieldSchema = async (
+    row: Omit<BriefFieldSchemaRow, 'id' | 'created_at' | 'updated_at'>
+  ) => {
+    const newRow: BriefFieldSchemaRow = { ...row, id: `bfs-${Date.now().toString().slice(-6)}` };
+
+    if (supabaseActive) {
+      try {
+        const { data, error } = await supabase.from('brief_field_schemas').insert([newRow]).select();
+        if (error) throw error;
+        if (data && data[0]) newRow.id = data[0].id;
+      } catch (err: any) {
+        console.error('Supabase error adding brief field schema:', err);
+        showNotification('Unable to add this question.', 'info');
+        throw err;
+      }
+    }
+
+    setBriefFieldSchemaRows((prev) => [...prev, newRow]);
+    showNotification('Question added to the global schema.');
+  };
+
+  const handleUpdateBriefFieldSchema = async (id: string, updates: Partial<BriefFieldSchemaRow>) => {
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('brief_field_schemas').update(updates).eq('id', id);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase error updating brief field schema:', err);
+        showNotification('Unable to save this question.', 'info');
+        throw err;
+      }
+    }
+
+    setBriefFieldSchemaRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+    showNotification('Question updated.');
+  };
+
+  const handleDeleteBriefFieldSchema = async (id: string) => {
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('brief_field_schemas').delete().eq('id', id);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase error deleting brief field schema:', err);
+        showNotification('Unable to remove this question.', 'info');
+        throw err;
+      }
+    }
+
+    setBriefFieldSchemaRows((prev) => prev.filter((r) => r.id !== id));
+    showNotification('Question removed from the global schema.');
+  };
+
   // 3b. Mark a brief as viewed by the relevant service Team Lead (clears its "New" indicator)
   const handleMarkBriefViewedByTeamLead = async (briefId: string) => {
     const viewedAt = new Date().toISOString();
@@ -977,6 +1076,63 @@ export default function App() {
     );
 
     showNotification('Employee capacity limit updated successfully.');
+  };
+
+  // Edit an existing employee's name/email/role/team — executive/head_of_technical + all 5 team
+  // leads only (RLS's users_update_profile_rls enforces the same scope server-side; this is just
+  // the client-side call). Email edits do NOT sync to auth.users automatically here — see the
+  // confirmed design: email is only freely editable pre-provisioning; once auth_id is set,
+  // changing it here updates the contact-info column only, not the login credential, and should
+  // be paired with a separate service-role step if the login email must also change.
+  const handleUpdateEmployee = async (
+    userId: string,
+    updates: { name?: string; email?: string; role?: UserRole; team?: string | null; capacity_limit?: number | null }
+  ) => {
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('users').update(updates).eq('id', userId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase error updating employee:', err);
+        showNotification('Unable to save employee changes.', 'info');
+        return;
+      }
+    }
+
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...updates } : u)));
+    showNotification('Employee updated successfully.');
+  };
+
+  // Deactivate an employee (permanent, but not a hard delete — the row stays so their name still
+  // displays correctly on every historical record). Two effects happen here in the app: their
+  // open tasks are unassigned (point 2 — straight to the general unassigned pool, no forced
+  // replacement pick) and deactivated_at is set (which every isActiveEmployee() check across the
+  // app then excludes them by). The THIRD effect — banning their auth.users account so they can
+  // never log in again — happens separately, out-of-band, via
+  // `npm run deactivate-auth-users` (scripts/deactivateAuthUser.ts), the same service-role-only
+  // pattern as provisioning. That script isn't triggered from here on purpose: it needs the
+  // service-role key, which never touches the browser.
+  const handleDeactivateEmployee = async (userId: string) => {
+    const deactivatedAt = new Date().toISOString();
+
+    if (supabaseActive) {
+      try {
+        const { error } = await supabase.from('tasks').update({ assigned_to: null }).eq('assigned_to', userId);
+        if (error) throw error;
+        const { error: userErr } = await supabase.from('users').update({ deactivated_at: deactivatedAt }).eq('id', userId);
+        if (userErr) throw userErr;
+      } catch (err: any) {
+        console.error('Supabase error deactivating employee:', err);
+        showNotification('Unable to deactivate this employee.', 'info');
+        return;
+      }
+    }
+
+    setTasks((prev) => prev.map((t) => (t.assigned_to === userId ? { ...t, assigned_to: null } : t)));
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, deactivated_at: deactivatedAt } : u)));
+    showNotification(
+      'Employee deactivated. Run `npm run deactivate-auth-users` to fully lock out their login.'
+    );
   };
 
   // Log a new capacity reading
@@ -2387,6 +2543,8 @@ export default function App() {
                     clientContracts={clientContracts}
                     onUploadClientContract={handleUploadClientContract}
                     onDeleteClientContract={handleDeleteClientContract}
+                    briefFieldSchemas={briefFieldSchemas}
+                    briefFieldSchemaRows={briefFieldSchemaRows}
                   />
                 ) : (
                   <AMQueue
@@ -2404,6 +2562,12 @@ export default function App() {
                     currentUserId={currentUser.id}
                     onAssignAMAgent={handleAssignAMAgent}
                     onSaveBrief={handleSaveBrief}
+                    briefFieldSchemas={briefFieldSchemas}
+                    briefFieldSchemaRows={briefFieldSchemaRows}
+                    onCreateBriefFieldSchema={handleCreateBriefFieldSchema}
+                    onUpdateBriefFieldSchema={handleUpdateBriefFieldSchema}
+                    onDeleteBriefFieldSchema={handleDeleteBriefFieldSchema}
+                    onDeleteClient={handleDeleteClient}
                     onUpdateClientStatus={handleUpdateClientStatus}
                     onMarkClientViewed={handleMarkClientViewedByAMLead}
                     onNavigateToModule={handleNavigateToModule}
@@ -2445,6 +2609,13 @@ export default function App() {
                   socialInsights={socialInsights}
                   clientPortalUsers={clientPortalUsers}
                   onAssignServiceAgent={handleAssignServiceAgent}
+                  onSaveBrief={handleSaveBrief}
+                  briefFieldSchemas={briefFieldSchemas}
+                  briefFieldSchemaRows={briefFieldSchemaRows}
+                  onCreateBriefFieldSchema={handleCreateBriefFieldSchema}
+                  onUpdateBriefFieldSchema={handleUpdateBriefFieldSchema}
+                  onDeleteBriefFieldSchema={handleDeleteBriefFieldSchema}
+                  onDeleteClient={handleDeleteClient}
                   onMarkBriefViewed={handleMarkBriefViewedByTeamLead}
                   onMarkAssignmentViewed={handleMarkAssignmentViewed}
                   onNavigateToModule={handleNavigateToModule}
@@ -2549,6 +2720,9 @@ export default function App() {
                   platformConnections={platformConnections}
                   onSetPlatformConnectionStatus={handleSetPlatformConnectionStatus}
                   isLoading={loading}
+                  briefFieldSchemas={briefFieldSchemas}
+                  briefFieldSchemaRows={briefFieldSchemaRows}
+                  onDeleteClient={handleDeleteClient}
                 />
               </div>
             )}
@@ -2573,7 +2747,15 @@ export default function App() {
             {/* Tab 7: Add Employee (admin) */}
             {activeTab === 'employees' && (
               <div className="space-y-6">
-                <EmployeeAdminHub currentUser={currentUser} users={users} onAddEmployee={handleAddEmployee} />
+                <EmployeeAdminHub
+                  currentUser={currentUser}
+                  users={users}
+                  clients={clients}
+                  tasks={tasks}
+                  onAddEmployee={handleAddEmployee}
+                  onUpdateEmployee={handleUpdateEmployee}
+                  onDeactivateEmployee={handleDeactivateEmployee}
+                />
               </div>
             )}
           </>
@@ -2585,7 +2767,7 @@ export default function App() {
       <ClientRegistrationModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
-        amTeamLeaders={users.filter((u) => u.role === 'am_team_lead' && !isPendingEmployee(u))}
+        amTeamLeaders={users.filter((u) => u.role === 'am_team_lead' && isActiveEmployee(u))}
         onSubmit={handleRegisterClient}
       />
     </div>

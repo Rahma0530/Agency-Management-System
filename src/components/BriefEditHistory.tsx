@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { History, ChevronDown, ChevronRight } from 'lucide-react';
-import { BriefRevisionRecord, ServiceType, UserRecord } from '../types/database';
+import { BriefFieldDef, BriefRevisionRecord, UserRecord } from '../types/database';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 
 interface BriefEditHistoryProps {
   revisions: BriefRevisionRecord[];
-  serviceType: ServiceType;
+  fieldDefs: BriefFieldDef[];
+  // A past revision reuses the brief's CURRENT custom questions rather than tracking its own
+  // per-version question set — brief_revisions only snapshots answers (`fields`), not the
+  // question list itself, since questions rarely change after being added.
+  customFieldDefs?: BriefFieldDef[];
   users?: UserRecord[];
 }
 
@@ -26,7 +30,7 @@ const timeAgo = (iso: string): string => {
  * BriefFieldsReadOnly renderer used for the current version — no field-level diffing this phase,
  * just full versions side by side in time.
  */
-export const BriefEditHistory: React.FC<BriefEditHistoryProps> = ({ revisions, serviceType, users = [] }) => {
+export const BriefEditHistory: React.FC<BriefEditHistoryProps> = ({ revisions, fieldDefs, customFieldDefs, users = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedVersion, setExpandedVersion] = useState<number | null>(null);
 
@@ -70,7 +74,7 @@ export const BriefEditHistory: React.FC<BriefEditHistoryProps> = ({ revisions, s
                   </button>
                   {expanded && (
                     <div className="p-3 bg-black/20">
-                      <BriefFieldsReadOnly serviceType={serviceType} fields={rev.fields} />
+                      <BriefFieldsReadOnly fields={rev.fields} fieldDefs={fieldDefs} customFieldDefs={customFieldDefs} />
                     </div>
                   )}
                 </div>

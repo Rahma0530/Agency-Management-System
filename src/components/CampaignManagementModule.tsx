@@ -45,8 +45,11 @@ import {
   PlatformConnectionRecord,
   PlatformConnectionStatus,
   PlatformCategory,
+  ServiceType,
+  BriefFieldDef,
+  BriefFieldSchemaRow,
 } from '../types/database';
-import { isPendingEmployee } from '../lib/permissions';
+import { isActiveEmployee } from '../lib/permissions';
 import { CLIENT_STATUS_META } from '../lib/clientStatus';
 import { matchesClientQuery } from '../lib/clientSearch';
 import { getRoleInfo } from '../data/roles';
@@ -89,6 +92,9 @@ interface CampaignManagementModuleProps {
     notes: string
   ) => Promise<void>;
   isLoading?: boolean;
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
+  briefFieldSchemaRows: BriefFieldSchemaRow[];
+  onDeleteClient?: (clientId: string) => Promise<void>;
 }
 
 // Helpers to extract campaign attributes safely whether stored at top-level or in results JSON
@@ -237,6 +243,9 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
   platformConnections = [],
   onSetPlatformConnectionStatus,
   isLoading = false,
+  briefFieldSchemas,
+  briefFieldSchemaRows,
+  onDeleteClient,
 }) => {
   const roleInfo = getRoleInfo(currentUser.role);
 
@@ -1177,7 +1186,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                 All Owners
               </option>
               {users
-                .filter((u) => (u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id) && !isPendingEmployee(u))
+                .filter((u) => (u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id) && isActiveEmployee(u))
                 .map((u) => (
                   <option key={u.id} value={u.id} className="bg-stone-900 text-white">
                     {u.name} ({u.team || u.role})
@@ -1669,7 +1678,7 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
                     }}
                   >
                     {users
-                      .filter((u) => (u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id) && !isPendingEmployee(u))
+                      .filter((u) => (u.team === 'Media Buying' || u.role.includes('lead') || u.id === currentUser.id) && isActiveEmployee(u))
                       .map((u) => (
                         <option key={u.id} value={u.id} className="bg-stone-900 text-white">
                           {u.name} ({u.team || u.role})
@@ -1827,6 +1836,9 @@ export const CampaignManagementModule: React.FC<CampaignManagementModuleProps> =
           clientPortalUser={clientPortalUsers.find((cpu) => cpu.client_id === activeDashboardClient.id) || null}
           initialTab="campaigns"
           onClose={() => setDashboardClientId(null)}
+          briefFieldSchemas={briefFieldSchemas}
+          briefFieldSchemaRows={briefFieldSchemaRows}
+          onDeleteClient={onDeleteClient}
           onGenerateComparison={onGenerateComparison}
           onGenerateReport={onGenerateReport}
           onGenerateMonthlyReportDraft={onGenerateMonthlyReportDraft}

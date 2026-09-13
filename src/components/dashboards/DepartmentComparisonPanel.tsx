@@ -18,7 +18,7 @@ import {
 } from '../../lib/reportingEngine';
 import { computeOnTimeCompletionRate, PeriodRange } from '../../lib/performanceScore';
 import { getUserCapacityData } from '../../lib/capacity';
-import { isPendingEmployee } from '../../lib/permissions';
+import { isActiveEmployee } from '../../lib/permissions';
 
 const GRANULARITY_OPTIONS: { value: ComparisonGranularity; label: string }[] = [
   { value: 'monthly', label: 'Monthly' },
@@ -99,7 +99,7 @@ export const DepartmentComparisonPanel: React.FC<{
         ];
       }
 
-      const deptUsers = users.filter((u) => u.team === team && !isPendingEmployee(u));
+      const deptUsers = users.filter((u) => u.team === team && isActiveEmployee(u));
       const onTimeRates = deptUsers
         .map((u) => computeOnTimeCompletionRate(tasks, u.id, periodRange))
         .filter((v): v is number => v !== null);

@@ -1,25 +1,31 @@
 import React from 'react';
 import { ExternalLink } from 'lucide-react';
-import { ServiceType } from '../types/database';
-import { BRIEF_FIELD_SCHEMAS } from '../data/briefFieldSchemas';
+import { BriefFieldDef } from '../types/database';
 
 interface BriefFieldsReadOnlyProps {
-  serviceType: ServiceType;
   fields: Record<string, any>;
+  // The global per-service question list, resolved by the caller from the now-dynamic
+  // brief_field_schemas table (via data/briefFieldSchemas.ts's groupBriefFieldSchemas) — no
+  // longer a static import, since the schema can change at runtime.
+  fieldDefs: BriefFieldDef[];
+  // This specific brief's one-off custom questions (BriefRecord.custom_field_defs), rendered
+  // appended after the global list. Omit when not available (e.g. a historical revision snapshot
+  // reuses the parent brief's current custom questions rather than tracking its own).
+  customFieldDefs?: BriefFieldDef[];
 }
 
 /**
- * Pure read-only renderer for a brief's fields, driven entirely by BRIEF_FIELD_SCHEMAS so every
- * consumer (the per-service specialist queue, the AM Brief Repository, past revisions in the
- * Edit History) shows the exact same fields with the exact same bespoke styling — no per-consumer
- * field duplication.
+ * Pure read-only renderer for a brief's fields, driven by the caller-supplied field-definition
+ * list so every consumer (the per-service specialist queue, the AM Brief Repository, past
+ * revisions in the Edit History, the Client Portal) shows the exact same fields with the exact
+ * same bespoke styling — no per-consumer field duplication.
  */
-export const BriefFieldsReadOnly: React.FC<BriefFieldsReadOnlyProps> = ({ serviceType, fields }) => {
-  const fieldDefs = BRIEF_FIELD_SCHEMAS[serviceType] || [];
+export const BriefFieldsReadOnly: React.FC<BriefFieldsReadOnlyProps> = ({ fields, fieldDefs, customFieldDefs = [] }) => {
+  const allFieldDefs = [...fieldDefs, ...customFieldDefs];
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      {fieldDefs.map((field) => {
+      {allFieldDefs.map((field) => {
         const value = fields[field.key];
         return (
           <div

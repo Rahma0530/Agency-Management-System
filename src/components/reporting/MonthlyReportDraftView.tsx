@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, FileText, CheckCircle2, ClipboardList, BarChart3 } from 'lucide-react';
-import { ClientRecord, ReportRecord, ClientComparisonRecord, BriefRecord, TaskRecord, ServiceType } from '../../types/database';
+import { BriefFieldDef, ClientRecord, ReportRecord, ClientComparisonRecord, BriefRecord, TaskRecord, ServiceType } from '../../types/database';
 import { computeClientTaskCompletionStats, monthLabelToRange } from '../../lib/reportingEngine';
 import { ServiceMetricsCard } from './ComparisonDisplay';
 import { BriefFieldsReadOnly } from '../BriefFieldsReadOnly';
@@ -24,10 +24,11 @@ export const MonthlyReportDraftView: React.FC<{
   comparison: ClientComparisonRecord | null;
   briefs: BriefRecord[];
   tasks: TaskRecord[];
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
   canApprove: boolean;
   onApprove: () => Promise<void>;
   onClose: () => void;
-}> = ({ client, report, comparison, briefs, tasks, canApprove, onApprove, onClose }) => {
+}> = ({ client, report, comparison, briefs, tasks, briefFieldSchemas, canApprove, onApprove, onClose }) => {
   const [isApproving, setIsApproving] = useState(false);
   const isDraft = report.status === 'draft';
 
@@ -143,7 +144,11 @@ export const MonthlyReportDraftView: React.FC<{
                 <h4 className="text-xs font-bold text-white uppercase tracking-wide">
                   {SERVICE_LABELS[brief.service_type] || brief.service_type}
                 </h4>
-                <BriefFieldsReadOnly serviceType={brief.service_type} fields={brief.fields} />
+                <BriefFieldsReadOnly
+                  fields={brief.fields}
+                  fieldDefs={briefFieldSchemas[brief.service_type] || []}
+                  customFieldDefs={brief.custom_field_defs}
+                />
               </div>
             ))}
           </div>

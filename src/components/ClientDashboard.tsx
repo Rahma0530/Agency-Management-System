@@ -25,6 +25,8 @@ import {
   KeyRound,
   Video,
   Plug,
+  ClipboardCheck,
+  Trash2,
 } from 'lucide-react';
 import {
   ClientRecord,
@@ -48,6 +50,8 @@ import {
   PlatformConnectionStatus,
   PlatformCategory,
   ClientContractRecord,
+  BriefFieldDef,
+  BriefFieldSchemaRow,
 } from '../types/database';
 import { DynamicBriefForm } from './DynamicBriefForm';
 import {
@@ -67,9 +71,11 @@ import { MonthlyReportDraftView } from './reporting/MonthlyReportDraftView';
 import { ClientMeetingsPanel } from './ClientMeetingsPanel';
 import { ClientContractsPanel } from './ClientContractsPanel';
 import { ClientIntegrationsPanel } from './ClientIntegrationsPanel';
-import { canSeeContractValue, isPendingEmployee } from '../lib/permissions';
+import { canSeeContractValue, isActiveEmployee, canManageEmployeesOrClients, canEditBriefFieldSchema } from '../lib/permissions';
 import { CLIENT_STATUS_META, isPausedClient } from '../lib/clientStatus';
 import { reviewBrief, briefCompletenessScore } from '../lib/briefReview';
+import { getClientActivitySummary, ClientActivitySummaryRow } from '../lib/clientDeletion';
+import { BriefFieldSchemaEditor } from './BriefFieldSchemaEditor';
 
 interface ClientDashboardProps {
   client: ClientRecord;
@@ -93,7 +99,14 @@ interface ClientDashboardProps {
     fields: Record<string, any>;
     version: number;
     submitted_by: string;
+    custom_field_defs: BriefFieldDef[];
   }) => Promise<void>;
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
+  briefFieldSchemaRows: BriefFieldSchemaRow[];
+  onCreateBriefFieldSchema?: (row: Omit<BriefFieldSchemaRow, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onUpdateBriefFieldSchema?: (id: string, updates: Partial<BriefFieldSchemaRow>) => Promise<void>;
+  onDeleteBriefFieldSchema?: (id: string) => Promise<void>;
+  onDeleteClient?: (clientId: string) => Promise<void>;
   onAssignAMAgent?: (clientId: string, agentId: string) => Promise<void>;
   onUpdateTaskStatus?: (taskId: string, newStatus: TaskStatus) => Promise<void>;
   onCreateCampaign?: (campaignData: Partial<CampaignRecord>) => Promise<void> | void;
@@ -157,6 +170,12 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   initialTab,
   onClose,
   onSaveBrief,
+  briefFieldSchemas,
+  briefFieldSchemaRows,
+  onCreateBriefFieldSchema,
+  onUpdateBriefFieldSchema,
+  onDeleteBriefFieldSchema,
+  onDeleteClient,
   onAssignAMAgent,
   onUpdateTaskStatus,
   onCreateCampaign,
@@ -180,6 +199,10 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   onUpdatePaymentTracking,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'overview');
+  const [isDeletingClient, setIsDeletingClient] = useState(false);
+  const [deleteBlockers, setDeleteBlockers] = useState<ClientActivitySummaryRow[] | null>(null);
+  const [isCheckingDeleteBlockers, setIsCheckingDeleteBlockers] = useState(false);
+  const [isSchemaEditorOpen, setIsSchemaEditorOpen] = useState(false);
   const [selectedBriefService, setSelectedBriefService] = useState<ServiceType | null>(null);
   const [isAssigningAM, setIsAssigningAM] = useState(false);
   const [selectedAMId, setSelectedAMId] = useState(client.am_agent_id || '');
@@ -336,14 +359,20 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   const canEditPaymentTracking =
     currentUser.role === 'executive' || currentUser.role === 'head_of_technical' || currentUser.role === 'am_team_lead';
 
-  // Only the AM department can actually enter/edit brief data: am_agent is the primary author
-  // (they run the client meeting), am_team_lead can edit as department oversight/fallback.
-  // Everyone else who is allowed to see brief content at all (service teams, executive/HoT) is
-  // read-only, and only when a real save handler was actually wired through by the parent
-  // screen — never a silent no-op.
+  // Broadened per the final brief-editing decision: executive/head_of_technical/am_team_lead/
+  // am_agent (own client) can edit any service's brief; a department team lead can only edit the
+  // brief for their own service_type (mirrors briefs_update_rls's scoping exactly) — never
+  // without a real save handler actually wired through by the parent screen (never a silent
+  // no-op).
   const canEditBrief =
-    (currentUser.role === 'am_agent' || currentUser.role === 'am_team_lead') &&
-    typeof onSaveBrief === 'function';
+    typeof onSaveBrief === 'function' &&
+    (currentUser.role === 'executive' ||
+      currentUser.role === 'head_of_technical' ||
+      currentUser.role === 'am_team_lead' ||
+      (currentUser.role === 'am_agent' && client.am_agent_id === currentUser.id) ||
+      (currentUser.role === 'seo_team_lead' && selectedBriefService === 'seo') ||
+      (currentUser.role === 'media_buying_team_lead' && selectedBriefService === 'media_buying') ||
+      (currentUser.role === 'social_media_team_lead' && selectedBriefService === 'social_media'));
 
   // Brief content (answers gathered from the client meeting) is deliberately restricted to the
   // AM department (who capture it), the operational service teams it's written for, and
@@ -428,6 +457,32 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
 
   const isSinglePeriodReport = reportMode === 'period_summary';
 
+  // Hard client delete (point 6): checked up front so the confirmation modal shows exactly which
+  // tables have activity rather than surfacing a raw FK-violation error after the fact — the
+  // actual delete itself still fails safely even if this check somehow misses something (every
+  // referencing table defaults to ON DELETE NO ACTION).
+  const handleOpenDeleteCheck = async () => {
+    setIsCheckingDeleteBlockers(true);
+    try {
+      const summary = await getClientActivitySummary(client.id);
+      setDeleteBlockers(summary);
+    } finally {
+      setIsCheckingDeleteBlockers(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!onDeleteClient) return;
+    setIsDeletingClient(true);
+    try {
+      await onDeleteClient(client.id);
+      setDeleteBlockers(null);
+      onClose();
+    } finally {
+      setIsDeletingClient(false);
+    }
+  };
+
   const handleSavePaymentTracking = async () => {
     if (!onUpdatePaymentTracking) return;
     setIsSavingPaymentTracking(true);
@@ -488,7 +543,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     }
   };
 
-  const amAgents = users.filter((u) => u.role === 'am_agent' && !isPendingEmployee(u));
+  const amAgents = users.filter((u) => u.role === 'am_agent' && isActiveEmployee(u));
 
   const handleAssignAM = async () => {
     if (!selectedAMId || !onAssignAMAgent) return;
@@ -576,6 +631,16 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
             </div>
           </div>
 
+          {canManageEmployeesOrClients(currentUser.role) && onDeleteClient && (
+            <button
+              onClick={handleOpenDeleteCheck}
+              disabled={isCheckingDeleteBlockers}
+              className="p-2 rounded-xl bg-red-950/30 hover:bg-red-900/50 text-red-400 hover:text-red-300 transition-colors self-end sm:self-center disabled:opacity-50"
+              title="Delete Client"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          )}
           <button
             onClick={onClose}
             className="p-2 rounded-xl bg-purple-900/30 hover:bg-purple-900/60 text-stone-400 hover:text-white transition-colors self-end sm:self-center"
@@ -1359,12 +1424,12 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                       const isSelected = selectedBriefService === srv;
                       // Not submitted at all -> amber. Submitted but the review assistant found
                       // issues -> amber (needs follow-up). Submitted and clean -> green.
-                      const issueCount = brief ? reviewBrief(brief, briefs).length : 0;
+                      const issueCount = brief ? reviewBrief(brief, briefs, briefFieldSchemas[srv] || []).length : 0;
                       const dotColor = !brief ? 'bg-amber-400' : issueCount > 0 ? 'bg-amber-400' : 'bg-emerald-400';
                       const dotTitle = !brief
                         ? 'Pending'
                         : issueCount > 0
-                        ? `Submitted — ${issueCount} review issue${issueCount === 1 ? '' : 's'} (${briefCompletenessScore(brief)}% complete)`
+                        ? `Submitted — ${issueCount} review issue${issueCount === 1 ? '' : 's'} (${briefCompletenessScore(brief, briefFieldSchemas[srv] || [])}% complete)`
                         : 'Submitted — no review issues';
                       return (
                         <button
@@ -1384,11 +1449,23 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                   </div>
 
                   {selectedBriefService ? (
-                    <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
+                    <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80 space-y-3">
+                      {canEditBriefFieldSchema(currentUser.role, selectedBriefService) && (
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => setIsSchemaEditorOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-purple-200 bg-purple-900/40 hover:bg-purple-800/60 hover:text-white border border-purple-700/40 transition-all"
+                          >
+                            <ClipboardCheck className="w-3.5 h-3.5" />
+                            Manage Brief Questions ({selectedBriefService})
+                          </button>
+                        </div>
+                      )}
                       <DynamicBriefForm
                         clientId={client.id}
                         clientName={client.name}
                         serviceType={selectedBriefService}
+                        fieldDefs={briefFieldSchemas[selectedBriefService] || []}
                         existingBrief={clientBriefs.find((b) => b.service_type === selectedBriefService)}
                         allBriefs={briefs}
                         revisions={briefRevisions.filter(
@@ -1693,6 +1770,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               users={users}
               briefs={clientBriefs}
               tasks={clientTasks}
+              briefFieldSchemas={briefFieldSchemas}
               comparisons={clientComparisonsForClient}
               reports={clientReportsForClient}
               reportMode={reportMode}
@@ -1749,6 +1827,76 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
           onSubmit={(email) => onCreatePortalLogin(client.id, email)}
         />
       )}
+
+      {deleteBlockers && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div
+            className="w-full max-w-md rounded-2xl p-5 space-y-4"
+            style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-medium)' }}
+          >
+            <div className="flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-red-400" />
+              <h3 className="text-sm font-bold text-white">Delete "{client.name}"?</h3>
+            </div>
+            {deleteBlockers.length === 0 ? (
+              <>
+                <p className="text-xs text-stone-300">
+                  This client has no activity in any table — tasks, briefs, campaigns, reports, contracts, or anything
+                  else. This action is permanent and cannot be undone.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setDeleteBlockers(null)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-stone-300 hover:text-white bg-stone-800/60 hover:bg-stone-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    disabled={isDeletingClient}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-50"
+                  >
+                    {isDeletingClient ? 'Deleting...' : 'Delete Permanently'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-stone-300">
+                  This client cannot be deleted — it has real activity recorded:
+                </p>
+                <ul className="space-y-1">
+                  {deleteBlockers.map((b) => (
+                    <li key={b.table} className="text-xs text-amber-300 flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-950/30 border border-amber-800/30">
+                      <span>{b.label}</span>
+                      <span className="font-mono font-bold">{b.count}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setDeleteBlockers(null)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isSchemaEditorOpen && selectedBriefService && (
+        <BriefFieldSchemaEditor
+          serviceType={selectedBriefService}
+          rows={briefFieldSchemaRows.filter((r) => r.service_type === selectedBriefService)}
+          onCreate={onCreateBriefFieldSchema}
+          onUpdate={onUpdateBriefFieldSchema}
+          onDelete={onDeleteBriefFieldSchema}
+          onClose={() => setIsSchemaEditorOpen(false)}
+        />
+      )}
     </div>
   );
 };
@@ -1789,6 +1937,7 @@ interface ReportsAndComparisonsTabProps {
   onGenerateMonthlyDraft: () => void;
   canApproveReport: boolean;
   onApproveReport: (reportId: string) => Promise<void>;
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
 }
 
 const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
@@ -1817,6 +1966,7 @@ const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
   onGenerateMonthlyDraft,
   canApproveReport,
   onApproveReport,
+  briefFieldSchemas,
 }) => {
   const [selectedDraftReport, setSelectedDraftReport] = useState<ReportRecord | null>(null);
 
@@ -1941,6 +2091,7 @@ const ReportsAndComparisonsTab: React.FC<ReportsAndComparisonsTabProps> = ({
           comparison={comparisons.find((c) => c.id === selectedDraftReport.comparison_id) || null}
           briefs={briefs}
           tasks={tasks}
+          briefFieldSchemas={briefFieldSchemas}
           canApprove={canApproveReport}
           onApprove={async () => {
             await onApproveReport(selectedDraftReport.id);

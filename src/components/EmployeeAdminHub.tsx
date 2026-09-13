@@ -11,10 +11,15 @@ import {
   Info,
   Loader2,
   Clock,
+  Pencil,
+  UserX,
+  AlertTriangle,
+  X,
+  Save,
 } from 'lucide-react';
-import { UserRecord, UserRole } from '../types/database';
+import { ClientRecord, TaskRecord, UserRecord, UserRole } from '../types/database';
 import { AGENCY_ROLES, getRoleInfo } from '../data/roles';
-import { isPendingEmployee } from '../lib/permissions';
+import { isPendingEmployee, isActiveEmployee, isDeactivatedEmployee, canManageEmployeesOrClients } from '../lib/permissions';
 
 export interface NewEmployeeInput {
   name: string;
@@ -25,10 +30,22 @@ export interface NewEmployeeInput {
   capacity_limit?: number | null;
 }
 
+export interface EmployeeUpdateInput {
+  name?: string;
+  email?: string;
+  role?: UserRole;
+  team?: string | null;
+  capacity_limit?: number | null;
+}
+
 interface EmployeeAdminHubProps {
   currentUser: UserRecord;
   users: UserRecord[];
+  clients: ClientRecord[];
+  tasks: TaskRecord[];
   onAddEmployee: (employee: NewEmployeeInput) => Promise<void>;
+  onUpdateEmployee: (userId: string, updates: EmployeeUpdateInput) => Promise<void>;
+  onDeactivateEmployee: (userId: string) => Promise<void>;
 }
 
 const VALID_ROLES = Object.keys(AGENCY_ROLES) as UserRole[];
@@ -58,7 +75,21 @@ const inputClass =
   'w-full px-3 py-2.5 rounded-xl text-sm bg-[#100c1c] border border-purple-900/50 text-white placeholder-stone-500 outline-none focus:border-purple-400 disabled:opacity-50';
 const labelClass = 'block text-xs font-semibold mb-1.5 text-lilac';
 
-export const EmployeeAdminHub: React.FC<EmployeeAdminHubProps> = ({ currentUser, users, onAddEmployee }) => {
+export const EmployeeAdminHub: React.FC<EmployeeAdminHubProps> = ({
+  currentUser,
+  users,
+  clients,
+  tasks,
+  onAddEmployee,
+  onUpdateEmployee,
+  onDeactivateEmployee,
+}) => {
+  // Add Employee (single + bulk) stays executive/head_of_technical only — matches
+  // users_insert_admin_rls exactly, unchanged by this feature. Manage Employees (edit/deactivate)
+  // below is the newly-broadened section: exec/HoT + all 5 team leads.
+  const canAddEmployees = currentUser.role === 'executive' || currentUser.role === 'head_of_technical';
+  const canManageEmployees = canManageEmployeesOrClients(currentUser.role);
+
   const [mode, setMode] = useState<'single' | 'bulk'>('single');
 
   // --- Single form state ---
@@ -78,6 +109,15 @@ export const EmployeeAdminHub: React.FC<EmployeeAdminHubProps> = ({ currentUser,
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [bulkResults, setBulkResults] = useState<RowResult[] | null>(null);
   const [bulkFileError, setBulkFileError] = useState<string | null>(null);
+
+  // --- Manage Employees (edit/deactivate) state ---
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EmployeeUpdateInput>({});
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [roleChangeWarning, setRoleChangeWarning] = useState<string | null>(null);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   const managerCandidates = useMemo(
     () => users.filter((u) => u.role.includes('team_lead') || u.role === 'executive' || u.role === 'head_of_technical'),
@@ -261,9 +301,73 @@ export const EmployeeAdminHub: React.FC<EmployeeAdminHubProps> = ({ currentUser,
   };
 
   const pendingEmployees = useMemo(() => users.filter(isPendingEmployee), [users]);
+  const deactivatedEmployees = useMemo(() => users.filter(isDeactivatedEmployee), [users]);
+
+  // Team leads see only their own department here (a client-side approximation of what
+  // employee_visible() already enforces server-side on every actual read/write) — exec/HoT see
+  // everyone. Not a security boundary (RLS is), just keeping the list relevant to who's viewing.
+  const manageableEmployees = useMemo(() => {
+    const active = users.filter(isActiveEmployee);
+    if (currentUser.role === 'executive' || currentUser.role === 'head_of_technical') return active;
+    return active.filter((u) => u.team === currentUser.team || u.manager_id === currentUser.id || u.id === currentUser.id);
+  }, [users, currentUser]);
+
+  // Live-assignment counts for the role-change warning (point 4) — checked whenever the draft's
+  // role differs from the employee's current one, right before actually saving.
+  const liveAssignmentCounts = (userId: string) => {
+    const activeClients = clients.filter((c) => c.am_agent_id === userId).length;
+    const openTasks = tasks.filter((t) => t.assigned_to === userId && t.status !== 'completed').length;
+    return { activeClients, openTasks };
+  };
+
+  const startEdit = (u: UserRecord) => {
+    setEditingId(u.id);
+    setEditDraft({ name: u.name, email: u.email, role: u.role, team: u.team, capacity_limit: u.capacity_limit });
+    setEditError(null);
+    setRoleChangeWarning(null);
+  };
+
+  const handleSaveEdit = async (originalRole: UserRole) => {
+    if (!editingId) return;
+    setEditError(null);
+
+    // Non-blocking warning (point 4): shown once, saved through on a second click.
+    if (editDraft.role && editDraft.role !== originalRole && !roleChangeWarning) {
+      const { activeClients, openTasks } = liveAssignmentCounts(editingId);
+      if (activeClients > 0 || openTasks > 0) {
+        setRoleChangeWarning(
+          `This employee has ${activeClients} active client assignment${activeClients === 1 ? '' : 's'} and ${openTasks} open task${openTasks === 1 ? '' : 's'} — changing their role won't reassign these. Click Save again to confirm.`
+        );
+        return;
+      }
+    }
+
+    setIsSavingEdit(true);
+    try {
+      await onUpdateEmployee(editingId, editDraft);
+      setEditingId(null);
+      setRoleChangeWarning(null);
+    } catch (err: any) {
+      setEditError(err?.message || 'Unable to save changes.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeactivate = async (userId: string) => {
+    setIsDeactivating(true);
+    try {
+      await onDeactivateEmployee(userId);
+      setDeactivatingId(null);
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
+      {canAddEmployees && (
+      <>
       <div className="p-4 rounded-2xl border border-purple-900/30 bg-[#161224]/80">
         <div className="flex items-center gap-3 mb-1">
           <div
@@ -513,6 +617,170 @@ export const EmployeeAdminHub: React.FC<EmployeeAdminHubProps> = ({ currentUser,
             Run <code className="px-1 py-0.5 rounded bg-black/40 font-mono">npm run provision-auth-users</code> to activate
             these accounts.
           </p>
+        </div>
+      )}
+      </>
+      )}
+
+      {canManageEmployees && (
+        <div className="p-4 rounded-2xl border border-purple-900/30 bg-[#161224]/80">
+          <h2 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
+            <Pencil className="w-4 h-4 text-purple-400" />
+            Manage Employees ({manageableEmployees.length})
+          </h2>
+          <div className="space-y-1.5">
+            {manageableEmployees.map((u) => {
+              const isEditing = editingId === u.id;
+              return (
+                <div key={u.id} className="p-2.5 rounded-lg bg-black/20 text-xs space-y-2">
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      {editError && (
+                        <div className="p-2 rounded-lg text-[11px] bg-red-950/30 text-red-300 border border-red-800/40">{editError}</div>
+                      )}
+                      {roleChangeWarning && (
+                        <div className="p-2 rounded-lg text-[11px] bg-amber-950/30 text-amber-300 border border-amber-800/40 flex items-start gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                          <span>{roleChangeWarning}</span>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={editDraft.name || ''}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                          className={inputClass}
+                          placeholder="Name"
+                        />
+                        <input
+                          type="email"
+                          dir="ltr"
+                          value={editDraft.email || ''}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))}
+                          className={`${inputClass} font-mono`}
+                          placeholder="Email"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={editDraft.role || u.role}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, role: e.target.value as UserRole }))}
+                          className={`${inputClass} cursor-pointer`}
+                        >
+                          {VALID_ROLES.map((r) => (
+                            <option key={r} value={r} className="bg-stone-900">{getRoleInfo(r).englishTitle}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={editDraft.team || ''}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, team: e.target.value }))}
+                          className={inputClass}
+                          placeholder="Team"
+                        />
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editDraft.capacity_limit ?? ''}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, capacity_limit: e.target.value === '' ? null : Number(e.target.value) }))}
+                        className={inputClass}
+                        placeholder="Capacity limit"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => { setEditingId(null); setRoleChangeWarning(null); setEditError(null); }}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] text-stone-400 hover:text-white"
+                        >
+                          <X className="w-3.5 h-3.5 inline mr-1" />
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleSaveEdit(u.role)}
+                          disabled={isSavingEdit}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-purple-600 hover:bg-purple-500 disabled:opacity-50"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          {roleChangeWarning ? 'Confirm & Save' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : deactivatingId === u.id ? (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-amber-300 flex items-start gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        Deactivate {u.name}? Their open tasks become unassigned, they're removed from every
+                        active-employee picker, and their login is banned once{' '}
+                        <code className="px-1 py-0.5 rounded bg-black/40 font-mono">npm run deactivate-auth-users</code> is
+                        run. Historical records keep their name — this is permanent but not a delete.
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => setDeactivatingId(null)}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] text-stone-400 hover:text-white"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleDeactivate(u.id)}
+                          disabled={isDeactivating}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-red-600 hover:bg-red-500 disabled:opacity-50"
+                        >
+                          {isDeactivating ? 'Deactivating...' : 'Confirm Deactivate'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-white font-semibold">{u.name}</span>
+                        <span className="text-stone-500 ml-2 font-mono">{u.email}</span>
+                        <span className="text-stone-400 ml-2">{getRoleInfo(u.role).englishTitle}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => startEdit(u)}
+                          className="p-1.5 rounded-lg text-purple-300 hover:text-white hover:bg-purple-900/40"
+                          title="Edit"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {u.id !== currentUser.id && (
+                          <button
+                            onClick={() => setDeactivatingId(u.id)}
+                            className="p-1.5 rounded-lg text-stone-500 hover:text-red-400 hover:bg-red-950/30"
+                            title="Deactivate"
+                          >
+                            <UserX className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {canManageEmployees && deactivatedEmployees.length > 0 && (
+        <div className="p-4 rounded-2xl border border-stone-800 bg-[#161224]/80">
+          <h3 className="text-xs font-bold text-stone-400 flex items-center gap-2 mb-3">
+            <UserX className="w-4 h-4 text-stone-500" />
+            Deactivated Employees ({deactivatedEmployees.length})
+          </h3>
+          <div className="space-y-1.5">
+            {deactivatedEmployees.map((u) => (
+              <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-black/20 text-xs opacity-60">
+                <div>
+                  <span className="text-stone-300 font-semibold">{u.name}</span>
+                  <span className="text-stone-500 ml-2 font-mono">{u.email}</span>
+                </div>
+                <span className="text-stone-500">{getRoleInfo(u.role).englishTitle}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -44,10 +44,12 @@ import {
   PlatformConnectionStatus,
   PlatformCategory,
   ClientContractRecord,
+  BriefFieldDef,
+  BriefFieldSchemaRow,
 } from '../types/database';
 import { AppModuleId } from '../data/roles';
 import { getUserCapacityData, getCapacityIndicator } from '../lib/capacity';
-import { isPendingEmployee, canSeeContractValue } from '../lib/permissions';
+import { isActiveEmployee, canSeeContractValue } from '../lib/permissions';
 import { matchesClientQuery } from '../lib/clientSearch';
 import { ClientDashboard } from './ClientDashboard';
 import { ComparisonGranularity, DateRange, ReportMode, ReportScope } from '../lib/reportingEngine';
@@ -75,7 +77,14 @@ interface AMQueueProps {
     fields: Record<string, any>;
     version: number;
     submitted_by: string;
+    custom_field_defs: BriefFieldDef[];
   }) => Promise<void>;
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
+  briefFieldSchemaRows: BriefFieldSchemaRow[];
+  onCreateBriefFieldSchema?: (row: Omit<BriefFieldSchemaRow, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onUpdateBriefFieldSchema?: (id: string, updates: Partial<BriefFieldSchemaRow>) => Promise<void>;
+  onDeleteBriefFieldSchema?: (id: string) => Promise<void>;
+  onDeleteClient?: (clientId: string) => Promise<void>;
   onUpdateTaskStatus?: (taskId: string, newStatus: TaskStatus) => Promise<void>;
   onUpdateClientStatus?: (
     clientId: string,
@@ -135,6 +144,12 @@ export const AMQueue: React.FC<AMQueueProps> = ({
   currentUserId,
   onAssignAMAgent,
   onSaveBrief,
+  briefFieldSchemas,
+  briefFieldSchemaRows,
+  onCreateBriefFieldSchema,
+  onUpdateBriefFieldSchema,
+  onDeleteBriefFieldSchema,
+  onDeleteClient,
   onUpdateTaskStatus,
   onUpdateClientStatus,
   onMarkClientViewed,
@@ -207,8 +222,8 @@ export const AMQueue: React.FC<AMQueueProps> = ({
     [visibleClients, searchQuery]
   );
 
-  const amAgents = users.filter((u) => u.role === 'am_agent' && !isPendingEmployee(u));
-  const salesUsers = users.filter((u) => u.role === 'sales' && !isPendingEmployee(u));
+  const amAgents = users.filter((u) => u.role === 'am_agent' && isActiveEmployee(u));
+  const salesUsers = users.filter((u) => u.role === 'sales' && isActiveEmployee(u));
 
   const activeDashboardClient = useMemo(
     () => clients.find((c) => c.id === dashboardClientId) || null,
@@ -652,6 +667,12 @@ export const AMQueue: React.FC<AMQueueProps> = ({
           clientPortalUser={clientPortalUsers.find((cpu) => cpu.client_id === activeDashboardClient.id) || null}
           onClose={() => setDashboardClientId(null)}
           onSaveBrief={onSaveBrief}
+          briefFieldSchemas={briefFieldSchemas}
+          briefFieldSchemaRows={briefFieldSchemaRows}
+          onCreateBriefFieldSchema={onCreateBriefFieldSchema}
+          onUpdateBriefFieldSchema={onUpdateBriefFieldSchema}
+          onDeleteBriefFieldSchema={onDeleteBriefFieldSchema}
+          onDeleteClient={onDeleteClient}
           onAssignAMAgent={onAssignAMAgent}
           onUpdateTaskStatus={onUpdateTaskStatus}
           onUpdateClientStatus={onUpdateClientStatus}

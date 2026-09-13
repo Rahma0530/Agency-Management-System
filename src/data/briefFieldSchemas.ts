@@ -1,260 +1,69 @@
-import { ServiceType } from '../types/database';
+import { BriefFieldDef, BriefFieldSchemaRow, ServiceType } from '../types/database';
+
+// Re-exported for backward compatibility with existing call sites that import these types from
+// here — the canonical definitions now live in types/database.ts alongside BriefFieldSchemaRow,
+// since the field list itself moved from this file's static BRIEF_FIELD_SCHEMAS object into the
+// database (brief_field_schemas table) so it can be edited from the app instead of requiring a
+// code change + redeploy. See BriefFieldSchemaEditor.tsx.
+export type { BriefFieldDef, BriefFieldType } from '../types/database';
 
 /**
- * Single source of truth for the per-service brief field list. Both the editable form
- * (DynamicBriefForm.tsx) and the read-only view (ServiceBriefsRoutingView.tsx) render off this —
- * a field added/renamed/removed here shows up correctly in both places automatically.
+ * A small, safe set of Tailwind class strings for a field's read-only display styling
+ * (value/chip color), offered as named presets in BriefFieldSchemaEditor.tsx rather than a
+ * free-text CSS input — picking from a fixed list can never produce a broken class name, an
+ * invisible-text color, or an injected style, the way a raw text field could.
  */
-export type BriefFieldType = 'text' | 'textarea' | 'url' | 'tag-list';
+export const VALUE_STYLE_PRESETS: { name: string; swatchClass: string; className: string }[] = [
+  { name: 'Default (stone)', swatchClass: 'bg-stone-400', className: 'text-xs text-stone-200' },
+  { name: 'White (bold)', swatchClass: 'bg-white', className: 'text-xs font-bold text-white' },
+  { name: 'Purple', swatchClass: 'bg-purple-400', className: 'text-xs font-bold text-purple-300' },
+  { name: 'Emerald', swatchClass: 'bg-emerald-400', className: 'text-xs font-bold text-emerald-300' },
+  { name: 'Sky', swatchClass: 'bg-sky-400', className: 'text-sm font-bold text-sky-400 font-mono' },
+  { name: 'Amber', swatchClass: 'bg-amber-400', className: 'text-xs font-bold text-amber-300' },
+  { name: 'Pink', swatchClass: 'bg-pink-400', className: 'text-xs font-bold text-pink-300' },
+  { name: 'Monospace (stone)', swatchClass: 'bg-stone-400', className: 'text-xs text-stone-200 font-mono whitespace-pre-line' },
+];
 
-export interface BriefFieldDef {
-  key: string;
-  label: string;
-  type: BriefFieldType;
-  placeholder?: string;
-  /** Grid column width. Defaults to 'half' (2-up) when omitted. */
-  span?: 'full' | 'half';
-  /** Textarea row count. Defaults to 2 when omitted. */
-  rows?: number;
-  /** Read-only display text when the field has no value yet. Defaults to 'Not specified'. */
-  fallback?: string;
-  /** Read-only value styling (text/textarea/url fields). */
-  valueClassName?: string;
-  /** Read-only chip styling (tag-list fields only). */
-  chipClassName?: string;
-  /**
-   * Flags this field as foundational to actually starting work on this service — checked by
-   * lib/briefReview.ts's rule-based review assistant (Module 9). No behavioral effect on the
-   * form itself: saving with a required field empty is still allowed, only flagged.
-   */
-  required?: boolean;
+export const CHIP_STYLE_PRESETS: { name: string; swatchClass: string; className: string }[] = [
+  { name: 'Purple', swatchClass: 'bg-purple-500', className: 'bg-purple-950/60 text-purple-300 border-purple-800/40' },
+  { name: 'Pink', swatchClass: 'bg-pink-500', className: 'bg-pink-950/60 text-pink-300 border-pink-800/40' },
+  { name: 'Sky', swatchClass: 'bg-sky-500', className: 'bg-sky-950/60 text-sky-300 border-sky-800/40' },
+  { name: 'Emerald', swatchClass: 'bg-emerald-500', className: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40' },
+  { name: 'Amber', swatchClass: 'bg-amber-500', className: 'bg-amber-950/60 text-amber-300 border-amber-800/40' },
+];
+
+/** Maps a raw brief_field_schemas DB row (snake_case) to the camelCase shape the form/read-only
+ * renderers already consume — keeps DynamicBriefForm.tsx/BriefFieldsReadOnly.tsx's field-rendering
+ * JSX unchanged even though the underlying source moved from a static import to a fetched table. */
+export function toBriefFieldDef(row: BriefFieldSchemaRow): BriefFieldDef {
+  return {
+    key: row.key,
+    label: row.label,
+    type: row.type,
+    placeholder: row.placeholder || undefined,
+    span: row.span || undefined,
+    rows: row.rows || undefined,
+    fallback: row.fallback || undefined,
+    valueClassName: row.value_class_name || undefined,
+    chipClassName: row.chip_class_name || undefined,
+    required: row.required,
+  };
 }
 
-export const BRIEF_FIELD_SCHEMAS: Record<ServiceType, BriefFieldDef[]> = {
-  seo: [
-    {
-      key: 'website_url',
-      label: 'Target Website URL',
-      type: 'url',
-      placeholder: 'https://example.com',
-      span: 'half',
-      valueClassName: 'text-xs font-bold text-emerald-300',
-      required: true,
-    },
-    {
-      key: 'cms_platform',
-      label: 'CMS Platform',
-      type: 'text',
-      placeholder: 'Example: WordPress, Shopify, Next.js, Custom PHP...',
-      span: 'half',
-      valueClassName: 'text-xs font-bold text-white',
-    },
-    {
-      key: 'target_keywords',
-      label: 'Target Keywords',
-      type: 'textarea',
-      placeholder: 'Enter keywords separated by commas or new lines...',
-      span: 'full',
-      valueClassName: 'text-xs text-stone-200 font-mono whitespace-pre-line',
-      required: true,
-    },
-    {
-      key: 'target_locations',
-      label: 'Geographic Target',
-      type: 'text',
-      placeholder: 'Example: Saudi Arabia (Riyadh, Jeddah), UAE...',
-      span: 'half',
-      valueClassName: 'text-xs text-white',
-    },
-    {
-      key: 'current_organic_traffic',
-      label: 'Current Organic Traffic (Estimated)',
-      type: 'text',
-      placeholder: 'Example: 5,000 visitors/month',
-      span: 'half',
-      fallback: 'N/A',
-      valueClassName: 'text-xs font-bold text-purple-300',
-    },
-    {
-      key: 'competitor_urls',
-      label: 'Competitor URLs',
-      type: 'textarea',
-      placeholder: 'Enter competitor URLs...',
-      span: 'full',
-      valueClassName: 'text-xs text-stone-200 whitespace-pre-line',
-    },
-    {
-      key: 'primary_goals',
-      label: 'Primary Campaign Goals',
-      type: 'textarea',
-      placeholder: 'What outcomes were agreed upon with the client?',
-      span: 'full',
-      valueClassName: 'text-xs text-stone-200',
-    },
-  ],
-  social_media: [
-    {
-      key: 'social_channels',
-      label: 'Social Channels',
-      type: 'tag-list',
-      placeholder: 'Example: Instagram, TikTok, LinkedIn, X',
-      span: 'full',
-      chipClassName: 'bg-pink-950/60 text-pink-300 border-pink-800/40',
-      required: true,
-    },
-    {
-      key: 'brand_tone',
-      label: 'Brand Voice & Tone',
-      type: 'text',
-      placeholder: 'Example: Premium and elegant, friendly and playful, formal and informative...',
-      span: 'half',
-      valueClassName: 'text-xs font-bold text-white',
-    },
-    {
-      key: 'posting_frequency',
-      label: 'Posting Frequency',
-      type: 'text',
-      placeholder: 'Example: 5 posts + 1 reel + daily stories',
-      span: 'half',
-      fallback: 'Weekly',
-      valueClassName: 'text-xs font-bold text-purple-300',
-    },
-    {
-      key: 'assets_drive_link',
-      label: 'Brand & Content Assets Link',
-      type: 'url',
-      placeholder: 'https://drive.google.com/...',
-      span: 'full',
-      valueClassName: 'text-xs font-bold text-purple-300',
-    },
-    {
-      key: 'target_demographics',
-      label: 'Target Demographics',
-      type: 'textarea',
-      placeholder: 'Precise description of the target segment and their interests...',
-      span: 'full',
-      valueClassName: 'text-xs text-stone-200',
-    },
-    {
-      key: 'content_pillars',
-      label: 'Content Pillars',
-      type: 'textarea',
-      placeholder: 'Example: Educational (40%), promotional (30%), interactive & contests (30%)',
-      span: 'full',
-      valueClassName: 'text-xs text-stone-200',
-    },
-  ],
-  media_buying: [
-    {
-      key: 'ad_platforms',
-      label: 'Ad Platforms',
-      type: 'tag-list',
-      placeholder: 'Example: Meta Ads, Google Ads, TikTok, Snapchat',
-      span: 'full',
-      chipClassName: 'bg-sky-950/60 text-sky-300 border-sky-800/40',
-      required: true,
-    },
-    {
-      key: 'monthly_ad_budget',
-      label: 'Monthly Ad Spend Budget',
-      type: 'text',
-      placeholder: 'Example: SAR 40,000/month',
-      span: 'half',
-      fallback: 'Custom',
-      valueClassName: 'text-sm font-bold text-sky-400 font-mono',
-      required: true,
-    },
-    {
-      key: 'target_roas',
-      label: 'Target ROAS',
-      type: 'text',
-      placeholder: 'Example: 3.5x or 4.0x',
-      span: 'half',
-      fallback: 'N/A',
-      valueClassName: 'text-sm font-bold text-emerald-400 font-mono',
-    },
-    {
-      key: 'primary_conversion_goal',
-      label: 'Primary Conversion Goal',
-      type: 'text',
-      placeholder: 'Example: Store sales, WhatsApp messages, qualified leads...',
-      span: 'full',
-      valueClassName: 'text-xs font-bold text-stone-200',
-    },
-    {
-      key: 'ad_accounts_access_status',
-      label: 'Pixel & Ad Accounts Access',
-      type: 'text',
-      placeholder: 'Example: Business Manager partnership sent, pixel is active on the store',
-      span: 'full',
-      valueClassName: 'text-xs text-stone-200',
-    },
-    {
-      key: 'target_audiences',
-      label: 'Audience Details & Demographic Targeting',
-      type: 'textarea',
-      placeholder: 'Interests, exclusions, Lookalike audiences needed...',
-      span: 'full',
-      valueClassName: 'text-xs text-stone-200',
-    },
-  ],
-  creative: [
-    {
-      key: 'deliverable_types',
-      label: 'Deliverable Type(s)',
-      type: 'text',
-      placeholder: 'e.g. Social static posts, Instagram Reels, brand logo, banner ads',
-      span: 'half',
-      valueClassName: 'text-xs font-bold text-white',
-      required: true,
-    },
-    {
-      key: 'formats_dimensions',
-      label: 'Formats & Dimensions',
-      type: 'text',
-      placeholder: 'e.g. 1080x1080 (IG square), 1920x1080 (YouTube thumb), 9:16 vertical',
-      span: 'half',
-      valueClassName: 'text-xs font-bold text-purple-300',
-    },
-    {
-      key: 'deliverable_volume',
-      label: 'Deliverable Volume / Frequency',
-      type: 'text',
-      placeholder: 'e.g. 8 static posts + 2 reels per month',
-      span: 'full',
-      valueClassName: 'text-xs font-bold text-stone-200',
-    },
-    {
-      key: 'brand_guidelines_link',
-      label: 'Brand Guidelines / Assets Link',
-      type: 'url',
-      placeholder: 'https://drive.google.com/... (logo kit, fonts, guideline doc)',
-      span: 'half',
-      valueClassName: 'text-xs font-bold text-purple-300',
-    },
-    {
-      key: 'visual_references_link',
-      label: 'Visual References / Inspiration',
-      type: 'url',
-      placeholder: 'https://pinterest.com/... or moodboard link',
-      span: 'half',
-      valueClassName: 'text-xs font-bold text-purple-300',
-    },
-    {
-      key: 'key_message_tone',
-      label: 'Key Message & Tone',
-      type: 'textarea',
-      placeholder: 'What should this creative communicate? Target audience, tone, key message...',
-      span: 'full',
-      valueClassName: 'text-xs text-stone-200',
-    },
-    {
-      key: 'turnaround_deadline',
-      label: 'Turnaround / Deadline Expectations',
-      type: 'text',
-      placeholder: 'e.g. 3 business days per deliverable',
-      span: 'full',
-      valueClassName: 'text-xs font-bold text-stone-200',
-    },
-  ],
-};
+/** Groups a flat brief_field_schemas fetch into the per-service-type, sort_order-sorted shape
+ * every consumer needs — the exact same Record<ServiceType, BriefFieldDef[]> shape the old static
+ * BRIEF_FIELD_SCHEMAS object had, so every existing `schemas[serviceType] || []` lookup still
+ * works unchanged. */
+export function groupBriefFieldSchemas(rows: BriefFieldSchemaRow[]): Record<ServiceType, BriefFieldDef[]> {
+  const result: Record<ServiceType, BriefFieldDef[]> = {
+    seo: [],
+    social_media: [],
+    media_buying: [],
+    creative: [],
+  };
+  const sorted = [...rows].sort((a, b) => a.sort_order - b.sort_order);
+  for (const row of sorted) {
+    result[row.service_type].push(toBriefFieldDef(row));
+  }
+  return result;
+}

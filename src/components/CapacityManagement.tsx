@@ -38,7 +38,7 @@ import {
   UserRole,
 } from '../types/database';
 import { getRoleInfo, AppModuleId } from '../data/roles';
-import { isPendingEmployee } from '../lib/permissions';
+import { isActiveEmployee } from '../lib/permissions';
 import { isTeamLeadRole, resolveCapacityLimit, getUserCapacityData as getSharedUserCapacityData } from '../lib/capacity';
 import { EmployeePerformancePage } from './EmployeePerformancePage';
 
@@ -210,7 +210,7 @@ export const CapacityManagement: React.FC<CapacityManagementProps> = ({
     // viewer is one of them. Pending employees (no Auth account yet, added via
     // the Add Employee admin screen) are excluded too — they can't be assigned
     // capacity or workload until scripts/provisionAuthUsers.ts activates them.
-    return result.filter((u) => u.role !== 'executive' && u.role !== 'head_of_technical' && !isPendingEmployee(u));
+    return result.filter((u) => u.role !== 'executive' && u.role !== 'head_of_technical' && isActiveEmployee(u));
   }, [users, currentUser]);
 
   // Dynamically derived departments list reflecting only visible employees under RLS

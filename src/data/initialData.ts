@@ -268,6 +268,7 @@ export const INITIAL_BRIEFS: BriefRecord[] = [
     service_type: 'seo',
     version: 1,
     submitted_by: 'usr-am-agent-1',
+    custom_field_defs: [],
     fields: {
       website_url: 'https://alfuttaim-smart.example.com',
       target_keywords: 'حلول ذكية للمنازل, أتمتة الشركات, أنظمة الحماية الذكية',
@@ -286,6 +287,7 @@ export const INITIAL_BRIEFS: BriefRecord[] = [
     service_type: 'social_media',
     version: 1,
     submitted_by: 'usr-am-agent-1',
+    custom_field_defs: [],
     fields: {
       social_channels: ['Instagram', 'LinkedIn', 'X'],
       brand_tone: 'احترافي، مبتكر، ملهم، موثوق',
@@ -303,6 +305,7 @@ export const INITIAL_BRIEFS: BriefRecord[] = [
     service_type: 'media_buying',
     version: 1,
     submitted_by: 'usr-am-agent-1',
+    custom_field_defs: [],
     fields: {
       ad_platforms: ['Meta Ads (Instagram & Facebook)', 'Google Search & Performance Max', 'TikTok Ads'],
       monthly_ad_budget: '50,000 ريال سعودي',

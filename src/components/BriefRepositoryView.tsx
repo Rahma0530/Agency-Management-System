@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Building2, Search, Clock, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
-import { ClientRecord, BriefRecord, BriefRevisionRecord, UserRecord, ServiceType } from '../types/database';
+import { BriefFieldDef, ClientRecord, BriefRecord, BriefRevisionRecord, UserRecord, ServiceType } from '../types/database';
 import { BriefFieldsReadOnly } from './BriefFieldsReadOnly';
 import { BriefEditHistory } from './BriefEditHistory';
 
@@ -9,6 +9,7 @@ interface BriefRepositoryViewProps {
   briefs: BriefRecord[];
   briefRevisions: BriefRevisionRecord[];
   users: UserRecord[];
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
   onOpenFullDashboard: (clientId: string) => void;
 }
 
@@ -42,6 +43,7 @@ export const BriefRepositoryView: React.FC<BriefRepositoryViewProps> = ({
   briefs,
   briefRevisions,
   users,
+  briefFieldSchemas,
   onOpenFullDashboard,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -195,10 +197,15 @@ export const BriefRepositoryView: React.FC<BriefRepositoryViewProps> = ({
                       </button>
                       {isExpanded && (
                         <div className="p-4 bg-black/20 space-y-3">
-                          <BriefFieldsReadOnly serviceType={service} fields={brief.fields} />
+                          <BriefFieldsReadOnly
+                            fields={brief.fields}
+                            fieldDefs={briefFieldSchemas[service] || []}
+                            customFieldDefs={brief.custom_field_defs}
+                          />
                           <BriefEditHistory
                             revisions={briefRevisions.filter((r) => r.brief_id === brief.id)}
-                            serviceType={service}
+                            fieldDefs={briefFieldSchemas[service] || []}
+                            customFieldDefs={brief.custom_field_defs}
                             users={users}
                           />
                         </div>

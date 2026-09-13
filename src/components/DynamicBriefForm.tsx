@@ -12,9 +12,10 @@ import {
   Lock,
   Palette,
   ClipboardCheck,
+  Plus,
+  X,
 } from 'lucide-react';
-import { BriefRecord, BriefRevisionRecord, ServiceType } from '../types/database';
-import { BRIEF_FIELD_SCHEMAS } from '../data/briefFieldSchemas';
+import { BriefFieldDef, BriefRecord, BriefRevisionRecord, ServiceType } from '../types/database';
 import { reviewBrief, BriefReviewSeverity } from '../lib/briefReview';
 import { BriefEditHistory } from './BriefEditHistory';
 
@@ -22,6 +23,9 @@ interface DynamicBriefFormProps {
   clientId: string;
   clientName: string;
   serviceType: ServiceType;
+  // The global per-service question list, resolved by the caller from the now-dynamic
+  // brief_field_schemas table rather than a static import (see data/briefFieldSchemas.ts).
+  fieldDefs: BriefFieldDef[];
   existingBrief?: BriefRecord;
   revisions?: BriefRevisionRecord[];
   // Every brief across every client/service, for the review assistant's cross-brief comparison
@@ -36,6 +40,7 @@ interface DynamicBriefFormProps {
     fields: Record<string, any>;
     version: number;
     submitted_by: string;
+    custom_field_defs: BriefFieldDef[];
   }) => Promise<void>;
 }
 
@@ -49,6 +54,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   clientId,
   clientName,
   serviceType,
+  fieldDefs,
   existingBrief,
   revisions = [],
   allBriefs = [],
@@ -58,6 +64,9 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
 }) => {
   const [activeView, setActiveView] = useState<'edit' | 'spreadsheet'>('edit');
   const [formData, setFormData] = useState<Record<string, any>>(existingBrief?.fields || {});
+  const [customFieldDefs, setCustomFieldDefs] = useState<BriefFieldDef[]>(existingBrief?.custom_field_defs || []);
+  const [isAddingCustomQuestion, setIsAddingCustomQuestion] = useState(false);
+  const [customQuestionLabel, setCustomQuestionLabel] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -65,7 +74,9 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
   const currentVersion = existingBrief?.version || 1;
 
   // Review assistant (Module 9, point 1): recomputed live off formData as the author types, not
-  // just the last-saved existingBrief — advisory only, never blocks handleSave below.
+  // just the last-saved existingBrief — advisory only, never blocks handleSave below. Only
+  // checked against the global schema, not custom_field_defs — a one-off question has no
+  // `required` concept.
   const reviewIssues = useMemo(
     () =>
       reviewBrief(
@@ -76,14 +87,38 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
           fields: formData,
           version: currentVersion,
           submitted_by: currentUserId,
+          custom_field_defs: customFieldDefs,
         },
-        allBriefs
+        allBriefs,
+        fieldDefs
       ),
-    [existingBrief?.id, clientId, serviceType, formData, currentVersion, currentUserId, allBriefs]
+    [existingBrief?.id, clientId, serviceType, formData, currentVersion, currentUserId, customFieldDefs, allBriefs, fieldDefs]
   );
 
   const handleFieldChange = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Point 11: a one-off question added to THIS client's brief only — never touches the global
+  // brief_field_schemas table, never appears on any other client's brief for this service. Always
+  // a plain text field — a custom question is meant for an ad hoc note, not a structured
+  // tag-list/url input, so there's no type picker here.
+  const handleAddCustomQuestion = () => {
+    const label = customQuestionLabel.trim();
+    if (!label) return;
+    const key = `custom_${Date.now().toString().slice(-6)}`;
+    setCustomFieldDefs((prev) => [...prev, { key, label, type: 'text' }]);
+    setCustomQuestionLabel('');
+    setIsAddingCustomQuestion(false);
+  };
+
+  const handleRemoveCustomQuestion = (key: string) => {
+    setCustomFieldDefs((prev) => prev.filter((f) => f.key !== key));
+    setFormData((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -99,6 +134,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
         fields: formData,
         version: existingBrief ? currentVersion + 1 : 1,
         submitted_by: currentUserId,
+        custom_field_defs: customFieldDefs,
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -139,7 +175,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
     }
   };
 
-  const fieldDefs = BRIEF_FIELD_SCHEMAS[serviceType] || [];
+  const allFieldDefs = [...fieldDefs, ...customFieldDefs];
 
   return (
     <div
@@ -266,7 +302,7 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
       )}
 
       <div className="mb-4">
-        <BriefEditHistory revisions={revisions} serviceType={serviceType} />
+        <BriefEditHistory revisions={revisions} fieldDefs={fieldDefs} customFieldDefs={customFieldDefs} />
       </div>
 
       {errorMsg && (
@@ -296,10 +332,32 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
           className={`border-0 p-0 m-0 min-w-0 ${!canEdit ? 'opacity-60' : ''}`}
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {fieldDefs.map((field) => (
+            {allFieldDefs.map((field) => {
+              const isCustom = customFieldDefs.some((f) => f.key === field.key);
+              return (
               <div key={field.key} className={field.span === 'full' ? 'md:col-span-2' : ''}>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--lilac)' }}>
-                  {field.label}
+                <label className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-xs font-semibold" style={{ color: 'var(--lilac)' }}>
+                    {field.label}
+                    {isCustom && (
+                      <span
+                        className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+                        style={{ background: 'rgba(123, 47, 247, 0.15)', color: 'var(--purple-light)' }}
+                      >
+                        Custom — this client only
+                      </span>
+                    )}
+                  </span>
+                  {isCustom && canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCustomQuestion(field.key)}
+                      className="text-stone-500 hover:text-red-400 transition-colors"
+                      title="Remove this custom question"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </label>
                 {field.type === 'textarea' ? (
                   <textarea
@@ -348,8 +406,55 @@ export const DynamicBriefForm: React.FC<DynamicBriefFormProps> = ({
                   />
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
+
+          {canEdit && (
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--border-soft)' }}>
+              {isAddingCustomQuestion ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Question text (e.g. any competitor to avoid mentioning?)"
+                    value={customQuestionLabel}
+                    onChange={(e) => setCustomQuestionLabel(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddCustomQuestion()}
+                    className="flex-1 px-3 py-2 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                    style={{ background: 'rgba(10, 10, 13, 0.85)', border: '1px solid var(--border-soft)', color: 'var(--white)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomQuestion}
+                    className="px-3 py-2 rounded-xl text-xs font-bold text-white"
+                    style={{ background: 'var(--gradient-badge)', border: '1px solid var(--border-strong)' }}
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingCustomQuestion(false);
+                      setCustomQuestionLabel('');
+                    }}
+                    className="p-2 rounded-xl text-stone-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsAddingCustomQuestion(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-purple-300 hover:text-white bg-purple-900/20 hover:bg-purple-800/40 border border-purple-700/30 transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Custom Question (this client only)
+                </button>
+              )}
+            </div>
+          )}
         </fieldset>
       )}
 

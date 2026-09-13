@@ -1,5 +1,4 @@
-import { BriefRecord } from '../types/database';
-import { BRIEF_FIELD_SCHEMAS } from '../data/briefFieldSchemas';
+import { BriefFieldDef, BriefRecord } from '../types/database';
 
 // Brief review assistant (Module 9, point 1): rule-based, no model call. Module 2 has no
 // mandatory-field validation of any kind today — DynamicBriefForm.tsx's handleSave saves
@@ -39,9 +38,15 @@ function isFieldEmpty(value: any): boolean {
 // `allBriefs` can be every brief across every service and client — filtered here to the same
 // service_type and the brief under review excluded, so callers can just pass the full array they
 // already have in scope rather than pre-filtering.
-export function reviewBrief(brief: BriefRecord, allBriefs: BriefRecord[]): BriefReviewIssue[] {
+//
+// `fieldDefs` is the caller-resolved global schema for brief.service_type (from the now-dynamic
+// brief_field_schemas table, grouped via data/briefFieldSchemas.ts's groupBriefFieldSchemas) —
+// this used to be a static import, but the schema can change at runtime now, so it's the caller's
+// job to pass the current list rather than this module reading a fixed one. Only the global
+// schema is checked here, not a brief's own custom_field_defs — a one-off custom question has no
+// `required` concept, so there's nothing this review assistant could usefully flag about it.
+export function reviewBrief(brief: BriefRecord, allBriefs: BriefRecord[], fieldDefs: BriefFieldDef[]): BriefReviewIssue[] {
   const issues: BriefReviewIssue[] = [];
-  const fieldDefs = BRIEF_FIELD_SCHEMAS[brief.service_type] || [];
   const others = allBriefs.filter((b) => b.id !== brief.id && b.service_type === brief.service_type);
 
   for (const def of fieldDefs) {
@@ -90,8 +95,7 @@ export function reviewBrief(brief: BriefRecord, allBriefs: BriefRecord[]): Brief
 // Simple presence-based score for a compact badge — filled fields / total fields, out of 100.
 // Doesn't factor in issue severity (a "too short" field still counts as filled); reviewBrief's
 // issue list is the detailed view, this is just the at-a-glance number.
-export function briefCompletenessScore(brief: BriefRecord): number {
-  const fieldDefs = BRIEF_FIELD_SCHEMAS[brief.service_type] || [];
+export function briefCompletenessScore(brief: BriefRecord, fieldDefs: BriefFieldDef[]): number {
   if (fieldDefs.length === 0) return 100;
   const filled = fieldDefs.filter((def) => !isFieldEmpty(brief.fields?.[def.key])).length;
   return Math.round((filled / fieldDefs.length) * 100);

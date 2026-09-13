@@ -14,7 +14,7 @@ import { AppModuleId } from '../../data/roles';
 import { resolveClientsForSubject } from '../../lib/reportingEngine';
 import { getUserCapacityData } from '../../lib/capacity';
 import { STATUS_META } from '../../lib/performanceScore';
-import { isPendingEmployee } from '../../lib/permissions';
+import { isActiveEmployee } from '../../lib/permissions';
 import { isPausedClient } from '../../lib/clientStatus';
 
 interface DeptConfig {
@@ -114,7 +114,7 @@ export const TeamLeadDashboard: React.FC<{
   );
 
   const deptAgents = useMemo(
-    () => (config ? users.filter((u) => u.role === config.agentRole && !isPendingEmployee(u)) : []),
+    () => (config ? users.filter((u) => u.role === config.agentRole && isActiveEmployee(u)) : []),
     [users, config]
   );
 

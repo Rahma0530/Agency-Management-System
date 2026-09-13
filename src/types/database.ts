@@ -49,6 +49,13 @@ export interface UserRecord {
   // the browser, so it happens out-of-band via scripts/provisionAuthUsers.ts. Use
   // lib/permissions.ts's isPendingEmployee() rather than checking this directly everywhere.
   auth_id: string | null;
+  // Null while active. Set the moment an executive/head_of_technical/team-lead deactivates this
+  // employee — the row is never deleted (so their name still displays correctly on every
+  // historical task/brief/daily-log/report they're referenced from), but they lose all
+  // capability: excluded from every active-employee picker/list (lib/permissions.ts's
+  // isActiveEmployee()), can never receive new assignments, and their auth.users account is
+  // separately banned (~100 year ban_duration, reversible) by scripts/deactivateAuthUser.ts.
+  deactivated_at?: string | null;
   created_at?: string;
 }
 
@@ -126,6 +133,53 @@ export interface BriefRecord {
   // Shared per-role (no per-client "assigned service team lead" concept exists), unlike the
   // per-individual am_team_lead_viewed_at on ClientRecord.
   team_lead_viewed_at?: string | null;
+  // One-off questions added to THIS client's brief only — never appear on any other client's
+  // brief for this service, and never touch the global per-service question list in
+  // brief_field_schemas. Rendered appended after that global list's fields. The answer to a
+  // custom question lives in `fields` exactly like a built-in field's — only the question
+  // definition itself lives here.
+  custom_field_defs: BriefFieldDef[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 4a2. brief_field_schemas — the GLOBAL, per-service-type brief question list. Source of truth
+// moved here from the old static src/data/briefFieldSchemas.ts object so it can be edited from
+// the app (BriefFieldSchemaEditor.tsx) instead of requiring a code change + redeploy. Editing a
+// row here affects every NEW brief filled out for that service_type going forward; a brief
+// already submitted keeps whatever it already has in `fields`, regardless of later schema edits.
+export type BriefFieldType = 'text' | 'textarea' | 'url' | 'tag-list';
+
+export interface BriefFieldDef {
+  key: string;
+  label: string;
+  type: BriefFieldType;
+  placeholder?: string;
+  span?: 'full' | 'half';
+  rows?: number;
+  fallback?: string;
+  valueClassName?: string;
+  chipClassName?: string;
+  required?: boolean;
+}
+
+// The actual DB row shape (snake_case columns, matching every other *Record type in this file) —
+// kept distinct from the camelCase BriefFieldDef the renderer components consume. See
+// lib/briefFieldSchemas.ts's toBriefFieldDef() for the row -> BriefFieldDef mapping.
+export interface BriefFieldSchemaRow {
+  id: string;
+  service_type: ServiceType;
+  key: string;
+  label: string;
+  type: BriefFieldType;
+  placeholder?: string | null;
+  span?: 'full' | 'half' | null;
+  rows?: number | null;
+  fallback?: string | null;
+  value_class_name?: string | null;
+  chip_class_name?: string | null;
+  required: boolean;
+  sort_order: number;
   created_at?: string;
   updated_at?: string;
 }

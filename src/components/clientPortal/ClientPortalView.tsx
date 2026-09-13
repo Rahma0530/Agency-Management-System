@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, LogOut, UserCheck, TrendingUp, FileText, ClipboardList } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import {
+  BriefFieldDef,
+  BriefFieldSchemaRow,
   ClientRecord,
   BriefRecord,
   ClientComparisonRecord,
@@ -10,6 +12,7 @@ import {
 } from '../../types/database';
 import { ComparisonCard, FiledReportsList } from '../reporting/ComparisonDisplay';
 import { BriefFieldsReadOnly } from '../BriefFieldsReadOnly';
+import { groupBriefFieldSchemas } from '../../data/briefFieldSchemas';
 
 interface ClientPortalViewProps {
   client: ClientRecord;
@@ -32,6 +35,12 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSi
   const [briefs, setBriefs] = useState<BriefRecord[]>([]);
   const [comparisons, setComparisons] = useState<ClientComparisonRecord[]>([]);
   const [reports, setReports] = useState<ReportRecord[]>([]);
+  const [briefFieldSchemas, setBriefFieldSchemas] = useState<Record<ServiceType, BriefFieldDef[]>>({
+    seo: [],
+    social_media: [],
+    media_buying: [],
+    creative: [],
+  });
   const [loading, setLoading] = useState(true);
   const [activeBriefService, setActiveBriefService] = useState<ServiceType | null>(null);
 
@@ -39,11 +48,12 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSi
     let cancelled = false;
 
     const load = async () => {
-      const [amNameRes, briefsRes, comparisonsRes, reportsRes] = await Promise.all([
+      const [amNameRes, briefsRes, comparisonsRes, reportsRes, schemasRes] = await Promise.all([
         supabase.rpc('portal_am_agent_name'),
         supabase.from('briefs').select('*').eq('client_id', client.id),
         supabase.from('client_comparisons').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
         supabase.from('reports').select('*').eq('client_id', client.id).eq('type', 'client'),
+        supabase.from('brief_field_schemas').select('*'),
       ]);
 
       if (cancelled) return;
@@ -51,6 +61,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSi
       setBriefs((briefsRes.data as BriefRecord[]) || []);
       setComparisons((comparisonsRes.data as ClientComparisonRecord[]) || []);
       setReports((reportsRes.data as ReportRecord[]) || []);
+      setBriefFieldSchemas(groupBriefFieldSchemas((schemasRes.data as BriefFieldSchemaRow[]) || []));
       setLoading(false);
     };
 
@@ -154,7 +165,11 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ client, onSi
                 {activeBriefService && (
                   <div className="p-4 rounded-xl border border-purple-900/30 bg-[#161224]/80">
                     {activeBrief ? (
-                      <BriefFieldsReadOnly serviceType={activeBriefService} fields={activeBrief.fields} />
+                      <BriefFieldsReadOnly
+                        fields={activeBrief.fields}
+                        fieldDefs={briefFieldSchemas[activeBriefService] || []}
+                        customFieldDefs={activeBrief.custom_field_defs}
+                      />
                     ) : (
                       <p className="text-xs text-stone-500 text-center py-4">Nothing documented for this service yet.</p>
                     )}

@@ -24,6 +24,9 @@ import {
   ExtraNoteRecord,
   AssignmentRecord,
   ClientContractRecord,
+  ServiceType,
+  BriefFieldDef,
+  BriefFieldSchemaRow,
 } from '../types/database';
 import { ClientDashboard } from './ClientDashboard';
 import { CLIENT_STATUS_META } from '../lib/clientStatus';
@@ -48,6 +51,8 @@ interface SalesPortalViewProps {
   clientContracts?: ClientContractRecord[];
   onUploadClientContract?: (clientId: string, file: File) => Promise<void>;
   onDeleteClientContract?: (contractId: string) => Promise<void>;
+  briefFieldSchemas: Record<ServiceType, BriefFieldDef[]>;
+  briefFieldSchemaRows: BriefFieldSchemaRow[];
 }
 
 export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
@@ -65,6 +70,8 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
   clientContracts = [],
   onUploadClientContract,
   onDeleteClientContract,
+  briefFieldSchemas,
+  briefFieldSchemaRows,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dashboardClientId, setDashboardClientId] = useState<string | null>(null);
@@ -330,6 +337,8 @@ export const SalesPortalView: React.FC<SalesPortalViewProps> = ({
           clientContracts={clientContracts}
           onUploadClientContract={onUploadClientContract}
           onDeleteClientContract={onDeleteClientContract}
+          briefFieldSchemas={briefFieldSchemas}
+          briefFieldSchemaRows={briefFieldSchemaRows}
           onClose={() => setDashboardClientId(null)}
         />
       )}
